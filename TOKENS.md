@@ -3,24 +3,24 @@
 Relevé du nombre de tokens (LLM) consommés pour ce projet, session par
 session de développement.
 
-## Session 2026-08-02 (création + plugins visuels + barre de progression)
+## Session 2026-08-02 (création + plugins visuels + barre de progression + multilingue)
 
 | Métrique | Valeur |
 |---|---|
 | Session | `20260802_181701_f23c7f` |
 | Modèle | deepseek-v4-flash (provider deepseek) |
-| Messages | 425 |
-| Appels API | 172 |
-| Tokens d'entrée (input) | 125 497 |
-| Tokens de sortie (output) | 250 676 |
-| Dont raisonnement | 143 149 |
-| Cache lecture (cache_read) | 33 302 912 |
+| Messages | 495 |
+| Appels API | 192 |
+| Tokens d'entrée (input) | 143 263 |
+| Tokens de sortie (output) | 288 118 |
+| Dont raisonnement | 156 867 |
+| Cache lecture (cache_read) | 40 686 976 |
 | Cache écriture (cache_write) | 0 |
-| **Total (input + output)** | **376 173** |
-| Coût estimé | ≈ 0,181 USD |
+| **Total (input + output)** | **431 381** |
+| Coût estimé | ≈ 0,215 USD |
 
-> Le gros du coût est amorti par le cache de lecture (33,3 M de tokens
-> relus à prix réduit) : coût facturable ≈ 0,18 $ pour toute la session.
+> Le gros du coût est amorti par le cache de lecture (40,7 M de tokens
+> relus à prix réduit) : coût facturable ≈ 0,21 $ pour toute la session.
 
 ## Comment relire le compteur
 
