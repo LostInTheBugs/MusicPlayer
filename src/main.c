@@ -57,7 +57,7 @@ static wchar_t g_plugins_dir[MAX_PATH] = { 0 };
 static wchar_t g_lang_dir[MAX_PATH] = { 0 };
 
 static int  g_fullscreen = 0;
-static RECT g_win_normal = { 0, 0, 640, 240 };
+static RECT g_win_normal = { 0, 0, 640, 300 };
 static RECT g_rc_play, g_rc_stop, g_rc_fs, g_rc_vol;
 static int  g_vol_drag = 0;   /* curseur de volume en cours de glissement */
 
@@ -979,7 +979,7 @@ static LRESULT CALLBACK wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
     case WM_GETMINMAXINFO: {
         MINMAXINFO* mmi = (MINMAXINFO*)lp;
         mmi->ptMinTrackSize.x = 420;
-        mmi->ptMinTrackSize.y = 220;
+        mmi->ptMinTrackSize.y = 260;
         return 0;
     }
     case WM_SIZE: {
@@ -1151,7 +1151,7 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR lpCmdLine, int nCmdSh
 
     g_hwnd = CreateWindowExW(0, L"MusicPlayerWnd", APP_TITLE,
                              WS_OVERLAPPEDWINDOW,
-                             CW_USEDEFAULT, CW_USEDEFAULT, 640, 240,
+                             CW_USEDEFAULT, CW_USEDEFAULT, 640, 300,
                              NULL, NULL, hInst, NULL);
     if (!g_hwnd) {
         char dbg[256];

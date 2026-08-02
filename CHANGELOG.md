@@ -2,6 +2,12 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.008] — 2026-08-02
+
+### Added
+- **Plugin visuel « 3D Isometric »** : paysage de bâtons 3D isométrique (style WM3DSpectrum / spectrogramme 3D) — grille rectangulaire fréquences × temps, 30 colonnes arc-en-ciel, 16 rangées d'historique qui défilent, faces 3D (avant clair, côté sombre, sommet en losange), fond bleu nuit
+- Fenêtre agrandie à 640×300 (plus de place pour les paysages 3D), taille minimale 420×260
+
 ## [2026.08.007] — 2026-08-02
 
 ### Changed

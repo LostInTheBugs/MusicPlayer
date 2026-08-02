@@ -12,12 +12,12 @@ compilé sous Linux par compilation croisée (MinGW-w64).
 - **Barre de progression** avec dégradé de couleurs
 - **Multilingue** : fichiers texte `lang/*.lang` (anglais par défaut, français fourni, menu Settings ▸ Language — voir [lang/README.md](lang/README.md))
 - **Architecture de plugins** (skins, effets audio, visuels) — API version 2 :
-  spectre coloré, spectre 3D rotatif style Spectrum3D (arc-en-ciel), VU mètre à LED,
+  spectre coloré, spectre 3D rotatif (arc-en-ciel), paysage 3D isométrique, VU mètre à LED,
   feu d'artifice, plasma fractal, tunnel hypnotique — tous synchronisés sur la musique
 
 ## Version
 
-`2026.08.007` — voir [CHANGELOG.md](CHANGELOG.md)
+`2026.08.008` — voir [CHANGELOG.md](CHANGELOG.md)
 
 ## Lancer sous Windows 11
 
