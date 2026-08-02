@@ -2,6 +2,12 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.014] — 2026-08-02
+
+### Changed
+- **3D Isometric : caméra frontale basse** (conforme aux références) — fini le « carré séparé en deux » des axes diagonaux : les rangées s'élèvent en rétrécissant vers le centre (point de fuite central), la grille au sol est un trapèze, les barres du fond sont plus petites, plus hautes et plus sombres (2 jeux de dégradés), sommet lumineux sur chaque barre
+- Gain d'analyse augmenté (18) et lissage adouci (0.95) pour un paysage plus dense avec la musique
+
 ## [2026.08.013] — 2026-08-02
 
 ### Fixed

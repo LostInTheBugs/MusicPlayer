@@ -30,6 +30,7 @@ static CRITICAL_SECTION g_cap_lock;
 static float  g_hist[ROWS][COLS];      /* hist[0] = maintenant, [ROWS-1] = passé */
 static float  g_smooth[COLS];
 static HBRUSH g_brushes[COLS][SEGS];   /* dégradé par colonne */
+static HBRUSH g_brushes_dark[COLS][SEGS]; /* version sombre (rangées du fond) */
 static HBRUSH g_black;
 static HPEN   g_grid_pen;
 
@@ -110,6 +111,7 @@ static int init(mp_plugin* self, const mp_host_api* host)
             BYTE gg = (BYTE)(g * lum * (1.0f - wr) + 255.0f * wr);
             BYTE bb = (BYTE)(b * lum * (1.0f - wr) + 255.0f * wr);
             g_brushes[c][s] = CreateSolidBrush(RGB(rr, gg, bb));
+            g_brushes_dark[c][s] = CreateSolidBrush(RGB(rr / 2, gg / 2, bb / 2));
         }
     }
     g_black = CreateSolidBrush(RGB(0, 0, 28));
@@ -132,8 +134,10 @@ static void destroy(mp_plugin* self)
     DeleteObject(g_black);
     DeleteObject(g_grid_pen);
     for (int c = 0; c < COLS; c++)
-        for (int s = 0; s < SEGS; s++)
+        for (int s = 0; s < SEGS; s++) {
             DeleteObject(g_brushes[c][s]);
+            DeleteObject(g_brushes_dark[c][s]);
+        }
     DeleteCriticalSection(&g_cap_lock);
     if (g_host && g_host->log) g_host->log("3D Isometric: unloaded");
     g_host = NULL;
@@ -206,7 +210,7 @@ static void render(mp_plugin* self, void* hdc_v, int width, int height)
             memset(im, 0, sizeof(im));
             for (int i = 0; i < FFT_SIZE; i++) re[i] *= g_window[i];
             fft_radix2(re, im, FFT_SIZE);
-        const float gain = 12.0f;
+        const float gain = 18.0f;
         int max_bin = FFT_SIZE / 2;
         float row[COLS];
         for (int c = 0; c < COLS; c++) {
@@ -225,7 +229,7 @@ static void render(mp_plugin* self, void* hdc_v, int width, int height)
             /* lissage : montée rapide, descente lente */
             for (int c = 0; c < COLS; c++) {
                 if (row[c] > g_smooth[c]) g_smooth[c] = row[c];
-                else g_smooth[c] = row[c] + (g_smooth[c] - row[c]) * 0.93f;
+                else g_smooth[c] = row[c] + (g_smooth[c] - row[c]) * 0.95f;
                 row[c] = g_smooth[c];
             }
             /* décalage : le présent devient l'historique */
@@ -235,107 +239,67 @@ static void render(mp_plugin* self, void* hdc_v, int width, int height)
         }
     }
 
-    /* --- géométrie : vue 3D isométrique de côté (axes en diagonale) --- */
-    float ax = 0.985f, ay = 0.17f;    /* colonnes (fréquences) → bas-droite */
-    float bx = 0.94f, by = -0.34f;    /* rangées (temps) → HAUT-gauche (le passé s'éloigne vers le fond) */
+    /* --- géométrie : caméra frontale basse (vue "côté" de la grille) ---
+     * Les rangées s'élèvent en rétrécissant vers le centre (point de
+     * fuite central) : la grille au sol est un trapèze, les barres du
+     * fond sont plus petites, plus hautes et plus sombres. */
     float c0 = (COLS - 1) * 0.5f;
-    float r0 = (ROWS - 1) * 0.5f;
+    float cell = (float)width * 0.92f / COLS;      /* pas des colonnes au premier plan */
+    float depth_h = (float)height * 0.42f;         /* hauteur de la grille (profondeur) */
+    int   max_h = (int)(height * 0.40f);           /* barre max au premier plan */
+    float sc_min = 0.35f;                          /* taille du fond (point de fuite) */
 
-    /* échelle : la grille tient dans la zone (fond rétréci 50 %) */
-    float gw = COLS * ax + ROWS * bx;
-    float gh = COLS * ay + ROWS * 0.34f;   /* |by| : hauteur projetée */
-    float cell = (float)width / gw;
-    float cell_h = (float)(height * 0.78f) / gh;
-    if (cell_h < cell) cell = cell_h;
-
-    /* bbox projetée (avec le rétrécissement des rangées) pour centrer */
-    float px_min = 1e9f, px_max = -1e9f, py_min = 1e9f, py_max = -1e9f;
-    for (int rr = 0; rr <= ROWS; rr++) {
-        float sc = 1.0f - 0.5f * (float)rr / ROWS;
-        for (int cc = 0; cc <= COLS; cc++) {
-            float x = ((cc - c0) * ax - (rr - r0) * bx) * cell * sc;
-            float y = ((cc - c0) * ay + (rr - r0) * by) * cell * sc;
-            if (x < px_min) px_min = x;
-            if (x > px_max) px_max = x;
-            if (y < py_min) py_min = y;
-            if (y > py_max) py_max = y;
-        }
-    }
-    int cx = (int)(width * 0.5f - (px_min + px_max) * 0.5f);
-    float base_y = (float)height * 0.5f - (py_min + py_max) * 0.5f;
-    int max_h = (int)(height * 0.40f);
-    int bw = (int)(cell * 0.42f);
+    /* centrage : grille au sol + barres */
+    float base_y = (float)height * 0.5f + (depth_h + max_h * sc_min) * 0.5f;
+    int   cx = width / 2;
+    int   bw = (int)(cell * 0.44f);
     if (bw < 2) bw = 2;
 
-    /* grille au sol */
+    /* grille au sol : trapèze */
     HPEN oldp = (HPEN)SelectObject(hdc, g_grid_pen);
     HBRUSH oldb = (HBRUSH)SelectObject(hdc, GetStockObject(NULL_BRUSH));
     for (int r = 0; r <= ROWS; r++) {
-        float sc = 1.0f - 0.5f * (float)r / ROWS;
-        float y = base_y + ((0 - c0) * ay + (r - r0) * by) * cell * sc;
-        float x1 = cx + ((0 - c0) * ax - (r - r0) * bx) * cell * sc;
-        float x2 = cx + ((COLS - c0) * ax - (r - r0) * bx) * cell * sc;
-        MoveToEx(hdc, (int)x1, (int)y, NULL);
-        LineTo(hdc, (int)x2, (int)y);
+        float sc = 1.0f - (1.0f - sc_min) * (float)r / ROWS;
+        float y = base_y - (float)r / ROWS * depth_h;
+        float half = c0 * cell * sc;
+        MoveToEx(hdc, cx - (int)half, (int)y, NULL);
+        LineTo(hdc, cx + (int)half, (int)y);
     }
     for (int c = 0; c <= COLS; c++) {
-        float y0 = base_y + ((c - c0) * ay + (0 - r0) * by) * cell;
-        float yf = base_y + ((c - c0) * ay + (ROWS - r0) * by) * cell * 0.5f;
-        float x0 = cx + ((c - c0) * ax - (0 - r0) * bx) * cell;
-        float xf = cx + ((c - c0) * ax - (ROWS - r0) * bx) * cell * 0.5f;
-        MoveToEx(hdc, (int)x0, (int)y0, NULL);
-        LineTo(hdc, (int)xf, (int)yf);
+        float x0 = cx + (c - c0) * cell;
+        float xf = cx + (c - c0) * cell * sc_min;
+        MoveToEx(hdc, (int)x0, (int)base_y, NULL);
+        LineTo(hdc, (int)xf, (int)(base_y - depth_h));
     }
     SelectObject(hdc, oldb);
     SelectObject(hdc, oldp);
 
     /* barres : du fond (r grand) vers l'avant (r=0) */
     for (int r = ROWS - 1; r >= 0; r--) {
-        float sc = 1.0f - 0.5f * (float)r / (ROWS - 1);
+        float t = (float)r / (ROWS - 1);
+        float sc = 1.0f - (1.0f - sc_min) * t;     /* 1.0 → 0.35 */
         int bh_max = (int)(max_h * sc);
         int bw2 = (int)(bw * sc);
         if (bw2 < 2) bw2 = 2;
+        float yb = base_y - t * depth_h;
+        int dark = (r > ROWS / 2);                 /* rangées du fond plus sombres */
         for (int c = 0; c < COLS; c++) {
             float lvl = g_hist[r][c];
             int bh = (int)(lvl * bh_max);
             if (bh < 2) continue;
-            float x = cx + ((c - c0) * ax - (r - r0) * bx) * cell * sc;
-            float yb = base_y + ((c - c0) * ay + (r - r0) * by) * cell * sc;
-            int x0 = (int)x - bw2 / 2;
+            int x0 = cx + (int)((c - c0) * cell * sc) - bw2 / 2;
             int ybi = (int)yb;
-            int lat = bw2 / 2;               /* profondeur de la face latérale */
-            if (lat < 1) lat = 1;
-            int laty = lat * 17 / 47;        /* pente de l'axe du temps : 0.34/0.94 ≈ 0.36 */
-
-            /* face latérale droite (vers l'axe des fréquences, teinte moyenne) */
-            POINT side[4] = {
-                { x0 + bw2, ybi },
-                { x0 + bw2 + lat, ybi - laty },
-                { x0 + bw2 + lat, ybi - laty - bh },
-                { x0 + bw2, ybi - bh }
-            };
-            HBRUSH oldb2 = (HBRUSH)SelectObject(hdc, g_brushes[c][SEGS * 2 / 5]);
-            HPEN oldp2 = (HPEN)SelectObject(hdc, GetStockObject(NULL_PEN));
-            Polygon(hdc, side, 4);
 
             /* face avant : dégradé vertical (sombre → lumineux) */
             for (int s = 0; s < SEGS; s++) {
                 int y0 = ybi - bh + bh * s / SEGS;
                 int y1 = y0 + bh / SEGS + 1;
                 RECT rc = { x0, y0, x0 + bw2, y1 };
-                FillRect(hdc, &rc, g_brushes[c][s]);
+                FillRect(hdc, &rc, dark ? g_brushes_dark[c][s] : g_brushes[c][s]);
             }
-            /* dessus (lumineux) */
-            POINT top[4] = {
-                { x0, ybi - bh },
-                { x0 + bw2, ybi - bh },
-                { x0 + bw2 + lat, ybi - laty - bh },
-                { x0 + lat, ybi - laty - bh }
-            };
-            SelectObject(hdc, g_brushes[c][SEGS - 1]);
-            Polygon(hdc, top, 4);
-            SelectObject(hdc, oldb2);
-            SelectObject(hdc, oldp2);
+            /* sommet lumineux (ligne claire) */
+            RECT cap = { x0, ybi - bh, x0 + bw2, ybi - bh + 2 };
+            FillRect(hdc, &cap, g_brushes[c][SEGS - 1]);
         }
     }
 }
