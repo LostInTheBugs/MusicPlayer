@@ -9,19 +9,19 @@ session de développement.
 |---|---|
 | Session | `20260802_181701_f23c7f` |
 | Modèle | deepseek-v4-flash (provider deepseek) |
-| Messages | ~350 (session compactée en cours de route) |
-| Appels API | 258 |
-| Tokens d'entrée (input) | 367 255 |
-| Tokens de sortie (output) | 368 305 |
-| Dont raisonnement | 183 532 |
-| Cache lecture (cache_read) | 62 237 312 |
+| Messages | ~390 (session compactée en cours de route) |
+| Appels API | 273 |
+| Tokens d'entrée (input) | 378 266 |
+| Tokens de sortie (output) | 384 747 |
+| Dont raisonnement | 190 862 |
+| Cache lecture (cache_read) | 65 592 320 |
 | Cache écriture (cache_write) | 0 |
-| **Total (input + output)** | **735 560** |
-| Coût estimé | ≈ 0,329 USD |
+| **Total (input + output)** | **763 013** |
+| Coût estimé | ≈ 0,344 USD |
 
-> Le gros du coût est amorti par le cache de lecture (62,2 M de tokens
-> relus à prix réduit) : coût facturable ≈ 0,33 $ pour tout le projet
-> (6 versions, 7 plugins, tests, docs).
+> Le gros du coût est amorti par le cache de lecture (65,6 M de tokens
+> relus à prix réduit) : coût facturable ≈ 0,34 $ pour tout le projet
+> (7 versions, 7 plugins, tests, docs).
 
 ## Comment relire le compteur
 
