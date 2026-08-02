@@ -1,0 +1,18 @@
+# Build
+bin/
+dist/
+*.o
+
+# Logs et fichiers générés
+*.log
+selftest.log
+
+# Environnements / éditeurs
+.env
+.vscode/
+.idea/
+
+# Gros binaires vendus (téléchargés par setup)
+vendor/miniaudio.h
+vendor/ffmpeg/
+vendor/*.zip
