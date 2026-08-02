@@ -2,6 +2,14 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.011] — 2026-08-02
+
+### Changed
+- **3D Isometric entièrement refait, style GLBars / WM3DSpectrum** :
+  - grille **rectangulaire en perspective** (les rangées du fond sont plus petites et plus hautes) — fini le losange isométrique
+  - **dégradé vertical sur chaque barre** : sombre à la base, vive et lumineuse au sommet (6 segments, éclat blanc)
+  - **grille centrée** sur l'écran (horizontal et vertical), 24 colonnes × 14 rangées
+
 ## [2026.08.010] — 2026-08-02
 
 ### Changed
