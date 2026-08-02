@@ -3,6 +3,9 @@ bin/
 dist/
 *.o
 
+# Fichiers de test générés (make test-samples)
+test/
+
 # Logs et fichiers générés
 *.log
 selftest.log
