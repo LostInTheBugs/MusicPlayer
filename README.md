@@ -56,6 +56,25 @@ make test     # builds, generates test files and plays them under Wine
 make zip      # portable Windows archive
 ```
 
+### macOS (cross-compile to Windows)
+
+The same Makefile works on macOS with the MinGW-w64 toolchain:
+
+```bash
+brew install mingw-w64
+make          # → bin/MusicPlayer.exe — identical output, no code change
+make zip      # portable Windows archive
+```
+
+`make test` needs Wine (optional on macOS: `brew install --cask wine-stable`).
+
+### Native Linux / macOS build
+
+The UI is pure **Win32**, so the player itself only targets Windows.
+The audio engine (FFmpeg + miniaudio) is portable, but no native
+frontend is provided — building the engine natively on Linux/macOS
+would require pairing it with a native UI (not included).
+
 ## Usage
 
 | Action | Menu | Shortcut |
