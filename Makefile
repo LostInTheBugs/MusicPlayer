@@ -81,6 +81,7 @@ zip: all plugins-examples dirs
 	cd .. && echo "Archive : dist/MusicPlayer-$(VERSION)-win64.zip"
 
 clean:
-	rm -f $(OBJ) bin/*.exe bin/*.dll bin/*.log dist/*.zip
+	rm -f $(OBJ) bin/*.exe bin/*.dll bin/*.log
+	@echo "Note : dist/*.zip (livrables) n'est pas supprimé ; utilisez 'make distclean' si besoin."
 
 .PHONY: all dirs plugins-examples test-samples test zip clean
