@@ -2,6 +2,18 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.006] — 2026-08-02
+
+### Changed
+- **3D Spectrum relooké style Spectrum3D** (spectrum3d.sourceforge.net) : fond noir, grille wireframe au sol, 72 barres fines (blanc→jaune→rouge), arrière assombri
+- **Menus simplifiés** : File · Settings · Plugins · Help — menus Playback et Volume supprimés
+- **Settings** regroupe : Speed, Fullscreen, Language
+- **Raccourcis clavier retirés des libellés de menus** (plus de « Ctrl+O » affichés)
+- **Volume 0–200 %** : curseur avec zone bleue (0–100 %) et orange (booster 100–200 %), marque à 100 %
+
+### Fixed
+- **Redimensionnement de la fenêtre** : parts de la status bar recalculées, zone entière redessinée (visuel, progression, contrôles)
+
 ## [2026.08.005] — 2026-08-02
 
 ### Added

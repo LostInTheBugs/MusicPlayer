@@ -434,7 +434,7 @@ void mp_stop(void)
 void mp_set_volume(float v)
 {
     if (v < 0.0f) v = 0.0f;
-    if (v > 1.0f) v = 1.0f;
+    if (v > 2.0f) v = 2.0f;   /* 0..100% + booster jusqu'à 200% */
     g_volume_pct = (LONG)(v * 100.0f + 0.5f);
     if (g_device_ok)
         ma_device_set_master_volume(&g_device, v);

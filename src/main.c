@@ -189,14 +189,6 @@ static void refresh_speed_check(HMENU menu)
     CheckMenuRadioItem(menu, IDM_SPEED_BASE, IDM_SPEED_BASE + SPEED_COUNT - 1,
                        IDM_SPEED_BASE + idx, MF_BYCOMMAND);
 }
-
-static void refresh_volume_item(HMENU menu)
-{
-    wchar_t label[32];
-    swprintf(label, 32, lang_get("vol_show"), (int)(mp_get_volume() * 100.0f + 0.5f));
-    ModifyMenuW(menu, IDM_VOL_SHOW, MF_BYCOMMAND | MF_GRAYED | MF_STRING, IDM_VOL_SHOW, label);
-}
-
 /* Menu Plugins : sous-menus par type (un seul visuel actif, radio) */
 static void rebuild_plugins_menu(HMENU parent)
 {
@@ -233,7 +225,7 @@ static void rebuild_plugins_menu(HMENU parent)
         CheckMenuRadioItem(mVis, IDM_PLUGIN_BASE, IDM_PLUGIN_BASE + n - 1,
                            IDM_PLUGIN_BASE + vis_active, MF_BYCOMMAND);
 
-    /* reconstruit le menu Plugins (position 3) */
+    /* reconstruit le menu Plugins (position 2) */
     HMENU m = CreatePopupMenu();
     AppendMenuW(m, MF_STRING, IDM_PLUGIN_RELOAD, lang_get("plugins_reload"));
     AppendMenuW(m, MF_SEPARATOR, 0, NULL);
@@ -248,13 +240,13 @@ static void rebuild_plugins_menu(HMENU parent)
         else
             DestroyMenu(mOther);
     }
-    RemoveMenu(parent, 3, MF_BYPOSITION);
-    InsertMenuW(parent, 3, MF_BYPOSITION | MF_POPUP, (UINT_PTR)m, lang_get("menu_plugins"));
+    RemoveMenu(parent, 2, MF_BYPOSITION);
+    InsertMenuW(parent, 2, MF_BYPOSITION | MF_POPUP, (UINT_PTR)m, lang_get("menu_plugins"));
     DrawMenuBar(g_hwnd);
 }
 
-/* Sous-menu des langues disponibles (position 4) */
-static void rebuild_lang_menu(HMENU parent)
+/* Sous-menu des langues disponibles (dans le menu Paramètres) */
+static void rebuild_lang_menu(HMENU settings)
 {
     HMENU m = CreatePopupMenu();
     int n = 0;
@@ -265,8 +257,8 @@ static void rebuild_lang_menu(HMENU parent)
             CheckMenuRadioItem(m, IDM_LANG_BASE, IDM_LANG_BASE + n - 1,
                                IDM_LANG_BASE + i, MF_BYCOMMAND);
     }
-    RemoveMenu(parent, 4, MF_BYPOSITION);
-    InsertMenuW(parent, 4, MF_BYPOSITION | MF_POPUP, (UINT_PTR)m, lang_get("menu_lang"));
+    RemoveMenu(settings, 2, MF_BYPOSITION);
+    InsertMenuW(settings, 2, MF_BYPOSITION | MF_POPUP, (UINT_PTR)m, lang_get("menu_lang"));
     DrawMenuBar(g_hwnd);
 }
 
@@ -280,24 +272,15 @@ static HMENU create_menus(void)
     AppendMenuW(mFile, MF_STRING, IDM_EXIT, lang_get("quit"));
     AppendMenuW(bar, MF_POPUP, (UINT_PTR)mFile, lang_get("menu_file"));
 
-    HMENU mPlay = CreatePopupMenu();
-    AppendMenuW(mPlay, MF_STRING, IDM_PLAYPAUSE, lang_get("play_pause"));
-    AppendMenuW(mPlay, MF_STRING, IDM_STOP, lang_get("stop"));
-    AppendMenuW(mPlay, MF_SEPARATOR, 0, NULL);
-    AppendMenuW(mPlay, MF_POPUP, (UINT_PTR)build_speed_menu(), lang_get("speed"));
-    AppendMenuW(mPlay, MF_SEPARATOR, 0, NULL);
-    AppendMenuW(mPlay, MF_STRING, IDM_FULLSCREEN, lang_get("fullscreen"));
-    AppendMenuW(bar, MF_POPUP, (UINT_PTR)mPlay, lang_get("menu_play"));
-
-    HMENU mVol = CreatePopupMenu();
-    AppendMenuW(mVol, MF_STRING, IDM_VOL_UP, lang_get("vol_up"));
-    AppendMenuW(mVol, MF_STRING, IDM_VOL_DOWN, lang_get("vol_down"));
-    AppendMenuW(mVol, MF_SEPARATOR, 0, NULL);
-    AppendMenuW(mVol, MF_GRAYED | MF_STRING, IDM_VOL_SHOW, lang_get("vol_show"));
-    AppendMenuW(bar, MF_POPUP, (UINT_PTR)mVol, lang_get("menu_volume"));
+    /* Paramètres : vitesse, plein écran, langue */
+    HMENU mSettings = CreatePopupMenu();
+    AppendMenuW(mSettings, MF_POPUP, (UINT_PTR)build_speed_menu(), lang_get("speed"));
+    AppendMenuW(mSettings, MF_STRING, IDM_FULLSCREEN, lang_get("fullscreen"));
+    AppendMenuW(mSettings, MF_SEPARATOR, 0, NULL);
+    AppendMenuW(mSettings, MF_POPUP, (UINT_PTR)CreatePopupMenu(), lang_get("menu_lang"));
+    AppendMenuW(bar, MF_POPUP, (UINT_PTR)mSettings, lang_get("menu_settings"));
 
     AppendMenuW(bar, MF_POPUP, (UINT_PTR)CreatePopupMenu(), lang_get("menu_plugins"));
-    AppendMenuW(bar, MF_POPUP, (UINT_PTR)CreatePopupMenu(), lang_get("menu_lang"));
 
     HMENU mHelp = CreatePopupMenu();
     AppendMenuW(mHelp, MF_STRING, IDM_ABOUT, lang_get("about"));
@@ -312,9 +295,10 @@ static void rebuild_menus(void)
     HMENU old = GetMenu(g_hwnd);
     HMENU bar = create_menus();
     SetMenu(g_hwnd, bar);
-    refresh_speed_check(GetSubMenu(bar, 1));
-    rebuild_plugins_menu(bar);
-    rebuild_lang_menu(bar);
+    HMENU mSettings = GetSubMenu(bar, 1);
+    refresh_speed_check(GetSubMenu(mSettings, 0));
+    rebuild_lang_menu(mSettings);          /* position 2 dans Paramètres */
+    rebuild_plugins_menu(bar);             /* position 2 dans la barre */
     if (old) DestroyMenu(old);
     mp_plugins_apply_skins(g_hwnd);
 }
@@ -514,20 +498,38 @@ static void paint_controls(HDC hdc, const RECT* rc)
     gf.left += 2; gf.right -= 2; gf.top += 2; gf.bottom -= 2;
     draw_glyph_fullscreen(hdc, &gf);
 
-    /* curseur de volume */
+    /* curseur de volume : 0..100% (bleu) puis boost 100..200% (orange) */
     draw_glyph_volume(hdc, g_rc_vol.left - 14, g_rc_vol.top);
     int vw = g_rc_vol.right - g_rc_vol.left;
-    int fill = (int)(mp_get_volume() * vw);
+    float vol = mp_get_volume();
+    int fill = (int)(vol * 0.5f * vw);          /* position du curseur */
+    int mid = vw / 2;                            /* marque 100 % */
     HBRUSH track = CreateSolidBrush(RGB(205, 210, 222));
     RECT tr = { g_rc_vol.left, g_rc_vol.top + 6, g_rc_vol.right, g_rc_vol.top + 10 };
     FillRect(hdc, &tr, track);
     DeleteObject(track);
+    /* 0..100 % : bleu */
     if (fill > 0) {
-        HBRUSH bfill = CreateSolidBrush(RGB(52, 120, 246));
-        RECT fr = { g_rc_vol.left, g_rc_vol.top + 6, g_rc_vol.left + fill, g_rc_vol.top + 10 };
-        FillRect(hdc, &fr, bfill);
-        DeleteObject(bfill);
+        int fw = fill < mid ? fill : mid;
+        if (fw > 0) {
+            HBRUSH bfill = CreateSolidBrush(RGB(52, 120, 246));
+            RECT fr = { g_rc_vol.left, g_rc_vol.top + 6, g_rc_vol.left + fw, g_rc_vol.top + 10 };
+            FillRect(hdc, &fr, bfill);
+            DeleteObject(bfill);
+        }
     }
+    /* 100..200 % : orange (booster) */
+    if (fill > mid) {
+        HBRUSH bboost = CreateSolidBrush(RGB(240, 140, 40));
+        RECT fr = { g_rc_vol.left + mid, g_rc_vol.top + 6, g_rc_vol.left + fill, g_rc_vol.top + 10 };
+        FillRect(hdc, &fr, bboost);
+        DeleteObject(bboost);
+    }
+    /* marque des 100 % */
+    HBRUSH bmark = CreateSolidBrush(RGB(120, 126, 140));
+    RECT mk = { g_rc_vol.left + mid - 1, g_rc_vol.top + 5, g_rc_vol.left + mid + 1, g_rc_vol.top + 11 };
+    FillRect(hdc, &mk, bmark);
+    DeleteObject(bmark);
     int knob = g_rc_vol.left + fill;
     HBRUSH bknob = CreateSolidBrush(RGB(255, 255, 255));
     oldb = (HBRUSH)SelectObject(hdc, bknob);
@@ -540,11 +542,10 @@ static void vol_from_mouse(int x)
 {
     int w = g_rc_vol.right - g_rc_vol.left;
     if (w <= 0) return;
-    float v = (float)(x - g_rc_vol.left) / w;
+    float v = (float)(x - g_rc_vol.left) / w * 2.0f;   /* 0..200 % */
     if (v < 0.0f) v = 0.0f;
-    if (v > 1.0f) v = 1.0f;
+    if (v > 2.0f) v = 2.0f;
     mp_set_volume(v);
-    refresh_volume_item(GetMenu(g_hwnd));
     status_update();
 }
 
@@ -815,6 +816,7 @@ static void lang_pref_load(void)
 /* ------------------------------------------------------------------ */
 static void on_command(int id, HMENU bar)
 {
+    (void)bar;
     switch (id) {
     case IDM_OPEN:      do_open_dialog(); break;
     case IDM_EXIT:      SendMessageW(g_hwnd, WM_CLOSE, 0, 0); break;
@@ -825,16 +827,16 @@ static void on_command(int id, HMENU bar)
 
     case IDM_VOL_UP: {
         float v = mp_get_volume() + 0.05f;
-        if (v > 1.0f) v = 1.0f;
+        if (v > 2.0f) v = 2.0f;
         mp_set_volume(v);
-        refresh_volume_item(bar);
+        status_update();
         break;
     }
     case IDM_VOL_DOWN: {
         float v = mp_get_volume() - 0.05f;
         if (v < 0.0f) v = 0.0f;
         mp_set_volume(v);
-        refresh_volume_item(bar);
+        status_update();
         break;
     }
     case IDM_PLUGIN_RELOAD:
@@ -846,7 +848,7 @@ static void on_command(int id, HMENU bar)
     default:
         if (id >= IDM_SPEED_BASE && id < IDM_SPEED_BASE + SPEED_COUNT) {
             mp_set_speed(SPEED_VALUES[id - IDM_SPEED_BASE]);
-            refresh_speed_check(GetSubMenu(GetMenu(g_hwnd), 1));
+            refresh_speed_check(GetSubMenu(GetSubMenu(GetMenu(g_hwnd), 1), 0));
         } else if (id >= IDM_PLUGIN_BASE && id < IDM_LANG_BASE) {
             int i = id - IDM_PLUGIN_BASE;
             mp_plugin* p = mp_plugins_get(i);
@@ -968,7 +970,15 @@ static LRESULT CALLBACK wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
     case WM_ERASEBKGND:
         return 1;   /* tout est redessiné dans WM_PAINT */
     case WM_SIZE: {
+        /* redimensionnement : recalcule les parts de la status bar
+         * et redessine toute la zone (visuel + progression + contrôles) */
         SendMessageW(g_status, WM_SIZE, 0, 0);
+        RECT cr;
+        GetClientRect(hwnd, &cr);
+        int parts[4] = { cr.right * 45 / 100, cr.right * 62 / 100, cr.right * 74 / 100, -1 };
+        SendMessageW(g_status, SB_SETPARTS, 4, (LPARAM)parts);
+        status_update();
+        InvalidateRect(hwnd, NULL, TRUE);
         return 0;
     }
     case WM_CLOSE:
@@ -1140,9 +1150,9 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR lpCmdLine, int nCmdSh
 
     HMENU bar = create_menus();
     SetMenu(g_hwnd, bar);
-    refresh_speed_check(GetSubMenu(bar, 1));
+    refresh_speed_check(GetSubMenu(GetSubMenu(bar, 1), 0));
+    rebuild_lang_menu(GetSubMenu(bar, 1));
     rebuild_plugins_menu(bar);
-    rebuild_lang_menu(bar);
     mp_plugins_apply_skins(g_hwnd);
     log_line("Menus built");
 

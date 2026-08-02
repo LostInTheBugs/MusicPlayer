@@ -15,22 +15,23 @@ lang_name=English
 menu_file=&File
 menu_play=&Playback
 menu_volume=&Volume
+menu_settings=&Settings
 menu_plugins=P&lugins
 menu_lang=&Language
 menu_help=&Help
 
 # --- File menu ---
-open=&Open…\tCtrl+O
+open=&Open…
 quit=&Quit
 
 # --- Playback menu ---
-play_pause=&Play / Pause\tSpace
-stop=&Stop\tS
+play_pause=&Play / Pause
+stop=&Stop
 speed=&Speed
 
 # --- Volume menu ---
-vol_up=&Increase\t↑
-vol_down=&Decrease\t↓
+vol_up=&Increase
+vol_down=&Decrease
 vol_show=Volume: %d%%
 
 # --- Plugins menu ---
@@ -40,8 +41,8 @@ plugins_visual=&Visual
 plugins_effects=&Audio effects
 plugins_skins=&Skins
 
-# --- Playback menu ---
-fullscreen=&Fullscreen\tF11
+# --- Settings menu ---
+fullscreen=&Fullscreen
 
 # --- Help menu ---
 about=&About…

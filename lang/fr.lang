@@ -13,22 +13,23 @@ lang_name=Français
 menu_file=&Fichier
 menu_play=&Lecture
 menu_volume=&Volume
+menu_settings=&Paramètres
 menu_plugins=P&lugins
 menu_lang=&Langue
 menu_help=A&ide
 
 # --- Menu Fichier ---
-open=&Ouvrir…\tCtrl+O
+open=&Ouvrir…
 quit=&Quitter
 
 # --- Menu Lecture ---
-play_pause=&Lecture / Pause\tEspace
-stop=&Stop\tS
+play_pause=&Lecture / Pause
+stop=&Stop
 speed=&Vitesse
 
 # --- Menu Volume ---
-vol_up=&Monter\t↑
-vol_down=&Descendre\t↓
+vol_up=&Monter
+vol_down=&Descendre
 vol_show=Volume : %d%%
 
 # --- Menu Plugins ---
@@ -38,8 +39,8 @@ plugins_visual=&Visuel
 plugins_effects=&Effets audio
 plugins_skins=&Skins
 
-# --- Menu Lecture ---
-fullscreen=&Plein écran\tF11
+# --- Menu Paramètres ---
+fullscreen=&Plein écran
 
 # --- Menu Aide ---
 about=À &propos…
