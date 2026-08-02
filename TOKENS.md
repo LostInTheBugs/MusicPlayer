@@ -1,31 +1,27 @@
-# Suivi des tokens consommés — MusicPlayer
+# Token usage tracking — MusicPlayer
 
-Relevé du nombre de tokens (LLM) consommés pour ce projet, session par
-session de développement.
+LLM token usage for this project, tallied session by session.
 
-## Session 2026-08-02 (projet complet : moteur, plugins visuels, UI, multilingue)
+## Cumulative tally (2026-08-02)
 
-| Métrique | Valeur |
+| Metric | Value |
 |---|---|
-| Session | `20260802_181701_f23c7f` |
-| Modèle | deepseek-v4-flash (provider deepseek) |
-| Messages | 185 (session compactée en cours de route) |
-| Appels API | 382 |
-| Tokens d'entrée (input) | 611 983 |
-| Tokens de sortie (output) | 568 055 |
-| Dont raisonnement | 306 707 |
-| Cache lecture (cache_read) | 100 831 360 |
-| Cache écriture (cache_write) | 0 |
-| **Total (input + output)** | **1 180 038** |
-| Coût estimé | ≈ 0,527 USD |
+| Dev sessions (Hermes) | 1 |
+| Scripted agent sessions (API) | 0 |
+| Models | deepseek-v4-flash |
+| Messages | 210 |
+| API calls | 394 |
+| Input tokens | 616 056 |
+| Output tokens | 572 159 |
+| Of which reasoning | 308 063 |
+| Cache read (cache_read) | 102 946 688 |
+| Cache write (cache_write) | 0 |
+| **Total (input + output)** | **1 188 215** |
+| Estimated cost | ≈ 0.535 USD |
 
-> Le gros du coût est amorti par le cache de lecture (100,8 M de tokens
-> relus à prix réduit) : coût facturable ≈ 0,53 $ pour tout le projet
-> (14 versions, 8 plugins, tests, docs, publication GitHub).
+## How to re-read the counter
 
-## Comment relire le compteur
-
-La base de sessions de Hermes (SQLite) contient les compteurs exacts :
+The Hermes session database (SQLite) holds the exact counters:
 
 ```bash
 sqlite3 ~/.hermes/state.db "SELECT id, started_at, model,
@@ -35,14 +31,14 @@ sqlite3 ~/.hermes/state.db "SELECT id, started_at, model,
   ORDER BY started_at;"
 ```
 
-Après chaque session de développement, copier la ligne correspondante
-dans le tableau ci-dessus.
+After each dev session, copy the matching row into the table above.
 
 ## Notes
 
-- Relevé effectué via `~/.hermes/state.db` (table `sessions`) — ce sont
-  les compteurs réels du runtime, pas une estimation.
-- `reasoning_tokens` est probablement inclus dans `output_tokens`
-  (à confirmer selon le fournisseur).
-- Relevés précédents : 163 174 tokens / 0,055 $ à la fin de la création
-  du projet (2026.08.001).
+- Tally taken from `~/.hermes/state.db` (table `sessions`) — these are the
+  real runtime counters, not an estimate.
+- « Scripted agent sessions (API) » = `api-*` sessions driven by scripts
+  (audits, releases, background tasks) attached to this project.
+- `reasoning_tokens` is probably included in `output_tokens`
+  (to be confirmed with the provider).
+- Tally generated on 2026-08-02 from the session database.
