@@ -1,58 +1,58 @@
-# Plugins MusicPlayer
+# MusicPlayer Plugins
 
-Déposez ici les DLL de plugins : elles sont chargées au démarrage
-(menu **Plugins ▸ Recharger** pour recharger sans redémarrer).
+Drop plugin DLLs here: they are loaded at startup
+(menu **Plugins ▸ Reload** to reload without restarting).
 
-## Types de plugins (API v2 — voir src/plugin.h)
+## Plugin types (API v2 — see src/plugin.h)
 
 | Type | Bit | Description |
 |---|---|---|
-| Skin | `MP_PLUGIN_SKIN` | personnalise l'apparence de la fenêtre (`apply_skin`) |
-| Effet audio | `MP_PLUGIN_AUDIO_EFFECT` | traitement PCM temps réel (`process`) |
-| Visuel | `MP_PLUGIN_VISUAL` | rendu dans la zone d'affichage (`render`, ~30 FPS) |
+| Skin | `MP_PLUGIN_SKIN` | customizes the window appearance (`apply_skin`) |
+| Audio effect | `MP_PLUGIN_AUDIO_EFFECT` | real-time PCM processing (`process`) |
+| Visual | `MP_PLUGIN_VISUAL` | rendering in the display area (`render`, ~30 FPS) |
 
-Les plugins **visuels** reçoivent aussi le flux audio via `audio_frames()`
-(lecture seule, après les effets) pour l'analyse (spectre, oscilloscope…).
+**Visual** plugins also receive the audio stream through `audio_frames()`
+(read-only, after effects) for analysis (spectrum, oscilloscope…).
 
-## Contrat d'une DLL de plugin
+## Plugin DLL contract
 
-1. Exporter `const mp_plugin_api* mp_plugin_entry(void)` (nom `mp_plugin_entry`).
-2. `api_version` doit valoir `MP_PLUGIN_API_VERSION` (2).
-3. Fournir au minimum `name()` et `type()`.
-4. Remplir `init()` pour recevoir l'API hôte (`mp_host_api`) : journalisation,
-   état du lecteur, position, durée, volume, vitesse.
-5. Hooks optionnels : `process()` (effets), `audio_frames()` + `render()`
-   (visuel), `apply_skin()` (skin). Ils ne sont appelés que si `type()` les
-   déclare et si le plugin est coché dans le menu Plugins.
+1. Export `const mp_plugin_api* mp_plugin_entry(void)` (name `mp_plugin_entry`).
+2. `api_version` must equal `MP_PLUGIN_API_VERSION` (2).
+3. Provide at least `name()` and `type()`.
+4. Fill `init()` to receive the host API (`mp_host_api`): logging,
+   player state, position, duration, volume, speed.
+5. Optional hooks: `process()` (effects), `audio_frames()` + `render()`
+   (visual), `apply_skin()` (skin). They are called only if `type()`
+   declares them and the plugin is checked in the Plugins menu.
 
-## Exemples fournis (examples/)
+## Provided examples (examples/)
 
 | Plugin | Type | Description |
 |---|---|---|
-| `plugin_gaindemo.c` | effet audio | atténuation de moitié (exemple minimal) |
-| `plugin_spectrum.c` | visuel | spectre : FFT 1024, 48 barres log, palette bleu→rouge, halo, grille |
-| `plugin_3dspectrum.c` | visuel | spectre 3D rotatif style Spectrum3D : 96 barres fines, arc-en-ciel par position, fond bleu nuit |
-| `plugin_3diso.c` | visuel | paysage de barres 3D en perspective, style GLBars : 24×14, arc-en-ciel, dégradés lumineux, temps qui défile |
-| `plugin_vumeter.c` | visuel | VU mètre stéréo à LED (-45..0 dB, pics, clip) — style Winamp/XMMS |
-| `plugin_fireworks.c` | visuel | feu d'artifice déclenché par les beats de la musique |
-| `plugin_fractal.c` | visuel | plasma fractal per-pixel (256 couleurs, réagit à la musique) |
-| `plugin_hypnotic.c` | visuel | tunnel hypnotique : anneaux rotatifs pulsés par la musique |
+| `plugin_gaindemo.c` | audio effect | halves the volume (minimal example) |
+| `plugin_spectrum.c` | visual | spectrum: FFT 1024, 48 log bars, blue→red palette, halo, grid |
+| `plugin_3dspectrum.c` | visual | rotating 3D spectrum, Spectrum3D style: 96 thin bars, rainbow by position, night-blue background |
+| `plugin_3diso.c` | visual | 3D bar landscape in perspective, GLBars style: 24×14, rainbow, glowing gradients, scrolling time |
+| `plugin_vumeter.c` | visual | stereo LED VU meter (-45..0 dB, peaks, clip) — Winamp/XMMS style |
+| `plugin_fireworks.c` | visual | fireworks triggered by music beats |
+| `plugin_fractal.c` | visual | per-pixel fractal plasma (256 colors, reacts to music) |
+| `plugin_hypnotic.c` | visual | hypnotic tunnel: rotating rings pulsed by the music |
 
-Compiler avec `-lgdi32 -lm` pour les plugins visuels.
+Compile with `-lgdi32 -lm` for visual plugins.
 
-> **Plusieurs plugins visuels** : un seul est affiché à la fois — le menu
-> **Plugins ▸ Visual** fonctionne en radio (cochez celui que vous voulez).
+> **Multiple visual plugins**: only one is displayed at a time — the
+> **Plugins ▸ Visual** menu is a radio group (check the one you want).
 
-## Compiler un plugin
+## Building a plugin
 
-Avec MinGW (Linux) :
+With MinGW (Linux):
 
 ```bash
-x86_64-w64-mingw32-gcc -O2 -shared -o mon_plugin.dll mon_plugin.c \
-    -Isrc -static-libgcc          # + -lgdi32 -lm pour un visuel
+x86_64-w64-mingw32-gcc -O2 -shared -o my_plugin.dll my_plugin.c \
+    -Isrc -static-libgcc          # + -lgdi32 -lm for a visual
 ```
 
-## Journal
+## Log
 
-Les chargements/erreurs de plugins sont écrits dans `musicplayer.log`
-(à côté de l'exe) — utile pour déboguer une DLL qui ne se charge pas.
+Plugin load/errors are written to `musicplayer.log`
+(next to the exe) — handy to debug a DLL that fails to load.

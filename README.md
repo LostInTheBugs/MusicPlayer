@@ -1,89 +1,104 @@
 # MusicPlayer
 
-Lecteur audio **MP3 / MP4** pour Windows 11, écrit en C (Win32 API),
-compilé sous Linux par compilation croisée (MinGW-w64).
+A **MP3 / MP4 audio player for Windows 11**, written in C (Win32 API),
+cross-compiled from Linux with MinGW-w64.
 
-- Décodage : **FFmpeg** (libavformat / libavcodec / libswresample)
-- Sortie audio : **miniaudio** (WASAPI / DirectSound / WinMM)
-- Vitesse de 0,5× à 2× par pas de 0,5 · volume 0–100 % · stop = retour à 0 s
-- Glisser-déposer de fichiers, raccourcis clavier
-- **Boutons lecture/pause/stop + curseur de volume** (0–200 %, booster inclus) dans la fenêtre
-- **Plein écran** pour les effets visuels (F11 ou bouton ⛶)
-- **Barre de progression** avec dégradé de couleurs
-- **Multilingue** : fichiers texte `lang/*.lang` (anglais par défaut, français fourni, menu Settings ▸ Language — voir [lang/README.md](lang/README.md))
-- **Architecture de plugins** (skins, effets audio, visuels) — API version 2 :
-  spectre coloré, spectre 3D rotatif (arc-en-ciel), paysage 3D isométrique, VU mètre à LED,
-  feu d'artifice, plasma fractal, tunnel hypnotique — tous synchronisés sur la musique
+- Decoding: **FFmpeg** (libavformat / libavcodec / libswresample)
+- Audio output: **miniaudio** (WASAPI / DirectSound / WinMM)
+- Speed from 0.5× to 2× in 0.5 steps · volume 0–200 % (boost included) · stop resets to 0 s
+- Drag & drop files, keyboard shortcuts
+- **Play/Pause/Stop buttons + volume slider** (0–100 % blue, 100–200 % orange boost) built into the window
+- **Fullscreen** for visual plugins (F11 or the ⛶ button)
+- **Progress bar** with color gradient
+- **Multilingual**: plain-text `lang/*.lang` files (English built-in, French provided, Settings ▸ Language menu — see [lang/README.md](lang/README.md))
+- **Plugin architecture** (skins, audio effects, visuals) — API version 2:
+  color spectrum, rotating 3D spectrum (rainbow), 3D isometric landscape,
+  LED VU meter, fireworks, fractal plasma, hypnotic tunnel — all synced to the music
 
 ## Version
 
-`2026.08.014` — voir [CHANGELOG.md](CHANGELOG.md)
+`2026.08.014` — see [CHANGELOG.md](CHANGELOG.md)
 
-## Lancer sous Windows 11
+## Run on Windows 11
 
-1. Copier le dossier `bin/` (ou dézipper `dist/MusicPlayer-2026.08.001-win64.zip`)
-   sur la machine Windows.
-2. Lancer `MusicPlayer.exe`. Aucune installation requise
-   (les DLL FFmpeg sont dans le même dossier).
+1. Copy the `bin/` folder (or unzip `dist/MusicPlayer-2026.08.014-win64.zip`)
+   to the Windows machine.
+2. Run `MusicPlayer.exe`. No installation required
+   (the FFmpeg DLLs are in the same folder).
 
-> Le dossier `plugins/` doit être créé à côté de `MusicPlayer.exe` :
-> il est créé automatiquement au premier lancement s'il manque.
+> The `plugins/` folder must sit next to `MusicPlayer.exe`:
+> it is created automatically on first launch if missing.
 
-## Développement sous Linux (ce dépôt)
+## Development on Linux (this repo)
 
-Prérequis Ubuntu :
+Ubuntu prerequisites:
 
 ```bash
 sudo apt install gcc-mingw-w64-x86-64 wine64 ffmpeg zip
 ```
 
-Compiler et tester :
+Vendor dependencies (not stored in the repo — see `.gitignore`):
 
 ```bash
-make          # → bin/MusicPlayer.exe (+ DLLs FFmpeg)
-make test     # compile + génère des fichiers de test et les joue sous Wine
-make zip      # archive portable pour Windows
+mkdir -p vendor/ffmpeg
+# miniaudio (single header)
+curl -L -o vendor/miniaudio.h \
+  https://raw.githubusercontent.com/mackron/miniaudio/v0.11.25/miniaudio.h
+# FFmpeg win64 shared build (BtbN) — extract into vendor/ffmpeg/
+# https://github.com/BtbN/FFmpeg-Builds/releases (win64-gpl-shared)
 ```
 
-## Utilisation
+Build and test:
 
-| Action | Menu | Raccourci |
+```bash
+make          # → bin/MusicPlayer.exe (+ FFmpeg DLLs)
+make test     # builds, generates test files and plays them under Wine
+make zip      # portable Windows archive
+```
+
+## Usage
+
+| Action | Menu | Shortcut |
 |---|---|---|
-| Ouvrir un MP3/MP4 | Fichier ▸ Ouvrir… | Ctrl+O (ou glisser-déposer) |
-| Lecture / Pause | Lecture ▸ Lecture / Pause | Espace |
-| Stop (retour à 0 s) | Lecture ▸ Stop | S |
-| Vitesse 0,5× / 1× / 1,5× / 2× | Lecture ▸ Vitesse | — |
-| Volume | Volume ▸ Monter / Descendre | ↑ / ↓ |
+| Open MP3/MP4 | File ▸ Open… | Ctrl+O (or drag & drop) |
+| Play / Pause | window button | Space |
+| Stop (reset to 0 s) | window button | S |
+| Speed 0.5× / 1× / 1.5× / 2× | Settings ▸ Speed | — |
+| Volume | window slider | ↑ / ↓ |
+| Fullscreen | Settings ▸ Fullscreen | F11 (or ⛶ / Esc) |
 
 ## Plugins
 
-Les plugins sont des DLL chargées depuis `plugins/` (à côté de l'exe).
-Trois types sont prévus par l'API v1 :
+Plugins are DLLs loaded from `plugins/` (next to the exe).
+Three types are defined by the API v2:
 
-- **Skin** (`MP_PLUGIN_SKIN`) — personnalise la fenêtre
-- **Effet audio** (`MP_PLUGIN_AUDIO_EFFECT`) — traitement PCM temps réel
-- **Visuel** (`MP_PLUGIN_VISUAL`) — rendu dans la zone d'affichage
+- **Skin** (`MP_PLUGIN_SKIN`) — customizes the window
+- **Audio effect** (`MP_PLUGIN_AUDIO_EFFECT`) — real-time PCM processing
+- **Visual** (`MP_PLUGIN_VISUAL`) — rendering in the display area
 
-Voir [plugins/README.md](plugins/README.md) et `src/plugin.h` pour l'API.
-Menu **Plugins ▸ Recharger** pour charger/décharger sans redémarrer.
+See [plugins/README.md](plugins/README.md) and `src/plugin.h` for the API.
+Menu **Plugins ▸ Reload** to load/unload without restarting.
 
-## Structure du projet
+## Project layout
 
 ```
 MusicPlayer/
-├── Makefile               # build croisé Linux → Windows
+├── Makefile               # cross-build Linux → Windows
 ├── src/
-│   ├── main.c             # interface Win32 (menus, status bar, D&D)
-│   ├── player.c/.h        # moteur : FFmpeg + miniaudio + ring buffer
-│   ├── plugin.h           # API plugins (v1)
-│   └── plugin_loader.c/.h # scan/chargement des plugins
-├── plugins/               # plugins à déposer (voir README)
+│   ├── main.c             # Win32 UI (menus, buttons, slider, D&D, i18n)
+│   ├── player.c/.h        # engine: FFmpeg + miniaudio + ring buffer
+│   ├── plugin.h           # plugin API (v2)
+│   ├── plugin_loader.c/.h # plugin scan/loading
+│   └── lang.c/.h          # i18n engine (lang/*.lang)
+├── lang/                  # language files (en, fr)
+├── plugins/               # plugins to drop in (see README)
+├── examples/              # plugin sources (built by make plugins-examples)
 ├── vendor/                # miniaudio.h + FFmpeg win64 (BtbN)
-├── bin/                   # exe + DLLs (ce qui part sur Windows)
-├── test/                  # fichiers de test générés
-└── dist/                  # archives portables
+├── bin/                   # exe + DLLs (what goes to Windows)
+├── test/                  # generated test files
+└── dist/                  # portable archives
 ```
 
-## Licence
+## License
 
-MIT — voir [LICENSE](LICENSE).
+MIT — see [LICENSE](LICENSE).

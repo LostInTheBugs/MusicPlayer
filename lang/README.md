@@ -1,28 +1,27 @@
-# Langues de MusicPlayer
+# MusicPlayer Languages
 
-Chaque langue = un fichier texte `CODE.lang` dans ce dossier
-(`en.lang`, `fr.lang`, ...). **N'importe qui peut ajouter une langue**
-sans recompiler : copiez `en.lang` en `votre_code.lang` et traduisez.
+Each language is a plain-text `CODE.lang` file in this folder
+(`en.lang`, `fr.lang`, ...). **Anyone can add a language without
+recompiling**: copy `en.lang` to `your_code.lang` and translate.
 
-## Règles du format
+## Format rules
 
-- Une entrée par ligne : `cle=valeur`
-- `#` ou `;` en début de ligne = commentaire
-- Fichier en **UTF-8** (avec ou sans BOM)
-- `\n` dans une valeur = retour à la ligne
-- Les marqueurs `%d`, `%s`, `%hs` sont des emplacements de formatage
-  (nombre, texte, version) — **conservez-les tels quels**.
-- La première clé, `lang_name`, est le nom de la langue **dans sa propre
-  langue** (ex. `Français`, `Deutsch`, `Ελληνικά`) : c'est ce qui s'affiche
-  dans le menu Language.
-- Le code du fichier (nom sans extension) doit faire 2 à 7 caractères
-  (ex. `de`, `pt-BR`).
+- One entry per line: `key=value`
+- `#` or `;` at the start of a line = comment
+- File in **UTF-8** (with or without BOM)
+- `\n` in a value = line break
+- `%d`, `%s`, `%hs` markers are format placeholders
+  (number, text, version) — **keep them as-is**.
+- The first key, `lang_name`, is the language name **in its own
+  language** (e.g. `Français`, `Deutsch`, `Ελληνικά`): this is what shows
+  in the Language menu.
+- The file code (name without extension) must be 2 to 7 characters
+  (e.g. `de`, `pt-BR`).
 
-## Comment ça marche
+## How it works
 
-1. Au démarrage, MusicPlayer utilise la langue de Windows si elle est
-   disponible dans `lang/`, sinon l'anglais.
-2. Menu **Language** (ou **Langue**) : bascule instantanée, mémorisée
-   dans `%APPDATA%\MusicPlayer\lang.txt`.
-3. L'anglais est embarqué dans le programme : il fonctionne même si
-   `en.lang` est supprimé.
+1. At startup, MusicPlayer uses the Windows language if available in
+   `lang/`, otherwise English.
+2. **Language** menu: instant switch, remembered in
+   `%APPDATA%\MusicPlayer\lang.txt`.
+3. English is embedded in the program: it works even if `en.lang` is deleted.
