@@ -2,6 +2,12 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.012] — 2026-08-02
+
+### Changed
+- **3D Isometric : vraie vue de côté isométrique** — les axes partent en diagonale (fréquences → bas-droite, temps → haut-gauche), chaque barre a 3 faces (avant dégradée, latérale sombre, dessus lumineux), grille centrée par calcul de boîte englobante
+- **Plus de scintillement** : rendu en double buffer (dessin hors écran + un seul BitBlt) dans toute la zone centrale
+
 ## [2026.08.011] — 2026-08-02
 
 ### Changed

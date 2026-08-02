@@ -963,7 +963,22 @@ static LRESULT CALLBACK wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         HDC hdc = BeginPaint(hwnd, &ps);
         RECT rc;
         get_center_rect(hwnd, &rc);
-        paint_center(hdc, &rc);
+        int w = rc.right - rc.left, h = rc.bottom - rc.top;
+        if (w > 0 && h > 0) {
+            /* double buffer : dessin hors écran puis un seul BitBlt
+             * (élimine le scintillement des effets visuels) */
+            HDC mem = CreateCompatibleDC(hdc);
+            HBITMAP bmp = CreateCompatibleBitmap(hdc, w, h);
+            HBITMAP oldbmp = (HBITMAP)SelectObject(mem, bmp);
+            RECT all = { 0, 0, w, h };
+            FillRect(mem, &all, GetSysColorBrush(COLOR_WINDOW));
+            RECT rc2 = { 0, 0, w, h };
+            paint_center(mem, &rc2);
+            BitBlt(hdc, rc.left, rc.top, w, h, mem, 0, 0, SRCCOPY);
+            SelectObject(mem, oldbmp);
+            DeleteObject(bmp);
+            DeleteDC(mem);
+        }
         EndPaint(hwnd, &ps);
         return 0;
     }
