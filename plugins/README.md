@@ -31,14 +31,16 @@ Les plugins **visuels** reçoivent aussi le flux audio via `audio_frames()`
 |---|---|---|
 | `plugin_gaindemo.c` | effet audio | atténuation de moitié (exemple minimal) |
 | `plugin_spectrum.c` | visuel | spectre : FFT 1024, 48 barres log, palette bleu→rouge, halo, grille |
+| `plugin_3dspectrum.c` | visuel | spectre 3D : cylindre de barres rotatif (projection perspective) |
 | `plugin_vumeter.c` | visuel | VU mètre stéréo à LED (-45..0 dB, pics, clip) — style Winamp/XMMS |
 | `plugin_fireworks.c` | visuel | feu d'artifice déclenché par les beats de la musique |
+| `plugin_fractal.c` | visuel | plasma fractal per-pixel (256 couleurs, réagit à la musique) |
+| `plugin_hypnotic.c` | visuel | tunnel hypnotique : anneaux rotatifs pulsés par la musique |
 
 Compiler avec `-lgdi32 -lm` pour les plugins visuels.
 
-> **Plusieurs plugins visuels actifs** : un seul est affiché (le premier de
-> la liste) — cochez/décochez les plugins dans le menu **Plugins** pour
-> choisir lequel voir.
+> **Plusieurs plugins visuels** : un seul est affiché à la fois — le menu
+> **Plugins ▸ Visual** fonctionne en radio (cochez celui que vous voulez).
 
 ## Compiler un plugin
 

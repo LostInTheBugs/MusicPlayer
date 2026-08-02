@@ -13,12 +13,11 @@
 #   make clean
 # ======================================================================
 
-VERSION := 2026.08.004
+VERSION := 2026.08.005
 
 CROSS    := x86_64-w64-mingw32-
 CC       := $(CROSS)gcc
 WINDRES  := $(CROSS)windres
-
 CFLAGS   := -O2 -Wall -Wextra -std=c11 \
             -DUNICODE -D_UNICODE \
             -D_WIN32_WINNT=0x0601 \
@@ -32,6 +31,7 @@ LDFLAGS  := -Lvendor/ffmpeg/lib \
 
 SRC := src/main.c src/player.c src/plugin_loader.c src/lang.c
 OBJ := $(SRC:.c=.o)
+RES := src/musicplayer_res.o
 BIN := bin/MusicPlayer.exe
 
 # DLLs FFmpeg nécessaires au runtime (à livrer à côté de l'exe)
@@ -42,10 +42,13 @@ all: dirs $(BIN)
 dirs:
 	mkdir -p bin/plugins bin/lang plugins test dist
 
-$(BIN): $(OBJ)
-	$(CC) $(CFLAGS) -o $@ $(OBJ) $(LDFLAGS)
+$(BIN): $(OBJ) $(RES)
+	$(CC) $(CFLAGS) -o $@ $(OBJ) $(RES) $(LDFLAGS)
 	cp $(addprefix vendor/ffmpeg/bin/,$(FFMPEG_DLLS)) bin/
 	cp lang/* bin/lang/
+
+src/musicplayer_res.o: src/musicplayer.rc src/musicplayer.ico
+	$(WINDRES) -i src/musicplayer.rc -o $@
 
 %.o: %.c
 	$(CC) $(CFLAGS) -c -o $@ $<
@@ -66,6 +69,9 @@ plugins-examples: $(BIN)
 	$(CC) -O2 -shared -o bin/plugins/spectrum.dll examples/plugin_spectrum.c -Isrc -static-libgcc -lgdi32 -lm
 	$(CC) -O2 -shared -o bin/plugins/vumeter.dll examples/plugin_vumeter.c -Isrc -static-libgcc -lgdi32 -lm
 	$(CC) -O2 -shared -o bin/plugins/fireworks.dll examples/plugin_fireworks.c -Isrc -static-libgcc -lgdi32 -lm
+	$(CC) -O2 -shared -o bin/plugins/3dspectrum.dll examples/plugin_3dspectrum.c -Isrc -static-libgcc -lgdi32 -lm
+	$(CC) -O2 -shared -o bin/plugins/fractal.dll examples/plugin_fractal.c -Isrc -static-libgcc -lgdi32 -lm
+	$(CC) -O2 -shared -o bin/plugins/hypnotic.dll examples/plugin_hypnotic.c -Isrc -static-libgcc -lgdi32 -lm
 	@echo "Plugins d'exemple compilés dans bin/plugins/"
 
 # ----------------------------------------------------------------------

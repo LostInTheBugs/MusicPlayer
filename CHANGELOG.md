@@ -2,6 +2,20 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.005] — 2026-08-02
+
+### Added
+- **Boutons de contrôle** dans la fenêtre : lecture/pause (bleu) et stop (rouge) — plus seulement dans le menu
+- **Curseur de volume** : piste + poignée cliquable/glissable, à côté des boutons
+- **Plein écran** pour les effets visuels : bouton ⛶, touche F11, Échap pour sortir
+- **Menu Plugins organisé par type** : sous-menus Visual / Audio effects / Skins — un seul visuel actif à la fois (radio)
+- **Icône de l'application** (play violet sur fond arrondi, 5 tailles) — plus l'icône Windows par défaut
+- Plugins visuels : **3D Spectrum** (cylindre de barres rotatif, projection 3D), **Fractal** (plasma per-pixel, 256 couleurs, réagit à la musique), **Hypnotic** (tunnel d'anneaux rotatifs pulsés par la musique)
+- Fenêtre agrandie (640×240) pour accueillir la barre de contrôles
+
+### Changed
+- Boutons et slider dessinés en GDI (aucune dépendance), le rendu visuel occupe la zone au-dessus de la progression
+
 ## [2026.08.004] — 2026-08-02
 
 ### Added

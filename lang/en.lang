@@ -36,6 +36,12 @@ vol_show=Volume: %d%%
 # --- Plugins menu ---
 plugins_reload=Reload plugins
 plugins_none=(no plugin)
+plugins_visual=&Visual
+plugins_effects=&Audio effects
+plugins_skins=&Skins
+
+# --- Playback menu ---
+fullscreen=&Fullscreen\tF11
 
 # --- Help menu ---
 about=&About…

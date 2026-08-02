@@ -1,0 +1,2 @@
+#include <windows.h>
+IDI_MUSICPLAYER ICON "musicplayer.ico"

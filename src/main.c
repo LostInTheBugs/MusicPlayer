@@ -6,6 +6,7 @@
  * convertis en UTF-8 pour le moteur (FFmpeg gère l'UTF-8 sur Windows).
  */
 #include <windows.h>
+#include <windowsx.h>
 #include <shlobj.h>
 #include <commctrl.h>
 #include <commdlg.h>
@@ -39,16 +40,26 @@ enum {
     IDM_PLUGIN_RELOAD = 501,
     IDM_PLUGIN_BASE = 600,  /* items plugins dynamiques */
     IDM_LANG_BASE = 700,    /* items langues dynamiques */
+    IDM_FULLSCREEN = 801,
     IDM_ABOUT = 901
 };
 
 #define SPEED_COUNT 4
 static const float SPEED_VALUES[SPEED_COUNT] = { 0.5f, 1.0f, 1.5f, 2.0f };
 
+/* barre de contrôles (boutons + volume) */
+#define CTRL_H 32
+#define PROGRESS_H 16
+
 static HWND g_hwnd = NULL;
 static HWND g_status = NULL;
 static wchar_t g_plugins_dir[MAX_PATH] = { 0 };
 static wchar_t g_lang_dir[MAX_PATH] = { 0 };
+
+static int  g_fullscreen = 0;
+static RECT g_win_normal = { 0, 0, 640, 240 };
+static RECT g_rc_play, g_rc_stop, g_rc_fs, g_rc_vol;
+static int  g_vol_drag = 0;   /* curseur de volume en cours de glissement */
 
 /* ------------------------------------------------------------------ */
 /* Helpers UTF-8 <-> UTF-16                                            */
@@ -186,28 +197,57 @@ static void refresh_volume_item(HMENU menu)
     ModifyMenuW(menu, IDM_VOL_SHOW, MF_BYCOMMAND | MF_GRAYED | MF_STRING, IDM_VOL_SHOW, label);
 }
 
+/* Menu Plugins : sous-menus par type (un seul visuel actif, radio) */
 static void rebuild_plugins_menu(HMENU parent)
 {
-    HMENU m = CreatePopupMenu();
-    AppendMenuW(m, MF_STRING, IDM_PLUGIN_RELOAD, lang_get("plugins_reload"));
-    AppendMenuW(m, MF_SEPARATOR, 0, NULL);
+    HMENU mVis = CreatePopupMenu();   /* visuels : radio */
+    HMENU mFX = CreatePopupMenu();    /* effets audio : cases */
+    HMENU mSkin = CreatePopupMenu();  /* skins : cases */
+    HMENU mOther = CreatePopupMenu();
 
     int n = mp_plugins_count();
-    if (n == 0) {
-        AppendMenuW(m, MF_GRAYED | MF_STRING, 0, lang_get("plugins_none"));
-    } else {
-        for (int i = 0; i < n; i++) {
-            mp_plugin* p = mp_plugins_get(i);
-            wchar_t label[160], name_w[128], ver_w[32];
-            utf8_to_wide(p->api->name(), name_w, 128);
-            utf8_to_wide(p->api->version() ? p->api->version() : "?", ver_w, 32);
-            swprintf(label, 160, L"%ls %ls", name_w, ver_w);
-            AppendMenuW(m, MF_STRING, IDM_PLUGIN_BASE + i, label);
-            CheckMenuItem(m, IDM_PLUGIN_BASE + i,
+    int vis_active = -1;
+    for (int i = 0; i < n; i++) {
+        mp_plugin* p = mp_plugins_get(i);
+        wchar_t label[160], name_w[128], ver_w[32];
+        utf8_to_wide(p->api->name(), name_w, 128);
+        utf8_to_wide(p->api->version() ? p->api->version() : "?", ver_w, 32);
+        swprintf(label, 160, L"%ls %ls", name_w, ver_w);
+
+        unsigned t = p->api->type();
+        HMENU target;
+        if (t & MP_PLUGIN_SKIN)          target = mSkin;
+        else if (t & MP_PLUGIN_VISUAL)   target = mVis;
+        else if (t & MP_PLUGIN_AUDIO_EFFECT) target = mFX;
+        else                             target = mOther;
+
+        AppendMenuW(target, MF_STRING, IDM_PLUGIN_BASE + i, label);
+        if (t & MP_PLUGIN_VISUAL) {
+            if (p->enabled) vis_active = i;
+        } else {
+            CheckMenuItem(target, IDM_PLUGIN_BASE + i,
                           MF_BYCOMMAND | (p->enabled ? MF_CHECKED : MF_UNCHECKED));
         }
     }
-    /* remplace l'ancien sous-menu Plugins (position 3) */
+    if (vis_active >= 0)
+        CheckMenuRadioItem(mVis, IDM_PLUGIN_BASE, IDM_PLUGIN_BASE + n - 1,
+                           IDM_PLUGIN_BASE + vis_active, MF_BYCOMMAND);
+
+    /* reconstruit le menu Plugins (position 3) */
+    HMENU m = CreatePopupMenu();
+    AppendMenuW(m, MF_STRING, IDM_PLUGIN_RELOAD, lang_get("plugins_reload"));
+    AppendMenuW(m, MF_SEPARATOR, 0, NULL);
+    if (n == 0) {
+        AppendMenuW(m, MF_GRAYED | MF_STRING, 0, lang_get("plugins_none"));
+    } else {
+        AppendMenuW(m, MF_POPUP, (UINT_PTR)mVis, lang_get("plugins_visual"));
+        AppendMenuW(m, MF_POPUP, (UINT_PTR)mFX, lang_get("plugins_effects"));
+        AppendMenuW(m, MF_POPUP, (UINT_PTR)mSkin, lang_get("plugins_skins"));
+        if (GetMenuItemCount(mOther) > 0)
+            AppendMenuW(m, MF_POPUP, (UINT_PTR)mOther, L"Other");
+        else
+            DestroyMenu(mOther);
+    }
     RemoveMenu(parent, 3, MF_BYPOSITION);
     InsertMenuW(parent, 3, MF_BYPOSITION | MF_POPUP, (UINT_PTR)m, lang_get("menu_plugins"));
     DrawMenuBar(g_hwnd);
@@ -245,6 +285,8 @@ static HMENU create_menus(void)
     AppendMenuW(mPlay, MF_STRING, IDM_STOP, lang_get("stop"));
     AppendMenuW(mPlay, MF_SEPARATOR, 0, NULL);
     AppendMenuW(mPlay, MF_POPUP, (UINT_PTR)build_speed_menu(), lang_get("speed"));
+    AppendMenuW(mPlay, MF_SEPARATOR, 0, NULL);
+    AppendMenuW(mPlay, MF_STRING, IDM_FULLSCREEN, lang_get("fullscreen"));
     AppendMenuW(bar, MF_POPUP, (UINT_PTR)mPlay, lang_get("menu_play"));
 
     HMENU mVol = CreatePopupMenu();
@@ -338,6 +380,175 @@ static void do_about(void)
 }
 
 /* ------------------------------------------------------------------ */
+/* Barre de contrôles : boutons lecture/pause, stop, plein écran,      */
+/* curseur de volume. Layout + dessin + hit-testing.                    */
+/* ------------------------------------------------------------------ */
+static void layout_controls(const RECT* rc)
+{
+    int y = rc->bottom - CTRL_H;
+    int x = rc->left + 8;
+    int bs = CTRL_H - 8;                 /* taille des boutons carrés */
+    g_rc_play.left = x; g_rc_play.top = y + 4;
+    g_rc_play.right = x + bs; g_rc_play.bottom = y + 4 + bs;
+    x += bs + 6;
+    g_rc_stop.left = x; g_rc_stop.top = y + 4;
+    g_rc_stop.right = x + bs; g_rc_stop.bottom = y + 4 + bs;
+    x += bs + 18;
+    /* curseur de volume */
+    g_rc_vol.left = x;
+    g_rc_vol.top = y + (CTRL_H - 16) / 2;
+    g_rc_vol.right = rc->right - 56;
+    g_rc_vol.bottom = g_rc_vol.top + 16;
+    /* bouton plein écran (coin droit) */
+    g_rc_fs.left = rc->right - 44;
+    g_rc_fs.top = y + 4;
+    g_rc_fs.right = rc->right - 8;
+    g_rc_fs.bottom = y + 4 + bs;
+}
+
+static void draw_glyph_play(HDC hdc, RECT* r, int paused)
+{
+    /* triangle (lecture) ou deux barres (pause) */
+    HBRUSH wh = (HBRUSH)GetStockObject(WHITE_BRUSH);
+    if (paused) {
+        int bw = (r->right - r->left) / 5;
+        int gap = bw / 2;
+        RECT b1 = { r->left + gap, r->top + 3, r->left + gap + bw, r->bottom - 3 };
+        RECT b2 = { r->right - gap - bw, r->top + 3, r->right - gap, r->bottom - 3 };
+        FillRect(hdc, &b1, wh);
+        FillRect(hdc, &b2, wh);
+    } else {
+        POINT pts[3] = {
+            { r->left + 2, r->top },
+            { r->left + 2, r->bottom },
+            { r->right - 1, (r->top + r->bottom) / 2 }
+        };
+        HPEN pen = CreatePen(PS_SOLID, 1, RGB(255, 255, 255));
+        HBRUSH oldb = (HBRUSH)SelectObject(hdc, wh);
+        HPEN oldp = (HPEN)SelectObject(hdc, pen);
+        Polygon(hdc, pts, 3);
+        SelectObject(hdc, oldb);
+        SelectObject(hdc, oldp);
+        DeleteObject(pen);
+    }
+}
+
+static void draw_glyph_stop(HDC hdc, RECT* r)
+{
+    HBRUSH wh = (HBRUSH)GetStockObject(WHITE_BRUSH);
+    RECT s = { r->left + 3, r->top + 3, r->right - 3, r->bottom - 3 };
+    FillRect(hdc, &s, wh);
+}
+
+static void draw_glyph_fullscreen(HDC hdc, RECT* r)
+{
+    HPEN pen = CreatePen(PS_SOLID, 2, RGB(255, 255, 255));
+    HPEN old = (HPEN)SelectObject(hdc, pen);
+    HBRUSH oldb = (HBRUSH)SelectObject(hdc, GetStockObject(NULL_BRUSH));
+    int m = 5;
+    Rectangle(hdc, r->left + m, r->top + m, r->right - m, r->bottom - m);
+    SelectObject(hdc, oldb);
+    SelectObject(hdc, old);
+    DeleteObject(pen);
+}
+
+static void draw_glyph_volume(HDC hdc, int x, int y)
+{
+    /* haut-parleur stylisé */
+    HPEN pen = CreatePen(PS_SOLID, 2, RGB(90, 98, 116));
+    HPEN old = (HPEN)SelectObject(hdc, pen);
+    HBRUSH oldb = (HBRUSH)SelectObject(hdc, GetStockObject(NULL_BRUSH));
+    POINT body[4] = { { x, y + 5 }, { x + 5, y + 5 }, { x + 9, y + 1 }, { x + 9, y + 15 } };
+    Polygon(hdc, body, 4);
+    /* onde : deux petits arcs */
+    Arc(hdc, x + 8, y, x + 20, y + 16, x + 8, y, x + 20, y + 16);
+    SelectObject(hdc, oldb);
+    SelectObject(hdc, old);
+    DeleteObject(pen);
+}
+
+static void paint_controls(HDC hdc, const RECT* rc)
+{
+    if (g_fullscreen) return;
+    layout_controls(rc);
+
+    /* fond de la barre */
+    RECT bg = { rc->left, rc->bottom - CTRL_H, rc->right, rc->bottom };
+    HBRUSH bbg = CreateSolidBrush(RGB(238, 240, 246));
+    FillRect(hdc, &bg, bbg);
+    DeleteObject(bbg);
+    HPEN sep = CreatePen(PS_SOLID, 1, RGB(210, 214, 224));
+    HPEN oldp = (HPEN)SelectObject(hdc, sep);
+    MoveToEx(hdc, bg.left, bg.top, NULL);
+    LineTo(hdc, bg.right, bg.top);
+    SelectObject(hdc, oldp);
+    DeleteObject(sep);
+
+    /* bouton lecture / pause */
+    HBRUSH bplay = CreateSolidBrush(RGB(52, 120, 246));
+    HBRUSH oldb = (HBRUSH)SelectObject(hdc, bplay);
+    RoundRect(hdc, g_rc_play.left, g_rc_play.top, g_rc_play.right, g_rc_play.bottom, 8, 8);
+    SelectObject(hdc, oldb);
+    DeleteObject(bplay);
+    RECT gp = g_rc_play;
+    gp.left += 3; gp.right -= 3; gp.top += 3; gp.bottom -= 3;
+    draw_glyph_play(hdc, &gp, mp_get_state() == MP_STATE_PLAYING);
+
+    /* bouton stop */
+    HBRUSH bstop = CreateSolidBrush(RGB(226, 66, 56));
+    oldb = (HBRUSH)SelectObject(hdc, bstop);
+    RoundRect(hdc, g_rc_stop.left, g_rc_stop.top, g_rc_stop.right, g_rc_stop.bottom, 8, 8);
+    SelectObject(hdc, oldb);
+    DeleteObject(bstop);
+    RECT gs = g_rc_stop;
+    gs.left += 2; gs.right -= 2; gs.top += 2; gs.bottom -= 2;
+    draw_glyph_stop(hdc, &gs);
+
+    /* bouton plein écran */
+    HBRUSH bfs = CreateSolidBrush(RGB(110, 118, 136));
+    oldb = (HBRUSH)SelectObject(hdc, bfs);
+    RoundRect(hdc, g_rc_fs.left, g_rc_fs.top, g_rc_fs.right, g_rc_fs.bottom, 8, 8);
+    SelectObject(hdc, oldb);
+    DeleteObject(bfs);
+    RECT gf = g_rc_fs;
+    gf.left += 2; gf.right -= 2; gf.top += 2; gf.bottom -= 2;
+    draw_glyph_fullscreen(hdc, &gf);
+
+    /* curseur de volume */
+    draw_glyph_volume(hdc, g_rc_vol.left - 14, g_rc_vol.top);
+    int vw = g_rc_vol.right - g_rc_vol.left;
+    int fill = (int)(mp_get_volume() * vw);
+    HBRUSH track = CreateSolidBrush(RGB(205, 210, 222));
+    RECT tr = { g_rc_vol.left, g_rc_vol.top + 6, g_rc_vol.right, g_rc_vol.top + 10 };
+    FillRect(hdc, &tr, track);
+    DeleteObject(track);
+    if (fill > 0) {
+        HBRUSH bfill = CreateSolidBrush(RGB(52, 120, 246));
+        RECT fr = { g_rc_vol.left, g_rc_vol.top + 6, g_rc_vol.left + fill, g_rc_vol.top + 10 };
+        FillRect(hdc, &fr, bfill);
+        DeleteObject(bfill);
+    }
+    int knob = g_rc_vol.left + fill;
+    HBRUSH bknob = CreateSolidBrush(RGB(255, 255, 255));
+    oldb = (HBRUSH)SelectObject(hdc, bknob);
+    Ellipse(hdc, knob - 6, g_rc_vol.top, knob + 6, g_rc_vol.bottom);
+    SelectObject(hdc, oldb);
+    DeleteObject(bknob);
+}
+
+static void vol_from_mouse(int x)
+{
+    int w = g_rc_vol.right - g_rc_vol.left;
+    if (w <= 0) return;
+    float v = (float)(x - g_rc_vol.left) / w;
+    if (v < 0.0f) v = 0.0f;
+    if (v > 1.0f) v = 1.0f;
+    mp_set_volume(v);
+    refresh_volume_item(GetMenu(g_hwnd));
+    status_update();
+}
+
+/* ------------------------------------------------------------------ */
 /* Zone centrale (WM_PAINT)                                            */
 /* ------------------------------------------------------------------ */
 static void get_center_rect(HWND hwnd, RECT* rc)
@@ -418,55 +629,140 @@ static void draw_progress_bar(HDC hdc, const RECT* rc)
 
 static void paint_center(HDC hdc, RECT* rc)
 {
-    /* la barre de progression occupe le bas de la zone */
-    RECT bar_rc = *rc;
-    bar_rc.top = rc->bottom - PROGRESS_H;
-    RECT vis_rc = *rc;
-    vis_rc.bottom = bar_rc.top - 2;
+    RECT vis_rc, bar_rc, ctrl_rc;
+    if (g_fullscreen) {
+        /* plein écran : la zone visuelle occupe tout */
+        vis_rc = *rc;
+        bar_rc.left = bar_rc.right = ctrl_rc.left = ctrl_rc.right = 0;
+        bar_rc.top = bar_rc.bottom = ctrl_rc.top = ctrl_rc.bottom = 0;
+    } else {
+        /* contrôles en bas, progression au-dessus, visuel au-dessus */
+        ctrl_rc = *rc;
+        ctrl_rc.top = rc->bottom - CTRL_H;
+        bar_rc = *rc;
+        bar_rc.top = ctrl_rc.top - PROGRESS_H;
+        bar_rc.bottom = ctrl_rc.top;
+        vis_rc = *rc;
+        vis_rc.bottom = bar_rc.top - 2;
+    }
 
     /* un plugin visuel actif remplace le texte par son rendu */
     if (mp_plugins_has_visual()) {
         mp_plugins_visual_render(hdc, vis_rc.right - vis_rc.left, vis_rc.bottom - vis_rc.top);
+    } else {
+        SetBkMode(hdc, TRANSPARENT);
+        const char* fn = mp_get_file_name();
+        static const char* state_keys[] = { "center_stopped", "center_playing", "center_paused", "center_finished" };
+        const wchar_t* st = lang_get(state_keys[mp_get_state()]);
+
+        HFONT big = CreateFontW(22, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
+                                DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+                                CLEARTYPE_QUALITY, DEFAULT_PITCH, L"Segoe UI");
+        HFONT small = CreateFontW(13, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+                                  DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+                                  CLEARTYPE_QUALITY, DEFAULT_PITCH, L"Segoe UI");
+
+        if (fn) {
+            const char* base = strrchr(fn, '\\');
+            base = base ? base + 1 : fn;
+            wchar_t base_w[280];
+            utf8_to_wide(base, base_w, 280);
+            HFONT old = (HFONT)SelectObject(hdc, big);
+            SetTextColor(hdc, RGB(30, 30, 30));
+            RECT r = vis_rc;
+            DrawTextW(hdc, base_w, -1, &r, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
+            SelectObject(hdc, old);
+        }
+        {
+            HFONT old = (HFONT)SelectObject(hdc, small);
+            SetTextColor(hdc, RGB(90, 90, 90));
+            RECT r = vis_rc;
+            r.top = vis_rc.top + 38;
+            DrawTextW(hdc, st, -1, &r, DT_CENTER | DT_TOP | DT_SINGLELINE);
+            SelectObject(hdc, old);
+        }
+
+        DeleteObject(big);
+        DeleteObject(small);
+    }
+
+    if (!g_fullscreen) {
         draw_progress_bar(hdc, &bar_rc);
-        return;
+        paint_controls(hdc, rc);
     }
+}
 
-    SetBkMode(hdc, TRANSPARENT);
-    const char* fn = mp_get_file_name();
-    static const char* state_keys[] = { "center_stopped", "center_playing", "center_paused", "center_finished" };
-    const wchar_t* st = lang_get(state_keys[mp_get_state()]);
-
-    HFONT big = CreateFontW(22, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
-                            DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-                            CLEARTYPE_QUALITY, DEFAULT_PITCH, L"Segoe UI");
-    HFONT small = CreateFontW(13, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
-                              DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-                              CLEARTYPE_QUALITY, DEFAULT_PITCH, L"Segoe UI");
-
-    if (fn) {
-        const char* base = strrchr(fn, '\\');
-        base = base ? base + 1 : fn;
-        wchar_t base_w[280];
-        utf8_to_wide(base, base_w, 280);
-        HFONT old = (HFONT)SelectObject(hdc, big);
-        SetTextColor(hdc, RGB(30, 30, 30));
-        RECT r = vis_rc;
-        DrawTextW(hdc, base_w, -1, &r, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
-        SelectObject(hdc, old);
+/* ------------------------------------------------------------------ */
+/* Plein écran                                                         */
+/* ------------------------------------------------------------------ */
+static void toggle_fullscreen(HWND hwnd)
+{
+    if (!g_fullscreen) {
+        GetWindowRect(hwnd, &g_win_normal);
+        SetWindowLongW(hwnd, GWL_STYLE, WS_POPUP);
+        SetWindowLongW(hwnd, GWL_EXSTYLE,
+                       GetWindowLongW(hwnd, GWL_EXSTYLE) | WS_EX_TOPMOST);
+        int sw = GetSystemMetrics(SM_CXSCREEN);
+        int sh = GetSystemMetrics(SM_CYSCREEN);
+        SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, sw, sh,
+                     SWP_FRAMECHANGED | SWP_SHOWWINDOW);
+        g_fullscreen = 1;
+        ShowWindow(g_status, SW_HIDE);
+    } else {
+        SetWindowLongW(hwnd, GWL_STYLE, WS_OVERLAPPEDWINDOW);
+        SetWindowLongW(hwnd, GWL_EXSTYLE,
+                       GetWindowLongW(hwnd, GWL_EXSTYLE) & ~WS_EX_TOPMOST);
+        SetWindowPos(hwnd, HWND_NOTOPMOST,
+                     g_win_normal.left, g_win_normal.top,
+                     g_win_normal.right - g_win_normal.left,
+                     g_win_normal.bottom - g_win_normal.top,
+                     SWP_FRAMECHANGED | SWP_SHOWWINDOW);
+        g_fullscreen = 0;
+        ShowWindow(g_status, SW_SHOW);
     }
-    {
-        HFONT old = (HFONT)SelectObject(hdc, small);
-        SetTextColor(hdc, RGB(90, 90, 90));
-        RECT r = vis_rc;
-        r.top = vis_rc.top + 38;
-        DrawTextW(hdc, st, -1, &r, DT_CENTER | DT_TOP | DT_SINGLELINE);
-        SelectObject(hdc, old);
+    status_update();
+}
+
+/* ------------------------------------------------------------------ */
+/* Gestion souris : boutons + curseur de volume                        */
+/* ------------------------------------------------------------------ */
+static void mouse_down(HWND hwnd, int x, int y)
+{
+    if (g_fullscreen) return;
+    RECT rc;
+    get_center_rect(hwnd, &rc);
+    layout_controls(&rc);
+
+    if (x >= g_rc_play.left && x <= g_rc_play.right &&
+        y >= g_rc_play.top && y <= g_rc_play.bottom) {
+        mp_play_pause();
+        status_update();
+    } else if (x >= g_rc_stop.left && x <= g_rc_stop.right &&
+               y >= g_rc_stop.top && y <= g_rc_stop.bottom) {
+        mp_stop();
+        status_update();
+    } else if (x >= g_rc_fs.left && x <= g_rc_fs.right &&
+               y >= g_rc_fs.top && y <= g_rc_fs.bottom) {
+        toggle_fullscreen(hwnd);
+    } else if (x >= g_rc_vol.left - 14 && x <= g_rc_vol.right &&
+               y >= g_rc_vol.top - 4 && y <= g_rc_vol.bottom + 4) {
+        g_vol_drag = 1;
+        SetCapture(hwnd);
+        vol_from_mouse(x);
     }
+}
 
-    DeleteObject(big);
-    DeleteObject(small);
+static void mouse_move(int x)
+{
+    if (g_vol_drag) vol_from_mouse(x);
+}
 
-    draw_progress_bar(hdc, &bar_rc);
+static void mouse_up(void)
+{
+    if (g_vol_drag) {
+        g_vol_drag = 0;
+        ReleaseCapture();
+    }
 }
 
 /* ------------------------------------------------------------------ */
@@ -524,6 +820,7 @@ static void on_command(int id, HMENU bar)
     case IDM_EXIT:      SendMessageW(g_hwnd, WM_CLOSE, 0, 0); break;
     case IDM_PLAYPAUSE: mp_play_pause(); break;
     case IDM_STOP:      mp_stop(); break;
+    case IDM_FULLSCREEN: toggle_fullscreen(g_hwnd); break;
     case IDM_ABOUT:     do_about(); break;
 
     case IDM_VOL_UP: {
@@ -554,7 +851,18 @@ static void on_command(int id, HMENU bar)
             int i = id - IDM_PLUGIN_BASE;
             mp_plugin* p = mp_plugins_get(i);
             if (p) {
-                mp_plugins_set_enabled(i, !p->enabled);
+                unsigned t = p->api->type();
+                if (t & MP_PLUGIN_VISUAL) {
+                    /* radio : un seul visuel actif (re-clic = aucun) */
+                    int was_active = p->enabled;
+                    for (int j = 0; j < mp_plugins_count(); j++) {
+                        mp_plugin* q = mp_plugins_get(j);
+                        if (q->api->type() & MP_PLUGIN_VISUAL)
+                            mp_plugins_set_enabled(j, !was_active && j == i);
+                    }
+                } else {
+                    mp_plugins_set_enabled(i, !p->enabled);
+                }
                 mp_plugins_apply_skins(g_hwnd);
                 rebuild_plugins_menu(GetMenu(g_hwnd));
             }
@@ -586,6 +894,12 @@ static LRESULT CALLBACK wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         DragAcceptFiles(hwnd, TRUE);
         SetTimer(hwnd, 1, 250, NULL);   /* status bar */
         SetTimer(hwnd, 2, 33, NULL);    /* rendu visuel ~30 FPS */
+        /* icône de l'application */
+        HICON hIcon = LoadIconW(GetModuleHandleW(NULL), MAKEINTRESOURCE(1));
+        if (hIcon) {
+            SendMessageW(hwnd, WM_SETICON, ICON_BIG, (LPARAM)hIcon);
+            SendMessageW(hwnd, WM_SETICON, ICON_SMALL, (LPARAM)hIcon);
+        }
         return 0;
     }
     case WM_DROPFILES: {
@@ -607,11 +921,24 @@ static LRESULT CALLBACK wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         case 'S':        mp_stop(); break;
         case VK_UP:      SendMessageW(hwnd, WM_COMMAND, IDM_VOL_UP, 0); break;
         case VK_DOWN:    SendMessageW(hwnd, WM_COMMAND, IDM_VOL_DOWN, 0); break;
+        case VK_F11:     toggle_fullscreen(hwnd); break;
+        case VK_ESCAPE:
+            if (g_fullscreen) toggle_fullscreen(hwnd);
+            break;
         case 'O':
             if (GetKeyState(VK_CONTROL) & 0x8000) do_open_dialog();
             break;
         }
         status_update();
+        return 0;
+    case WM_LBUTTONDOWN:
+        mouse_down(hwnd, GET_X_LPARAM(lp), GET_Y_LPARAM(lp));
+        return 0;
+    case WM_MOUSEMOVE:
+        if (g_vol_drag) mouse_move(GET_X_LPARAM(lp));
+        return 0;
+    case WM_LBUTTONUP:
+        mouse_up();
         return 0;
     case WM_TIMER:
         if (wp == 2) {
@@ -638,6 +965,8 @@ static LRESULT CALLBACK wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         EndPaint(hwnd, &ps);
         return 0;
     }
+    case WM_ERASEBKGND:
+        return 1;   /* tout est redessiné dans WM_PAINT */
     case WM_SIZE: {
         SendMessageW(g_status, WM_SIZE, 0, 0);
         return 0;
@@ -799,7 +1128,7 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR lpCmdLine, int nCmdSh
 
     g_hwnd = CreateWindowExW(0, L"MusicPlayerWnd", APP_TITLE,
                              WS_OVERLAPPEDWINDOW,
-                             CW_USEDEFAULT, CW_USEDEFAULT, 620, 190,
+                             CW_USEDEFAULT, CW_USEDEFAULT, 640, 240,
                              NULL, NULL, hInst, NULL);
     if (!g_hwnd) {
         char dbg[256];
