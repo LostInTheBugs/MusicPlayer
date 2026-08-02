@@ -99,6 +99,21 @@ MusicPlayer/
 └── dist/                  # portable archives
 ```
 
+## Development cost (LLM)
+
+This project was built entirely through AI-assisted sessions (Hermes Agent, deepseek-v4-flash). Usage so far:
+
+| Metric | Value |
+|---|---|
+| Input tokens | 611 983 |
+| Output tokens | 568 055 |
+| **Total (input + output)** | **1 180 038** |
+| Cache read (reused at reduced price) | 100 831 360 |
+| API calls | 382 |
+| **Estimated cost** | **≈ 0.53 USD** |
+
+Full breakdown: [TOKENS.md](TOKENS.md).
+
 ## License
 
 MIT — see [LICENSE](LICENSE).
