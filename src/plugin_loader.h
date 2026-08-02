@@ -32,6 +32,18 @@ void mp_plugins_apply_skins(void* hwnd);
 void mp_plugins_audio_process(float* samples, unsigned frames,
                               unsigned channels, unsigned sample_rate);
 
+/* Diffuse un bloc PCM (lecture seule) aux plugins visuels actifs
+ * (hook audio_frames). Appelé par le moteur audio après les effets. */
+void mp_plugins_audio_frames(const float* samples, unsigned frames,
+                             unsigned channels, unsigned sample_rate);
+
+/* Y a-t-il au moins un plugin visuel actif ? (l'UI s'en sert pour
+ * basculer en mode rendu + timer rapide). */
+int mp_plugins_has_visual(void);
+
+/* Appelle le hook render() des plugins visuels actifs (thread UI). */
+void mp_plugins_visual_render(void* hdc, int width, int height);
+
 /* Décharge tous les plugins (appelé à la fermeture). */
 void mp_plugins_shutdown(void);
 

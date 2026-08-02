@@ -13,7 +13,7 @@
 #   make clean
 # ======================================================================
 
-VERSION := 2026.08.001
+VERSION := 2026.08.002
 
 CROSS    := x86_64-w64-mingw32-
 CC       := $(CROSS)gcc
@@ -40,7 +40,7 @@ FFMPEG_DLLS := avcodec-62.dll avformat-62.dll avutil-60.dll swresample-6.dll
 all: dirs $(BIN)
 
 dirs:
-	mkdir -p bin plugins test dist
+	mkdir -p bin/plugins plugins test dist
 
 $(BIN): $(OBJ)
 	$(CC) $(CFLAGS) -o $@ $(OBJ) $(LDFLAGS)
@@ -58,9 +58,17 @@ test-samples: dirs
 	@echo "Fichiers de test prêts :"; ls -la test/
 
 # ----------------------------------------------------------------------
+# Plugins d'exemple (compilés dans bin/plugins/)
+# ----------------------------------------------------------------------
+plugins-examples: $(BIN)
+	$(CC) -O2 -shared -o bin/plugins/gaindemo.dll examples/plugin_gaindemo.c -Isrc -static-libgcc
+	$(CC) -O2 -shared -o bin/plugins/spectrum.dll examples/plugin_spectrum.c -Isrc -static-libgcc -lgdi32 -lm
+	@echo "Plugins d'exemple compilés dans bin/plugins/"
+
+# ----------------------------------------------------------------------
 # Tests sous Wine (lecture, vitesse, pause, stop, fin de fichier)
 # ----------------------------------------------------------------------
-test: all test-samples
+test: all plugins-examples test-samples
 	cd bin && wine64 ./MusicPlayer.exe --selftest ../test/test.mp3 ../test/test.mp4; \
 	echo "exit code = $$?"; \
 	echo "--- selftest.log ---"; cat selftest.log
@@ -68,11 +76,11 @@ test: all test-samples
 # ----------------------------------------------------------------------
 # Archive portable pour Windows 11
 # ----------------------------------------------------------------------
-zip: all dirs
-	cd bin && zip -q ../dist/MusicPlayer-$(VERSION)-win64.zip MusicPlayer.exe $(FFMPEG_DLLS) && \
+zip: all plugins-examples dirs
+	cd bin && zip -q ../dist/MusicPlayer-$(VERSION)-win64.zip MusicPlayer.exe $(FFMPEG_DLLS) plugins/*.dll && \
 	cd .. && echo "Archive : dist/MusicPlayer-$(VERSION)-win64.zip"
 
 clean:
 	rm -f $(OBJ) bin/*.exe bin/*.dll bin/*.log dist/*.zip
 
-.PHONY: all dirs test-samples test zip clean
+.PHONY: all dirs plugins-examples test-samples test zip clean

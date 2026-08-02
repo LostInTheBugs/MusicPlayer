@@ -158,6 +158,39 @@ void mp_plugins_audio_process(float* samples, unsigned frames,
     }
 }
 
+void mp_plugins_audio_frames(const float* samples, unsigned frames,
+                             unsigned channels, unsigned sample_rate)
+{
+    for (int i = 0; i < g_count; i++) {
+        mp_plugin* p = &g_plugins[i];
+        if (!p->enabled || !p->api) continue;
+        if (p->api->audio_frames)
+            p->api->audio_frames(p, samples, frames, channels, sample_rate);
+    }
+}
+
+int mp_plugins_has_visual(void)
+{
+    for (int i = 0; i < g_count; i++) {
+        mp_plugin* p = &g_plugins[i];
+        if (!p->enabled || !p->api) continue;
+        if (!(p->api->type() & MP_PLUGIN_VISUAL)) continue;
+        if (p->api->render) return 1;
+    }
+    return 0;
+}
+
+void mp_plugins_visual_render(void* hdc, int width, int height)
+{
+    for (int i = 0; i < g_count; i++) {
+        mp_plugin* p = &g_plugins[i];
+        if (!p->enabled || !p->api) continue;
+        if (!(p->api->type() & MP_PLUGIN_VISUAL)) continue;
+        if (p->api->render)
+            p->api->render(p, hdc, width, height);
+    }
+}
+
 void mp_plugins_shutdown(void)
 {
     for (int i = 0; i < g_count; i++) unload(&g_plugins[i]);

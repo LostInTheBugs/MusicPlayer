@@ -288,8 +288,24 @@ static void do_about(void)
 /* ------------------------------------------------------------------ */
 /* Zone centrale (WM_PAINT)                                            */
 /* ------------------------------------------------------------------ */
+static void get_center_rect(HWND hwnd, RECT* rc)
+{
+    GetClientRect(hwnd, rc);
+    if (g_status) {
+        RECT sr;
+        GetWindowRect(g_status, &sr);
+        rc->bottom -= (sr.bottom - sr.top);
+    }
+}
+
 static void paint_center(HDC hdc, RECT* rc)
 {
+    /* un plugin visuel actif remplace le texte par son rendu */
+    if (mp_plugins_has_visual()) {
+        mp_plugins_visual_render(hdc, rc->right - rc->left, rc->bottom - rc->top);
+        return;
+    }
+
     SetBkMode(hdc, TRANSPARENT);
     const char* fn = mp_get_file_name();
     static const wchar_t* state_txt[] = { L"Arrêté", L"Lecture en cours", L"En pause", L"Terminé" };
@@ -385,7 +401,8 @@ static LRESULT CALLBACK wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
     case WM_CREATE: {
         status_init(hwnd);
         DragAcceptFiles(hwnd, TRUE);
-        SetTimer(hwnd, 1, 250, NULL);
+        SetTimer(hwnd, 1, 250, NULL);   /* status bar */
+        SetTimer(hwnd, 2, 33, NULL);    /* rendu visuel ~30 FPS */
         return 0;
     }
     case WM_DROPFILES: {
@@ -414,6 +431,16 @@ static LRESULT CALLBACK wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         status_update();
         return 0;
     case WM_TIMER:
+        if (wp == 2) {
+            /* rafraîchit la zone visuelle uniquement si un plugin visuel
+               est actif (sinon le timer ne fait presque rien) */
+            if (mp_plugins_has_visual()) {
+                RECT rc;
+                get_center_rect(hwnd, &rc);
+                InvalidateRect(hwnd, &rc, FALSE);
+            }
+            return 0;
+        }
         status_update();
         return 0;
     case WM_COMMAND:
@@ -423,12 +450,7 @@ static LRESULT CALLBACK wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         PAINTSTRUCT ps;
         HDC hdc = BeginPaint(hwnd, &ps);
         RECT rc;
-        GetClientRect(hwnd, &rc);
-        if (g_status) {
-            RECT sr;
-            GetWindowRect(g_status, &sr);
-            rc.bottom -= (sr.bottom - sr.top);
-        }
+        get_center_rect(hwnd, &rc);
         paint_center(hdc, &rc);
         EndPaint(hwnd, &ps);
         return 0;

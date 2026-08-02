@@ -257,6 +257,8 @@ static void data_cb(ma_device* dev, void* out, const void* in, ma_uint32 frames)
         }
         /* effets audio des plugins (si le périph a le bon format) */
         mp_plugins_audio_process(dst, frames, 2, g_device_rate);
+        /* flux lecture seule pour les plugins visuels */
+        mp_plugins_audio_frames(dst, frames, 2, g_device_rate);
     } else {
         memset(dst, 0, (size_t)frames * 2 * sizeof(float));
     }

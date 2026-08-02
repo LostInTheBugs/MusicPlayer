@@ -44,7 +44,8 @@ static const mp_plugin_api g_api = {
     name, version, description, type,
     init, destroy,
     process,      /* effet audio */
-    NULL,         /* pas de visuel */
+    NULL,         /* pas de flux audio (visuel) */
+    NULL,         /* pas de rendu visuel */
     NULL          /* pas de skin */
 };
 

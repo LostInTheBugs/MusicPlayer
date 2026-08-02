@@ -20,7 +20,12 @@
 
 #include <stddef.h>
 
-#define MP_PLUGIN_API_VERSION 1
+/*
+ * API plugins MusicPlayer — version 2
+ * v2 : ajout du hook audio_frames() (flux PCM lecture seule pour les
+ *      plugins visuels). Les plugins v1 sont rejetés proprement.
+ */
+#define MP_PLUGIN_API_VERSION 2
 
 typedef enum {
     MP_PLUGIN_SKIN         = 1 << 0,
@@ -74,9 +79,18 @@ typedef struct mp_plugin_api {
     void (*process)(mp_plugin* self, float* samples, unsigned frames,
                     unsigned channels, unsigned sample_rate);
 
+    /* --- hook VISUAL : flux audio (lecture seule) ---
+     * Reçoit chaque bloc PCM interleavé (float 32) tel qu'il est joué,
+     * APRÈS les effets audio. Destiné aux plugins visuels pour analyser
+     * le signal (spectre, oscilloscope...). Ne PAS modifier le buffer.
+     * Appelé depuis le thread audio → faire une copie rapide. */
+    void (*audio_frames)(mp_plugin* self, const float* samples, unsigned frames,
+                         unsigned channels, unsigned sample_rate);
+
     /* --- hook VISUAL ---
      * hdc = contexte de dessin de la zone d'affichage du lecteur.
-     * Appelé périodiquement (thread UI) quand la lecture est active. */
+     * Appelé périodiquement (~30 FPS, thread UI) quand la lecture est
+     * active. w/h = taille de la zone en pixels. */
     void (*render)(mp_plugin* self, void* hdc, int width, int height);
 
     /* --- hook SKIN ---

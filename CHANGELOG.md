@@ -2,6 +2,18 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.002] — 2026-08-02
+
+### Added
+- Plugin visuel **Spectrum** : visualiseur de spectre (FFT radix-2 1024 points, 48 barres logarithmiques, palette vert→rouge, pics lumineux, lissage)
+- API plugins **v2** : hook `audio_frames()` — flux PCM lecture seule (après les effets) pour les plugins visuels ; les plugins v1 sont rejetés proprement
+- Rendu visuel branché : zone centrale remplacée par le plugin (~30 FPS) quand un visuel est actif
+- Compilation des plugins d'exemple : `make plugins-examples` (gaindemo + spectrum dans bin/plugins/)
+- Archive portable incluant les plugins
+
+### Changed
+- Le moteur diffuse chaque bloc audio aux plugins visuels après les effets
+
 ## [2026.08.001] — 2026-08-02
 
 ### Added
