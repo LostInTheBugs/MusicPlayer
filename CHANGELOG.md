@@ -2,6 +2,11 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.010] — 2026-08-02
+
+### Changed
+- **3D Isometric** : grille désormais **carrée 24×24** (au lieu de 30×16) — comme les références WM3DSpectrum / spectrogrammes 3D
+
 ## [2026.08.009] — 2026-08-02
 
 ### Fixed

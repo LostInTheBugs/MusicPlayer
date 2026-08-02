@@ -32,7 +32,7 @@ Les plugins **visuels** reçoivent aussi le flux audio via `audio_frames()`
 | `plugin_gaindemo.c` | effet audio | atténuation de moitié (exemple minimal) |
 | `plugin_spectrum.c` | visuel | spectre : FFT 1024, 48 barres log, palette bleu→rouge, halo, grille |
 | `plugin_3dspectrum.c` | visuel | spectre 3D rotatif style Spectrum3D : 96 barres fines, arc-en-ciel par position, fond bleu nuit |
-| `plugin_3diso.c` | visuel | paysage de bâtons 3D isométrique : 30×16, arc-en-ciel, temps qui défile (style WM3DSpectrum) |
+| `plugin_3diso.c` | visuel | paysage de bâtons 3D isométrique : grille carrée 24×24, arc-en-ciel, temps qui défile (style WM3DSpectrum) |
 | `plugin_vumeter.c` | visuel | VU mètre stéréo à LED (-45..0 dB, pics, clip) — style Winamp/XMMS |
 | `plugin_fireworks.c` | visuel | feu d'artifice déclenché par les beats de la musique |
 | `plugin_fractal.c` | visuel | plasma fractal per-pixel (256 couleurs, réagit à la musique) |

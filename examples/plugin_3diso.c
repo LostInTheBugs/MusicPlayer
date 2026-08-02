@@ -14,8 +14,8 @@
 #include <string.h>
 
 #define FFT_SIZE 1024
-#define COLS     30        /* colonnes de fréquences */
-#define ROWS     16        /* rangées de temps (historique) */
+#define COLS     24        /* colonnes de fréquences */
+#define ROWS     24        /* rangées de temps (grille carrée) */
 #define CAP_SIZE 4096
 
 static const mp_host_api* g_host = NULL;
@@ -113,7 +113,7 @@ static int init(mp_plugin* self, const mp_host_api* host)
     memset(g_hist, 0, sizeof(g_hist));
 
     if (g_host && g_host->log)
-        g_host->log("3D Isometric: init OK (30x16 bars, iso projection)");
+        g_host->log("3D Isometric: init OK (24x24 square grid, iso projection)");
     return 0;
 }
 
