@@ -200,8 +200,10 @@ static void render(mp_plugin* self, void* hdc_v, int width, int height)
         memcpy(g_hist[0], row, sizeof(row));
     }
 
-    /* géométrie iso : grille remplissant la zone */
+    /* géométrie iso : grille remplissant la zone, CENTRÉE sur l'écran */
     float cos30 = 0.866f, sin30 = 0.5f;
+    float c0 = (COLS - 1) * 0.5f;   /* centre de la grille en colonnes */
+    float r0 = (ROWS - 1) * 0.5f;   /* centre en rangées */
     float gw = (COLS + 1) * cos30 + (ROWS + 1) * cos30;   /* largeur projetée (dx=dy=1) */
     float gh = (COLS + 1) * sin30 + (ROWS + 1) * sin30;   /* hauteur projetée */
     float s = (float)width / gw;
@@ -210,8 +212,12 @@ static void render(mp_plugin* self, void* hdc_v, int width, int height)
     float dx = s, dy = s;
 
     int cx = width / 2;
-    float base_y = (float)(height * 0.84f);
     int max_h = (int)(height * 0.55f);
+
+    /* centre vertical : grille au sol + hauteur des barres */
+    float py_min = ((0 - c0) + (ROWS - 1 - r0)) * sin30 * dy;    /* arrière (haut) */
+    float py_max = ((COLS - 1 - c0) + (0 - r0)) * sin30 * dy;    /* avant (bas) */
+    float base_y = (float)height * 0.5f - (py_min + py_max - (float)max_h) * 0.5f;
     int bw = (int)(s * 0.55f);
     if (bw < 1) bw = 1;
 
@@ -219,14 +225,18 @@ static void render(mp_plugin* self, void* hdc_v, int width, int height)
     HPEN oldp = (HPEN)SelectObject(hdc, g_grid_pen);
     HBRUSH oldb = (HBRUSH)SelectObject(hdc, GetStockObject(NULL_BRUSH));
     for (int r = 0; r <= ROWS; r++) {
-        float x1 = (0 - r) * cos30 * dx, y1 = (0 + r) * sin30 * dy;
-        float x2 = (COLS - r) * cos30 * dx, y2 = (COLS + r) * sin30 * dy;
+        float x1 = ((0 - c0) - (r - r0)) * cos30 * dx;
+        float y1 = ((0 - c0) + (r - r0)) * sin30 * dy;
+        float x2 = ((COLS - c0) - (r - r0)) * cos30 * dx;
+        float y2 = ((COLS - c0) + (r - r0)) * sin30 * dy;
         MoveToEx(hdc, cx + (int)x1, (int)(base_y + y1), NULL);
         LineTo(hdc, cx + (int)x2, (int)(base_y + y2));
     }
     for (int c = 0; c <= COLS; c++) {
-        float x1 = (c - 0) * cos30 * dx, y1 = (c + 0) * sin30 * dy;
-        float x2 = (c - ROWS) * cos30 * dx, y2 = (c + ROWS) * sin30 * dy;
+        float x1 = ((c - c0) - (0 - r0)) * cos30 * dx;
+        float y1 = ((c - c0) + (0 - r0)) * sin30 * dy;
+        float x2 = ((c - c0) - (ROWS - r0)) * cos30 * dx;
+        float y2 = ((c - c0) + (ROWS - r0)) * sin30 * dy;
         MoveToEx(hdc, cx + (int)x1, (int)(base_y + y1), NULL);
         LineTo(hdc, cx + (int)x2, (int)(base_y + y2));
     }
@@ -240,8 +250,8 @@ static void render(mp_plugin* self, void* hdc_v, int width, int height)
             int h = (int)(lvl * max_h);
             if (h < 1) continue;
             /* position au sol du bâton (centre de la cellule) */
-            float px = cx + (c - r) * cos30 * dx + cos30 * dx * 0.5f;
-            float py = base_y + (c + r) * sin30 * dy + sin30 * dy * 0.5f;
+            float px = cx + ((c - c0) - (r - r0)) * cos30 * dx + cos30 * dx * 0.5f;
+            float py = base_y + ((c - c0) + (r - r0)) * sin30 * dy + sin30 * dy * 0.5f;
             int x = (int)px;
             int y = (int)py;
             int hw = bw / 2;

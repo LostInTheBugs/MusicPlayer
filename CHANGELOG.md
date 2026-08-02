@@ -2,6 +2,11 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.009] — 2026-08-02
+
+### Fixed
+- **3D Isometric** : grille et bâtons maintenant centrés sur l'écran (le centre logique de la grille était confondu avec l'origine de la projection — décalage à droite et en bas), centrage vertical incluant la hauteur des barres
+
 ## [2026.08.008] — 2026-08-02
 
 ### Added

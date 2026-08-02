@@ -17,7 +17,7 @@ compilé sous Linux par compilation croisée (MinGW-w64).
 
 ## Version
 
-`2026.08.008` — voir [CHANGELOG.md](CHANGELOG.md)
+`2026.08.009` — voir [CHANGELOG.md](CHANGELOG.md)
 
 ## Lancer sous Windows 11
 
