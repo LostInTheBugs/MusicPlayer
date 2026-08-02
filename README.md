@@ -7,12 +7,13 @@ compilé sous Linux par compilation croisée (MinGW-w64).
 - Sortie audio : **miniaudio** (WASAPI / DirectSound / WinMM)
 - Vitesse de 0,5× à 2× par pas de 0,5 · volume 0–100 % · stop = retour à 0 s
 - Glisser-déposer de fichiers, raccourcis clavier
-- **Architecture de plugins** (skins, effets audio, visuels) — API version 2,
-  avec un visualiseur de spectre fourni (plugin Spectrum)
+- **Barre de progression** avec dégradé de couleurs
+- **Architecture de plugins** (skins, effets audio, visuels) — API version 2 :
+  spectre coloré, VU mètre à LED, feu d'artifice synchronisé sur la musique
 
 ## Version
 
-`2026.08.002` — voir [CHANGELOG.md](CHANGELOG.md)
+`2026.08.003` — voir [CHANGELOG.md](CHANGELOG.md)
 
 ## Lancer sous Windows 11
 

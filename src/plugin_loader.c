@@ -180,14 +180,19 @@ int mp_plugins_has_visual(void)
     return 0;
 }
 
+/* Appelle le hook render() du premier plugin visuel actif (thread UI).
+ * Un seul visuel est affiché à la fois : le premier de la liste (on peut
+ * choisir lequel en activant/désactivant les plugins via le menu). */
 void mp_plugins_visual_render(void* hdc, int width, int height)
 {
     for (int i = 0; i < g_count; i++) {
         mp_plugin* p = &g_plugins[i];
         if (!p->enabled || !p->api) continue;
         if (!(p->api->type() & MP_PLUGIN_VISUAL)) continue;
-        if (p->api->render)
+        if (p->api->render) {
             p->api->render(p, hdc, width, height);
+            return;
+        }
     }
 }
 

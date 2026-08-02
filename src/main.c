@@ -298,11 +298,84 @@ static void get_center_rect(HWND hwnd, RECT* rc)
     }
 }
 
+#define PROGRESS_H 16   /* hauteur de la barre de progression */
+
+static void hsv_to_rgb_ui(float h, float s, float v, BYTE* r, BYTE* g, BYTE* b)
+{
+    float c = v * s;
+    float x = c * (1.0f - fabsf(fmodf(h / 60.0f, 2.0f) - 1.0f));
+    float m = v - c;
+    float rr = 0, gg = 0, bb = 0;
+    if (h < 60)       { rr = c; gg = x; }
+    else if (h < 120) { rr = x; gg = c; }
+    else if (h < 180) { gg = c; bb = x; }
+    else if (h < 240) { gg = x; bb = c; }
+    else if (h < 300) { rr = x; bb = c; }
+    else              { rr = c; bb = x; }
+    *r = (BYTE)((rr + m) * 255.0f);
+    *g = (BYTE)((gg + m) * 255.0f);
+    *b = (BYTE)((bb + m) * 255.0f);
+}
+
+/* Barre de progression (dégradé bleu -> cyan -> vert -> jaune) */
+static void draw_progress_bar(HDC hdc, const RECT* rc)
+{
+    static HBRUSH g_pg_fill[40] = { 0 };
+    static HBRUSH g_pg_bg = NULL;
+    static HBRUSH g_pg_border = NULL;
+    if (!g_pg_bg) {
+        for (int i = 0; i < 40; i++) {
+            BYTE r, g, b;
+            hsv_to_rgb_ui(205.0f - 205.0f * (float)i / 39.0f, 0.85f, 0.75f, &r, &g, &b);
+            g_pg_fill[i] = CreateSolidBrush(RGB(r, g, b));
+        }
+        g_pg_bg = CreateSolidBrush(RGB(28, 30, 38));
+        g_pg_border = CreateSolidBrush(RGB(92, 98, 116));
+    }
+
+    int w = rc->right - rc->left;
+    int h = rc->bottom - rc->top;
+    if (w <= 0 || h <= 0) return;
+
+    /* fond */
+    RECT bg = { rc->left, rc->top, rc->right, rc->bottom };
+    FillRect(hdc, &bg, g_pg_bg);
+
+    /* remplissage */
+    double dur = mp_get_duration();
+    double pos = mp_get_position();
+    if (dur > 0.0 && pos > 0.0) {
+        double ratio = pos / dur;
+        if (ratio > 1.0) ratio = 1.0;
+        int fw = (int)((double)(w - 2) * ratio);
+        if (fw > 0) {
+            for (int x = 0; x < fw; x += 6) {
+                int seg = fw - x;
+                if (seg > 6) seg = 6;
+                int idx = (int)((float)x / (float)(w - 2) * 39.0f);
+                if (idx > 39) idx = 39;
+                RECT sr = { rc->left + 1 + x, rc->top + 1, rc->left + 1 + x + seg, rc->bottom - 1 };
+                FillRect(hdc, &sr, g_pg_fill[idx]);
+            }
+        }
+    }
+
+    /* bordure */
+    FrameRect(hdc, &bg, g_pg_border);
+}
+
 static void paint_center(HDC hdc, RECT* rc)
 {
+    /* la barre de progression occupe le bas de la zone */
+    RECT bar_rc = *rc;
+    bar_rc.top = rc->bottom - PROGRESS_H;
+    RECT vis_rc = *rc;
+    vis_rc.bottom = bar_rc.top - 2;
+
     /* un plugin visuel actif remplace le texte par son rendu */
     if (mp_plugins_has_visual()) {
-        mp_plugins_visual_render(hdc, rc->right - rc->left, rc->bottom - rc->top);
+        mp_plugins_visual_render(hdc, vis_rc.right - vis_rc.left, vis_rc.bottom - vis_rc.top);
+        draw_progress_bar(hdc, &bar_rc);
         return;
     }
 
@@ -325,21 +398,23 @@ static void paint_center(HDC hdc, RECT* rc)
         utf8_to_wide(base, base_w, 280);
         HFONT old = (HFONT)SelectObject(hdc, big);
         SetTextColor(hdc, RGB(30, 30, 30));
-        RECT r = *rc;
+        RECT r = vis_rc;
         DrawTextW(hdc, base_w, -1, &r, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
         SelectObject(hdc, old);
     }
     {
         HFONT old = (HFONT)SelectObject(hdc, small);
         SetTextColor(hdc, RGB(90, 90, 90));
-        RECT r = *rc;
-        r.top = rc->top + 38;
+        RECT r = vis_rc;
+        r.top = vis_rc.top + 38;
         DrawTextW(hdc, st, -1, &r, DT_CENTER | DT_TOP | DT_SINGLELINE);
         SelectObject(hdc, old);
     }
 
     DeleteObject(big);
     DeleteObject(small);
+
+    draw_progress_bar(hdc, &bar_rc);
 }
 
 /* ------------------------------------------------------------------ */

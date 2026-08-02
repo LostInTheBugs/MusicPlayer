@@ -22,7 +22,7 @@
 
 #define FFT_SIZE 1024          /* points FFT (puissance de 2) */
 #define NB_BARS  48            /* nombre de barres affichées */
-#define PAL_SIZE 128           /* couleurs de la palette */
+#define PAL_SIZE 256           /* couleurs de la palette */
 #define CAP_SIZE 4096          /* taille max d'un bloc capturé */
 
 /* ------------------------------------------------------------------ */
@@ -37,9 +37,11 @@ static CRITICAL_SECTION g_cap_lock;
 
 static float    g_levels[NB_BARS];       /* niveaux lissés 0..1 */
 static float    g_peaks[NB_BARS];        /* pics (décroissance lente) */
-static HBRUSH   g_palette[PAL_SIZE];
-static HBRUSH   g_brush_bg;
-static HBRUSH   g_brush_peak;
+static HBRUSH   g_palette[PAL_SIZE];     /* barres (vives) */
+static HBRUSH   g_palette_halo[PAL_SIZE];/* halo sombre autour des barres */
+static HBRUSH   g_bg_bands[20];          /* fond en dégradé */
+static HBRUSH   g_brush_grid;            /* grille discrète */
+static HBRUSH   g_brush_peak;            /* pics blancs */
 
 /* ------------------------------------------------------------------ */
 /* Identification                                                      */
@@ -117,14 +119,23 @@ static int init(mp_plugin* self, const mp_host_api* host)
     for (int i = 0; i < FFT_SIZE; i++)
         g_window[i] = 0.5f * (1.0f - cosf(2.0f * 3.14159265358979f * i / (FFT_SIZE - 1)));
 
-    /* palette : hue 115° (vert) -> 0° (rouge) avec la luminosité qui monte */
+    /* palette : hue 200° (bleu) -> 0° (rouge), luminosité croissante */
     for (int i = 0; i < PAL_SIZE; i++) {
         float t = (float)i / (PAL_SIZE - 1);
         BYTE r, g, b;
-        hsv_to_rgb(115.0f * (1.0f - t), 0.95f, 0.35f + 0.65f * t, &r, &g, &b);
+        hsv_to_rgb(200.0f * (1.0f - t), 0.92f, 0.30f + 0.70f * t, &r, &g, &b);
         g_palette[i] = CreateSolidBrush(RGB(r, g, b));
+        /* halo : même teinte, bien plus sombre */
+        hsv_to_rgb(200.0f * (1.0f - t), 0.92f, 0.10f + 0.18f * t, &r, &g, &b);
+        g_palette_halo[i] = CreateSolidBrush(RGB(r, g, b));
     }
-    g_brush_bg = CreateSolidBrush(RGB(12, 14, 22));    /* fond bleu nuit */
+    /* fond : dégradé bleu nuit */
+    for (int i = 0; i < 20; i++) {
+        float t = (float)i / 19.0f;
+        g_bg_bands[i] = CreateSolidBrush(RGB(
+            (BYTE)(6 + 10 * t), (BYTE)(8 + 14 * t), (BYTE)(16 + 24 * t)));
+    }
+    g_brush_grid = CreateSolidBrush(RGB(32, 38, 58));
     g_brush_peak = CreateSolidBrush(RGB(255, 255, 255));
 
     InitializeCriticalSection(&g_cap_lock);
@@ -140,9 +151,13 @@ static int init(mp_plugin* self, const mp_host_api* host)
 static void destroy(mp_plugin* self)
 {
     (void)self;
-    DeleteObject(g_brush_bg);
     DeleteObject(g_brush_peak);
-    for (int i = 0; i < PAL_SIZE; i++) DeleteObject(g_palette[i]);
+    DeleteObject(g_brush_grid);
+    for (int i = 0; i < 20; i++) DeleteObject(g_bg_bands[i]);
+    for (int i = 0; i < PAL_SIZE; i++) {
+        DeleteObject(g_palette[i]);
+        DeleteObject(g_palette_halo[i]);
+    }
     DeleteCriticalSection(&g_cap_lock);
     if (g_host && g_host->log) g_host->log("Spectrum : déchargé");
     g_host = NULL;
@@ -178,9 +193,19 @@ static void render(mp_plugin* self, void* hdc_v, int width, int height)
     if (width <= 0 || height <= 0) return;
     HDC hdc = (HDC)hdc_v;
 
-    /* --- fond --- */
-    RECT all = { 0, 0, width, height };
-    FillRect(hdc, &all, g_brush_bg);
+    /* --- fond : dégradé bleu nuit --- */
+    int band_h = (height + 19) / 20;
+    for (int i = 0; i < 20; i++) {
+        RECT r = { 0, i * band_h, width, (i + 1) * band_h };
+        if (r.top >= height) break;
+        if (r.bottom > height) r.bottom = height;
+        FillRect(hdc, &r, g_bg_bands[i]);
+    }
+    /* grille horizontale discrète (25 / 50 / 75 %) */
+    for (int g = 1; g < 4; g++) {
+        RECT r = { 0, height * g / 4, width, height * g / 4 + 1 };
+        FillRect(hdc, &r, g_brush_grid);
+    }
 
     /* --- snapshot du dernier bloc reçu (sous lock) --- */
     float re[FFT_SIZE], im[FFT_SIZE];
@@ -249,6 +274,10 @@ static void render(mp_plugin* self, void* hdc_v, int width, int height)
             int color = (int)(g_levels[b] * (PAL_SIZE - 1));
             if (color < 0) color = 0;
             if (color >= PAL_SIZE) color = PAL_SIZE - 1;
+            /* halo : barre élargie, sombre (effet glow) */
+            RECT halo = { x - 1, base_y - bh, x + bw + 1, base_y };
+            FillRect(hdc, &halo, g_palette_halo[color]);
+            /* barre principale */
             RECT bar = { x, base_y - bh, x + bw, base_y };
             FillRect(hdc, &bar, g_palette[color]);
         }

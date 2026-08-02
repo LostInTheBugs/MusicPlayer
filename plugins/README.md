@@ -27,10 +27,18 @@ Les plugins **visuels** reçoivent aussi le flux audio via `audio_frames()`
 
 ## Exemples fournis (examples/)
 
-- **plugin_gaindemo.c** — effet audio minimal (atténuation de moitié)
-- **plugin_spectrum.c** — visualiseur de spectre complet : FFT radix-2
-  (1024 points), fenêtre de Hann, 48 barres logarithmiques, palette
-  vert→rouge, pics lumineux, lissage. Compiler avec `-lgdi32 -lm`.
+| Plugin | Type | Description |
+|---|---|---|
+| `plugin_gaindemo.c` | effet audio | atténuation de moitié (exemple minimal) |
+| `plugin_spectrum.c` | visuel | spectre : FFT 1024, 48 barres log, palette bleu→rouge, halo, grille |
+| `plugin_vumeter.c` | visuel | VU mètre stéréo à LED (-45..0 dB, pics, clip) — style Winamp/XMMS |
+| `plugin_fireworks.c` | visuel | feu d'artifice déclenché par les beats de la musique |
+
+Compiler avec `-lgdi32 -lm` pour les plugins visuels.
+
+> **Plusieurs plugins visuels actifs** : un seul est affiché (le premier de
+> la liste) — cochez/décochez les plugins dans le menu **Plugins** pour
+> choisir lequel voir.
 
 ## Compiler un plugin
 

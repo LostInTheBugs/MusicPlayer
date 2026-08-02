@@ -2,6 +2,17 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.003] — 2026-08-02
+
+### Added
+- **Barre de progression** : dégradé bleu→jaune, toujours visible (mode texte et plugins)
+- Plugin visuel **VUMeter** : VU mètre stéréo à LED (24 LED/canal, -45..0 dB, pics à décroissance lente, indicateur de clip) — style Winamp/XMMS
+- Plugin visuel **Fireworks** : feu d'artifice synchronisé sur la musique (détection de beats par énergie adaptative, gravité, traînées, 360 couleurs)
+- Le loader n'affiche plus qu'**un seul plugin visuel** à la fois (choix via le menu Plugins)
+
+### Changed
+- Plugin **Spectrum** relooké : palette arc-en-ciel 256 teintes (bleu→rouge), fond en dégradé bleu nuit, grille discrète, effet de halo (glow) autour des barres
+
 ## [2026.08.002] — 2026-08-02
 
 ### Added

@@ -13,7 +13,7 @@
 #   make clean
 # ======================================================================
 
-VERSION := 2026.08.002
+VERSION := 2026.08.003
 
 CROSS    := x86_64-w64-mingw32-
 CC       := $(CROSS)gcc
@@ -63,6 +63,8 @@ test-samples: dirs
 plugins-examples: $(BIN)
 	$(CC) -O2 -shared -o bin/plugins/gaindemo.dll examples/plugin_gaindemo.c -Isrc -static-libgcc
 	$(CC) -O2 -shared -o bin/plugins/spectrum.dll examples/plugin_spectrum.c -Isrc -static-libgcc -lgdi32 -lm
+	$(CC) -O2 -shared -o bin/plugins/vumeter.dll examples/plugin_vumeter.c -Isrc -static-libgcc -lgdi32 -lm
+	$(CC) -O2 -shared -o bin/plugins/fireworks.dll examples/plugin_fireworks.c -Isrc -static-libgcc -lgdi32 -lm
 	@echo "Plugins d'exemple compilés dans bin/plugins/"
 
 # ----------------------------------------------------------------------
