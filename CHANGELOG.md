@@ -2,6 +2,15 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.015] — 2026-08-02
+
+### Added
+- **Vérification de mises à jour** (GitHub Releases) :
+  - manuelle : **Settings ▸ Check for updates…** (affiche le résultat même si à jour)
+  - automatique : **Settings ▸ Check for updates at startup** (4 s après le lancement, silencieuse si à jour), préférence persistée dans `%APPDATA%\MusicPlayer\upd.txt`
+  - comparaison de la version locale avec la dernière release ; si une nouvelle version existe : boîte de dialogue avec ouverture de la page des releases (bouton Yes)
+  - requête en arrière-plan (thread WinINet, timeout 10 s) : l'interface ne bloque jamais
+
 ## [2026.08.014] — 2026-08-02
 
 ### Changed

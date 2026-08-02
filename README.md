@@ -10,6 +10,7 @@ cross-compiled from Linux with MinGW-w64.
 - **Play/Pause/Stop buttons + volume slider** (0–100 % blue, 100–200 % orange boost) built into the window
 - **Fullscreen** for visual plugins (F11 or the ⛶ button)
 - **Progress bar** with color gradient
+- **Update checker**: manual (Settings ▸ Check for updates…) and automatic at startup (compares with the latest GitHub release)
 - **Multilingual**: plain-text `lang/*.lang` files (English built-in, French provided, Settings ▸ Language menu — see [lang/README.md](lang/README.md))
 - **Plugin architecture** (skins, audio effects, visuals) — API version 2:
   color spectrum, rotating 3D spectrum (rainbow), 3D isometric landscape,
@@ -17,7 +18,7 @@ cross-compiled from Linux with MinGW-w64.
 
 ## Version
 
-`2026.08.014` — see [CHANGELOG.md](CHANGELOG.md)
+`2026.08.015` — see [CHANGELOG.md](CHANGELOG.md)
 
 ## Run on Windows 11
 
@@ -85,6 +86,7 @@ would require pairing it with a native UI (not included).
 | Speed 0.5× / 1× / 1.5× / 2× | Settings ▸ Speed | — |
 | Volume | window slider | ↑ / ↓ |
 | Fullscreen | Settings ▸ Fullscreen | F11 (or ⛶ / Esc) |
+| Check for updates | Settings ▸ Check for updates… | — |
 
 ## Plugins
 
@@ -108,7 +110,8 @@ MusicPlayer/
 │   ├── player.c/.h        # engine: FFmpeg + miniaudio + ring buffer
 │   ├── plugin.h           # plugin API (v2)
 │   ├── plugin_loader.c/.h # plugin scan/loading
-│   └── lang.c/.h          # i18n engine (lang/*.lang)
+│   ├── lang.c/.h          # i18n engine (lang/*.lang)
+│   └── update.c/.h        # update checker (GitHub releases, WinINet)
 ├── lang/                  # language files (en, fr)
 ├── plugins/               # plugins to drop in (see README)
 ├── examples/              # plugin sources (built by make plugins-examples)

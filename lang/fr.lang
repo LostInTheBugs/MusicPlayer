@@ -41,6 +41,14 @@ plugins_skins=&Skins
 
 # --- Menu Paramètres ---
 fullscreen=&Plein écran
+menu_check_updates=Vérifier les mises à &jour…
+menu_auto_update=Vérifier les mises à jour au &démarrage
+
+# --- Mises à jour ---
+upd_title=Mise à jour
+upd_new=Une nouvelle version est disponible : %hs (actuelle : %hs).\n\nOuvrir la page de téléchargement ?
+upd_uptodate=Vous êtes à jour (version %hs).
+upd_error=Échec de la vérification des mises à jour — erreur réseau ou GitHub inaccessible.
 
 # --- Menu Aide ---
 about=À &propos…

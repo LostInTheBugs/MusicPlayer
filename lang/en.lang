@@ -43,6 +43,14 @@ plugins_skins=&Skins
 
 # --- Settings menu ---
 fullscreen=&Fullscreen
+menu_check_updates=Check for &updates…
+menu_auto_update=Check for updates at &startup
+
+# --- Update ---
+upd_title=Update
+upd_new=A new version is available: %hs (current: %hs).\n\nOpen the download page?
+upd_uptodate=You are up to date (version %hs).
+upd_error=Update check failed — network error or GitHub unreachable.
 
 # --- Help menu ---
 about=&About…

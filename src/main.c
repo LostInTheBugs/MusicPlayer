@@ -20,9 +20,10 @@
 #include "plugin.h"
 #include "plugin_loader.h"
 #include "lang.h"
+#include "update.h"
 
 #ifndef MP_VERSION
-#define MP_VERSION "2026.08.004"
+#define MP_VERSION "2026.08.014"
 #endif
 /* indirection : les arguments de ## ne sont pas expansés, d'où les 2 niveaux */
 #define MP_WIDE2(x) L##x
@@ -41,6 +42,7 @@ enum {
     IDM_PLUGIN_BASE = 600,  /* items plugins dynamiques */
     IDM_LANG_BASE = 700,    /* items langues dynamiques */
     IDM_FULLSCREEN = 801,
+    IDM_CHECK_UPDATE = 802, IDM_AUTO_UPDATE = 803,
     IDM_ABOUT = 901
 };
 
@@ -272,12 +274,17 @@ static HMENU create_menus(void)
     AppendMenuW(mFile, MF_STRING, IDM_EXIT, lang_get("quit"));
     AppendMenuW(bar, MF_POPUP, (UINT_PTR)mFile, lang_get("menu_file"));
 
-    /* Paramètres : vitesse, plein écran, langue */
+    /* Paramètres : vitesse, plein écran, langue, mises à jour */
     HMENU mSettings = CreatePopupMenu();
     AppendMenuW(mSettings, MF_POPUP, (UINT_PTR)build_speed_menu(), lang_get("speed"));
     AppendMenuW(mSettings, MF_STRING, IDM_FULLSCREEN, lang_get("fullscreen"));
     AppendMenuW(mSettings, MF_SEPARATOR, 0, NULL);
     AppendMenuW(mSettings, MF_POPUP, (UINT_PTR)CreatePopupMenu(), lang_get("menu_lang"));
+    AppendMenuW(mSettings, MF_SEPARATOR, 0, NULL);
+    AppendMenuW(mSettings, MF_STRING, IDM_CHECK_UPDATE, lang_get("menu_check_updates"));
+    AppendMenuW(mSettings,
+                 MF_STRING | (mp_update_auto_enabled() ? MF_CHECKED : MF_UNCHECKED),
+                 IDM_AUTO_UPDATE, lang_get("menu_auto_update"));
     AppendMenuW(bar, MF_POPUP, (UINT_PTR)mSettings, lang_get("menu_settings"));
 
     AppendMenuW(bar, MF_POPUP, (UINT_PTR)CreatePopupMenu(), lang_get("menu_plugins"));
@@ -823,6 +830,16 @@ static void on_command(int id, HMENU bar)
     case IDM_PLAYPAUSE: mp_play_pause(); break;
     case IDM_STOP:      mp_stop(); break;
     case IDM_FULLSCREEN: toggle_fullscreen(g_hwnd); break;
+    case IDM_CHECK_UPDATE:
+        mp_update_check_async(g_hwnd, 1);
+        break;
+    case IDM_AUTO_UPDATE: {
+        int on = !mp_update_auto_enabled();
+        mp_update_set_auto(on);
+        CheckMenuItem(GetSubMenu(GetMenu(g_hwnd), 1), IDM_AUTO_UPDATE,
+                      MF_BYCOMMAND | (on ? MF_CHECKED : MF_UNCHECKED));
+        break;
+    }
     case IDM_ABOUT:     do_about(); break;
 
     case IDM_VOL_UP: {
@@ -896,6 +913,8 @@ static LRESULT CALLBACK wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         DragAcceptFiles(hwnd, TRUE);
         SetTimer(hwnd, 1, 250, NULL);   /* status bar */
         SetTimer(hwnd, 2, 33, NULL);    /* rendu visuel ~30 FPS */
+        if (mp_update_auto_enabled())
+            SetTimer(hwnd, 3, 4000, NULL); /* vérif. mises à jour au démarrage */
         /* icône de l'application */
         HICON hIcon = LoadIconW(GetModuleHandleW(NULL), MAKEINTRESOURCE(1));
         if (hIcon) {
@@ -953,8 +972,39 @@ static LRESULT CALLBACK wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
             }
             return 0;
         }
+        if (wp == 3) {
+            /* vérification automatique des mises à jour (one-shot) */
+            KillTimer(hwnd, 3);
+            mp_update_check_async(hwnd, 0);
+            return 0;
+        }
         status_update();
         return 0;
+
+    case MP_UPDATE_DONE: {
+        /* résultat de la vérification de mises à jour
+         * wp = manuel (1) / automatique (0) ; lp = 0 à jour, 1 dispo, 2 erreur */
+        int manual = (int)wp;
+        int state = (int)lp;
+        if (state == 1) {
+            wchar_t msg[512];
+            swprintf(msg, 512, lang_get("upd_new"),
+                     mp_update_latest(), MP_VERSION);
+            if (MessageBoxW(hwnd, msg, lang_get("upd_title"),
+                            MB_YESNO | MB_ICONINFORMATION) == IDYES)
+                ShellExecuteW(hwnd, L"open",
+                              L"https://github.com/LostInTheBugs/MusicPlayer/releases/latest",
+                              NULL, NULL, SW_SHOWNORMAL);
+        } else if (state == 0 && manual) {
+            wchar_t msg[256];
+            swprintf(msg, 256, lang_get("upd_uptodate"), MP_VERSION);
+            MessageBoxW(hwnd, msg, lang_get("upd_title"), MB_OK | MB_ICONINFORMATION);
+        } else if (state == 2 && manual) {
+            MessageBoxW(hwnd, lang_get("upd_error"), lang_get("upd_title"),
+                        MB_OK | MB_ICONWARNING);
+        }
+        return 0;
+    }
     case WM_COMMAND:
         on_command(LOWORD(wp), GetMenu(hwnd));
         return 0;
