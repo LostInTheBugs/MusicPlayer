@@ -3,24 +3,24 @@
 Relevé du nombre de tokens (LLM) consommés pour ce projet, session par
 session de développement.
 
-## Relevé 2026-08-02 (création du projet)
+## Session 2026-08-02 (création + plugin visuel)
 
 | Métrique | Valeur |
 |---|---|
 | Session | `20260802_181701_f23c7f` |
 | Modèle | deepseek-v4-flash (provider deepseek) |
-| Messages | 163 |
-| Appels API | 62 |
-| Tokens d'entrée (input) | 56 994 |
-| Tokens de sortie (output) | 106 180 |
-| Dont raisonnement | 59 832 |
-| Cache lecture (cache_read) | 6 223 616 |
+| Messages | 347 |
+| Appels API | 137 |
+| Tokens d'entrée (input) | 101 810 |
+| Tokens de sortie (output) | 214 262 |
+| Dont raisonnement | 128 234 |
+| Cache lecture (cache_read) | 22 325 760 |
 | Cache écriture (cache_write) | 0 |
-| **Total (input + output)** | **163 174** |
-| Coût estimé | ≈ 0,055 USD |
+| **Total (input + output)** | **316 072** |
+| Coût estimé | ≈ 0,137 USD |
 
-> Le gros du coût est amorti par le cache de lecture (6,2 M de tokens
-> relus à prix réduit) : coût facturable ≈ 0,05 $.
+> Le gros du coût est amorti par le cache de lecture (22,3 M de tokens
+> relus à prix réduit) : coût facturable ≈ 0,14 $ pour toute la session.
 
 ## Comment relire le compteur
 
@@ -43,3 +43,5 @@ dans le tableau ci-dessus.
   les compteurs réels du runtime, pas une estimation.
 - `reasoning_tokens` est probablement inclus dans `output_tokens`
   (à confirmer selon le fournisseur).
+- Relevés précédents : 163 174 tokens / 0,055 $ à la fin de la création
+  du projet (2026.08.001).
