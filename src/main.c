@@ -245,7 +245,7 @@ static void rebuild_plugins_menu(HMENU parent)
     DrawMenuBar(g_hwnd);
 }
 
-/* Sous-menu des langues disponibles (dans le menu Paramètres) */
+/* Sous-menu des langues disponibles (dans le menu Paramètres, position 3) */
 static void rebuild_lang_menu(HMENU settings)
 {
     HMENU m = CreatePopupMenu();
@@ -257,8 +257,8 @@ static void rebuild_lang_menu(HMENU settings)
             CheckMenuRadioItem(m, IDM_LANG_BASE, IDM_LANG_BASE + n - 1,
                                IDM_LANG_BASE + i, MF_BYCOMMAND);
     }
-    RemoveMenu(settings, 2, MF_BYPOSITION);
-    InsertMenuW(settings, 2, MF_BYPOSITION | MF_POPUP, (UINT_PTR)m, lang_get("menu_lang"));
+    RemoveMenu(settings, 3, MF_BYPOSITION);
+    InsertMenuW(settings, 3, MF_BYPOSITION | MF_POPUP, (UINT_PTR)m, lang_get("menu_lang"));
     DrawMenuBar(g_hwnd);
 }
 
@@ -967,8 +967,21 @@ static LRESULT CALLBACK wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         EndPaint(hwnd, &ps);
         return 0;
     }
-    case WM_ERASEBKGND:
-        return 1;   /* tout est redessiné dans WM_PAINT */
+    case WM_ERASEBKGND: {
+        /* efface le fond en blanc (nécessaire au redimensionnement :
+         * les zones qui s'agrandissent doivent être repeintes) */
+        HDC hdc = (HDC)wp;
+        RECT rc;
+        GetClientRect(hwnd, &rc);
+        FillRect(hdc, &rc, GetSysColorBrush(COLOR_WINDOW));
+        return 1;
+    }
+    case WM_GETMINMAXINFO: {
+        MINMAXINFO* mmi = (MINMAXINFO*)lp;
+        mmi->ptMinTrackSize.x = 420;
+        mmi->ptMinTrackSize.y = 220;
+        return 0;
+    }
     case WM_SIZE: {
         /* redimensionnement : recalcule les parts de la status bar
          * et redessine toute la zone (visuel + progression + contrôles) */

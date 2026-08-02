@@ -2,6 +2,15 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.007] — 2026-08-02
+
+### Changed
+- **3D Spectrum aligné sur le rendu Spectrum3D de référence** : fond bleu nuit très sombre, 96 barres fines, dégradé arc-en-ciel par position (bleu → cyan → vert → jaune → orange → rouge), arrière assombri — grille wireframe retirée
+
+### Fixed
+- **Menu Paramètres** : le sous-menu des langues n'apparaît plus en double (position de remplacement corrigée)
+- **Redimensionnement de la fenêtre** : le fond est repeint en blanc avant chaque rendu (régression du `WM_ERASEBKGND`), taille minimale 420×220 ajoutée
+
 ## [2026.08.006] — 2026-08-02
 
 ### Changed

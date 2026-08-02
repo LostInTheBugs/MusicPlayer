@@ -2,8 +2,9 @@
  * Plugin MusicPlayer — "3D Spectrum" (analyseur de spectre rotatif 3D)
  * ====================================================================
  * Type : visuel. Style "Spectrum3D" (spectrum3d.sourceforge.net) :
- * fond noir, grille wireframe au sol, barres fines disposées en cylindre
- * qui tourne — devant lumineux (blanc→jaune→rouge), arrière sombre.
+ * fond bleu nuit très sombre, barres fines en cylindre rotatif, chaque
+ * barre colorée en dégradé arc-en-ciel selon sa position (bleu → cyan →
+ * vert → jaune → orange → rouge). Devant lumineux, arrière assombri.
  * Projection perspective maison, tri par profondeur (peintre).
  */
 #include "plugin.h"
@@ -14,7 +15,7 @@
 #include <string.h>
 
 #define FFT_SIZE 1024
-#define NB_BARS   72
+#define NB_BARS   96
 #define PAL_SIZE  256
 #define CAP_SIZE  4096
 
@@ -29,15 +30,26 @@ static float    g_levels[NB_BARS];
 static float    g_angle = 0.0f;
 static HBRUSH   g_palette[PAL_SIZE];
 static HBRUSH   g_palette_dark[PAL_SIZE];
-static HBRUSH   g_grid_pen_br;
-static HPEN     g_grid_pen;
 static HBRUSH   g_black;
 
 /* ------------------------------------------------------------------ */
 static const char* name(void)        { return "3D Spectrum"; }
-static const char* version(void)     { return "0.2.0"; }
+static const char* version(void)     { return "0.3.0"; }
 static const char* description(void) { return "Spectre 3D rotatif (style Spectrum3D)"; }
 static unsigned type(void)           { return MP_PLUGIN_VISUAL; }
+
+/* arc-en-ciel : hue 210° (bleu) → 0° (rouge), vif et lumineux */
+static void hue_to_rgb(float h, BYTE* r, BYTE* g, BYTE* b)
+{
+    float c = 1.0f;
+    float x = c * (1.0f - fabsf(fmodf(h / 60.0f, 2.0f) - 1.0f));
+    if (h < 60)       { *r = 255; *g = (BYTE)(x * 255); *b = 0; }
+    else if (h < 120) { *r = (BYTE)(x * 255); *g = 255; *b = 0; }
+    else if (h < 180) { *r = 0; *g = 255; *b = (BYTE)(x * 255); }
+    else if (h < 240) { *r = 0; *g = (BYTE)(x * 255); *b = 255; }
+    else if (h < 300) { *r = (BYTE)(x * 255); *g = 0; *b = 255; }
+    else              { *r = 255; *g = 0; *b = (BYTE)(x * 255); }
+}
 
 /* ------------------------------------------------------------------ */
 /* FFT radix-2 (identique au plugin Spectrum)                          */
@@ -86,27 +98,16 @@ static int init(mp_plugin* self, const mp_host_api* host)
     for (int i = 0; i < FFT_SIZE; i++)
         g_window[i] = 0.5f * (1.0f - cosf(2.0f * 3.14159265358979f * i / (FFT_SIZE - 1)));
 
-    /* palette "spectrum3d" : blanc → jaune → orange → rouge selon la hauteur */
+    /* palette arc-en-ciel : couleur par position (fréquence) */
     for (int i = 0; i < PAL_SIZE; i++) {
-        float t = (float)i / (PAL_SIZE - 1);
+        float h = 210.0f - 210.0f * (float)i / (PAL_SIZE - 1);
         BYTE r, g, b;
-        if (t < 0.5f) {
-            /* blanc → jaune pâle */
-            r = 240; g = (BYTE)(240 - 30.0f * (t * 2.0f)); b = (BYTE)(240 - 90.0f * (t * 2.0f));
-        } else {
-            /* jaune → orange → rouge */
-            float u = (t - 0.5f) * 2.0f;
-            r = (BYTE)(240 - 40.0f * u);
-            g = (BYTE)(210 - 170.0f * u);
-            b = (BYTE)(60 - 55.0f * u);
-            if (b < 0) b = 0;
-        }
+        hue_to_rgb(h, &r, &g, &b);
         g_palette[i] = CreateSolidBrush(RGB(r, g, b));
         /* version sombre pour les barres de derrière */
-        g_palette_dark[i] = CreateSolidBrush(RGB(r / 4, g / 4, b / 4));
+        g_palette_dark[i] = CreateSolidBrush(RGB(r / 5, g / 5, b / 5));
     }
-    g_black = CreateSolidBrush(RGB(4, 4, 6));
-    g_grid_pen = CreatePen(PS_SOLID, 1, RGB(72, 72, 80));
+    g_black = CreateSolidBrush(RGB(0, 0, 28));   /* bleu nuit très sombre */
 
     InitializeCriticalSection(&g_cap_lock);
     g_last_frames = 0;
@@ -115,14 +116,13 @@ static int init(mp_plugin* self, const mp_host_api* host)
     g_angle = 0.0f;
 
     if (g_host && g_host->log)
-        g_host->log("3D Spectrum: init OK (72 bars, Spectrum3D style)");
+        g_host->log("3D Spectrum: init OK (96 bars, rainbow cylinder)");
     return 0;
 }
 
 static void destroy(mp_plugin* self)
 {
     (void)self;
-    DeleteObject(g_grid_pen);
     DeleteObject(g_black);
     for (int i = 0; i < PAL_SIZE; i++) {
         DeleteObject(g_palette[i]);
@@ -163,7 +163,7 @@ static void render(mp_plugin* self, void* hdc_v, int width, int height)
     if (width <= 0 || height <= 0) return;
     HDC hdc = (HDC)hdc_v;
 
-    /* fond noir */
+    /* fond bleu nuit très sombre */
     RECT all = { 0, 0, width, height };
     FillRect(hdc, &all, g_black);
 
@@ -201,24 +201,9 @@ static void render(mp_plugin* self, void* hdc_v, int width, int height)
 
     int cx = width / 2;
     int cy = height / 2;
-    float rx = (float)(width * 0.38);
-    float ry = (float)(height * 0.24);
+    float rx = (float)(width * 0.40);
+    float ry = (float)(height * 0.26);
     int max_h = height - 8;
-
-    /* --- grille wireframe au sol (comme Spectrum3D) --- */
-    HPEN oldp = (HPEN)SelectObject(hdc, g_grid_pen);
-    HBRUSH oldb = (HBRUSH)SelectObject(hdc, GetStockObject(NULL_BRUSH));
-    for (int ring = 1; ring <= 4; ring++) {
-        float rr = rx * ring / 4.0f;
-        Ellipse(hdc, cx - (int)rr, cy - (int)(rr * 0.32f), cx + (int)rr, cy + (int)(rr * 0.32f));
-    }
-    for (int i = 0; i < 12; i++) {
-        float a = (float)i / 12.0f * 6.2832f;
-        MoveToEx(hdc, cx, cy, NULL);
-        LineTo(hdc, cx + (int)(cosf(a) * rx), cy + (int)(sinf(a) * rx * 0.32f));
-    }
-    SelectObject(hdc, oldb);
-    SelectObject(hdc, oldp);
 
     /* tri des barres par profondeur (derrière d'abord) */
     int order[NB_BARS];
@@ -230,17 +215,18 @@ static void render(mp_plugin* self, void* hdc_v, int width, int height)
             if (zi > zj) { int t = order[i]; order[i] = order[j]; order[j] = t; }
         }
 
-    /* barres fines en cylindre */
+    /* barres fines en cylindre, arc-en-ciel par position */
     int bw = 2;
     for (int k = 0; k < NB_BARS; k++) {
         int b = order[k];
         float a = (float)b / NB_BARS * 6.2832f + g_angle;
         float s = sinf(a), c = cosf(a);
         int x = cx + (int)(c * rx);
-        int y = cy + (int)(s * ry * 0.32f);
+        int y = cy + (int)(s * ry * 0.30f);
         int bh = (int)(g_levels[b] * max_h);
         if (bh < 2) bh = 2;
-        int color = (int)(g_levels[b] * (PAL_SIZE - 1));
+        /* couleur : arc-en-ciel selon la position (fréquence) */
+        int color = b * (PAL_SIZE - 1) / NB_BARS;
         if (color < 0) color = 0;
         if (color >= PAL_SIZE) color = PAL_SIZE - 1;
         HBRUSH br = (s < 0.0f) ? g_palette_dark[color] : g_palette[color];
