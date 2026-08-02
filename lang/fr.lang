@@ -1,0 +1,62 @@
+# MusicPlayer — fichier de langue français
+# =========================================
+# Format : cle=valeur   (une par ligne)
+#   - '#' ou ';' en début de ligne = commentaire
+#   - Fichier en UTF-8 (avec ou sans BOM)
+#   - \n dans une valeur = retour à la ligne
+#   - %d / %s / %hs sont des emplacements de formatage — ne pas les retirer !
+# Le nom du fichier (sans .lang) est le code affiché dans le menu.
+
+lang_name=Français
+
+# --- Menus ---
+menu_file=&Fichier
+menu_play=&Lecture
+menu_volume=&Volume
+menu_plugins=P&lugins
+menu_lang=&Langue
+menu_help=A&ide
+
+# --- Menu Fichier ---
+open=&Ouvrir…\tCtrl+O
+quit=&Quitter
+
+# --- Menu Lecture ---
+play_pause=&Lecture / Pause\tEspace
+stop=&Stop\tS
+speed=&Vitesse
+
+# --- Menu Volume ---
+vol_up=&Monter\t↑
+vol_down=&Descendre\t↓
+vol_show=Volume : %d%%
+
+# --- Menu Plugins ---
+plugins_reload=Recharger les plugins
+plugins_none=(aucun plugin)
+
+# --- Menu Aide ---
+about=À &propos…
+
+# --- Barre d'état et états ---
+no_file= (aucun fichier)
+state_stopped=Arrêté
+state_playing=Lecture
+state_paused=Pause
+state_finished=Terminé
+center_stopped=Arrêté
+center_playing=Lecture en cours
+center_paused=En pause
+center_finished=Terminé
+
+# --- Dialogue d'ouverture ---
+open_title=Ouvrir un fichier audio
+filter_audio=Fichiers audio (*.mp3;*.mp4)
+filter_mp3=MP3 (*.mp3)
+filter_mp4=MP4 (*.mp4)
+filter_all=Tous les fichiers (*.*)
+
+# --- Messages ---
+err_open=Impossible d'ouvrir « %s ».\nFormat non supporté ou fichier corrompu.
+about_title=À propos
+about_text=MusicPlayer %hs (appli)\n\nLecteur audio MP3 / MP4 pour Windows.\nDécodage : FFmpeg %hs\nAudio : miniaudio\nPlugins : %d chargé(s)\n\nRaccourcis : Espace = lecture/pause, S = stop,\n↑/↓ = volume, Ctrl+O = ouvrir

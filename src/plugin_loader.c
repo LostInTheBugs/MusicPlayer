@@ -44,7 +44,7 @@ static int load_one(const wchar_t* dir, const wchar_t* name, const mp_host_api* 
     HMODULE dll = LoadLibraryW(full);
     if (!dll) {
         char msg[512];
-        _snprintf(msg, sizeof(msg), "Plugin %s : LoadLibrary a échoué (err=%lu)", name_u8, GetLastError());
+        _snprintf(msg, sizeof(msg), "Plugin %s : LoadLibrary failed (err=%lu)", name_u8, GetLastError());
         if (host && host->log) host->log(msg);
         return -1;
     }
@@ -56,7 +56,7 @@ static int load_one(const wchar_t* dir, const wchar_t* name, const mp_host_api* 
     memcpy(&entry, &fp, sizeof(entry));
     if (!entry) {
         char msg[512];
-        _snprintf(msg, sizeof(msg), "Plugin %s : symbole %s introuvable, ignoré", name_u8, MP_PLUGIN_ENTRY);
+        _snprintf(msg, sizeof(msg), "Plugin %s : symbol %s not found, ignored", name_u8, MP_PLUGIN_ENTRY);
         if (host && host->log) host->log(msg);
         FreeLibrary(dll);
         return -1;
@@ -65,7 +65,7 @@ static int load_one(const wchar_t* dir, const wchar_t* name, const mp_host_api* 
     const mp_plugin_api* api = entry();
     if (!api || api->api_version != MP_PLUGIN_API_VERSION || !api->name || !api->name()) {
         char msg[512];
-        _snprintf(msg, sizeof(msg), "Plugin %s : version d'API incompatible (attendu %d), ignoré",
+        _snprintf(msg, sizeof(msg), "Plugin %s : incompatible API version (expected %d), ignored",
                   name_u8, MP_PLUGIN_API_VERSION);
         if (host && host->log) host->log(msg);
         FreeLibrary(dll);
@@ -82,13 +82,13 @@ static int load_one(const wchar_t* dir, const wchar_t* name, const mp_host_api* 
 
     if (api->init && api->init(p, host) != 0) {
         char msg[512];
-        _snprintf(msg, sizeof(msg), "Plugin %s : init() a échoué, désactivé", api->name());
+        _snprintf(msg, sizeof(msg), "Plugin %s : init() failed, disabled", api->name());
         if (host && host->log) host->log(msg);
         p->enabled = 0;
     }
 
     char msg[512];
-    _snprintf(msg, sizeof(msg), "Plugin chargé : %s v%s — %s",
+    _snprintf(msg, sizeof(msg), "Plugin loaded : %s v%s — %s",
               api->name(), api->version ? api->version() : "?",
               api->description ? api->description() : "");
     if (host && host->log) host->log(msg);
@@ -110,7 +110,7 @@ void mp_plugins_scan(const wchar_t* dir, const mp_host_api* host)
     WIN32_FIND_DATAW fd;
     HANDLE h = FindFirstFileW(pattern, &fd);
     if (h == INVALID_HANDLE_VALUE) {
-        if (host && host->log) host->log("Aucun plugin trouvé (dossier plugins/ vide ou absent)");
+        if (host && host->log) host->log("No plugin found (plugins/ folder empty or missing)");
         return;
     }
     do {

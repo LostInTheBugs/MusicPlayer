@@ -98,7 +98,7 @@ static int init(mp_plugin* self, const mp_host_api* host)
     g_cooldown = 0;
 
     if (g_host && g_host->log)
-        g_host->log("Fireworks : init OK (explosions sur les beats)");
+        g_host->log("Fireworks: init OK (beat-triggered explosions)");
     return 0;
 }
 
@@ -109,7 +109,7 @@ static void destroy(mp_plugin* self)
     for (int i = 0; i < 10; i++) DeleteObject(g_bg_bands[i]);
     for (int i = 0; i < PAL_COLORS; i++) DeleteObject(g_palette[i]);
     DeleteCriticalSection(&g_lock);
-    if (g_host && g_host->log) g_host->log("Fireworks : déchargé");
+    if (g_host && g_host->log) g_host->log("Fireworks: unloaded");
     g_host = NULL;
 }
 

@@ -64,7 +64,7 @@ static int init(mp_plugin* self, const mp_host_api* host)
     g_peak_db[0] = g_peak_db[1] = DB_FLOOR;
 
     if (g_host && g_host->log)
-        g_host->log("VUMeter : init OK (24 LED/canal, -45..+3 dB)");
+        g_host->log("VUMeter: init OK (24 LEDs/channel, -45..+3 dB)");
     return 0;
 }
 
@@ -76,7 +76,7 @@ static void destroy(mp_plugin* self)
     DeleteObject(g_bg); DeleteObject(g_frame_br); DeleteObject(g_peak_br);
     DeleteObject(g_label_off);
     DeleteCriticalSection(&g_lock);
-    if (g_host && g_host->log) g_host->log("VUMeter : déchargé");
+    if (g_host && g_host->log) g_host->log("VUMeter: unloaded");
     g_host = NULL;
 }
 

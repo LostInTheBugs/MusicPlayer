@@ -19,14 +19,14 @@ static int init(mp_plugin* self, const mp_host_api* host)
     (void)self;
     g_host = host;
     if (g_host && g_host->log)
-        g_host->log("GainDemo : init OK");
+        g_host->log("GainDemo: init OK");
     return 0;
 }
 
 static void destroy(mp_plugin* self)
 {
     (void)self;
-    if (g_host && g_host->log) g_host->log("GainDemo : déchargé");
+    if (g_host && g_host->log) g_host->log("GainDemo: unloaded");
     g_host = NULL;
 }
 

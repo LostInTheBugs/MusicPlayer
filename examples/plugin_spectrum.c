@@ -144,7 +144,7 @@ static int init(mp_plugin* self, const mp_host_api* host)
     memset(g_levels, 0, sizeof(g_levels));
     memset(g_peaks, 0, sizeof(g_peaks));
 
-    if (g_host && g_host->log) g_host->log("Spectrum : init OK (FFT 1024, 48 barres)");
+    if (g_host && g_host->log) g_host->log("Spectrum: init OK (FFT 1024, 48 bars)");
     return 0;
 }
 
@@ -159,7 +159,7 @@ static void destroy(mp_plugin* self)
         DeleteObject(g_palette_halo[i]);
     }
     DeleteCriticalSection(&g_cap_lock);
-    if (g_host && g_host->log) g_host->log("Spectrum : déchargé");
+    if (g_host && g_host->log) g_host->log("Spectrum: unloaded");
     g_host = NULL;
 }
 

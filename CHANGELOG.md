@@ -2,6 +2,18 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.004] — 2026-08-02
+
+### Added
+- **Multilingue** : fichiers texte `lang/<code>.lang` (UTF-8, `cle=valeur`, commentaires `#`) — n'importe qui peut ajouter une langue sans recompiler
+- Menu **Language / Langue** : bascule instantanée, préférence mémorisée dans `%APPDATA%\MusicPlayer\lang.txt`
+- **Anglais par défaut** (embarqué dans le binaire), détection automatique de la langue de Windows, français fourni (`fr.lang`)
+- Fichiers fournis : `lang/en.lang`, `lang/fr.lang`, guide `lang/README.md`
+
+### Changed
+- Tous les textes de l'interface passent par le moteur de traduction (menus, status bar, dialogues, messages, états)
+- Messages du selftest et des journaux en anglais
+
 ## [2026.08.003] — 2026-08-02
 
 ### Added

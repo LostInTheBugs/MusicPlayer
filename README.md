@@ -8,12 +8,13 @@ compilé sous Linux par compilation croisée (MinGW-w64).
 - Vitesse de 0,5× à 2× par pas de 0,5 · volume 0–100 % · stop = retour à 0 s
 - Glisser-déposer de fichiers, raccourcis clavier
 - **Barre de progression** avec dégradé de couleurs
+- **Multilingue** : fichiers texte `lang/*.lang` (anglais par défaut, français fourni, menu Language pour basculer — voir [lang/README.md](lang/README.md))
 - **Architecture de plugins** (skins, effets audio, visuels) — API version 2 :
   spectre coloré, VU mètre à LED, feu d'artifice synchronisé sur la musique
 
 ## Version
 
-`2026.08.003` — voir [CHANGELOG.md](CHANGELOG.md)
+`2026.08.004` — voir [CHANGELOG.md](CHANGELOG.md)
 
 ## Lancer sous Windows 11
 

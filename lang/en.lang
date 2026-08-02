@@ -1,0 +1,64 @@
+# MusicPlayer — English language file (default)
+# ===============================================
+# Format : key=value   (one per line)
+#   - '#' or ';' at the start of a line = comment
+#   - File must be UTF-8 (with or without BOM)
+#   - \n inside a value = line break
+#   - %d / %s / %hs are formatting placeholders — keep them!
+# The filename (without .lang) is the language code shown in the menu.
+# The built-in English fallback means this file is optional for English,
+# but you can edit it to customize the wording.
+
+lang_name=English
+
+# --- Menus ---
+menu_file=&File
+menu_play=&Playback
+menu_volume=&Volume
+menu_plugins=P&lugins
+menu_lang=&Language
+menu_help=&Help
+
+# --- File menu ---
+open=&Open…\tCtrl+O
+quit=&Quit
+
+# --- Playback menu ---
+play_pause=&Play / Pause\tSpace
+stop=&Stop\tS
+speed=&Speed
+
+# --- Volume menu ---
+vol_up=&Increase\t↑
+vol_down=&Decrease\t↓
+vol_show=Volume: %d%%
+
+# --- Plugins menu ---
+plugins_reload=Reload plugins
+plugins_none=(no plugin)
+
+# --- Help menu ---
+about=&About…
+
+# --- Status bar & states ---
+no_file= (no file)
+state_stopped=Stopped
+state_playing=Playing
+state_paused=Paused
+state_finished=Finished
+center_stopped=Stopped
+center_playing=Now playing
+center_paused=Paused
+center_finished=Finished
+
+# --- Open dialog ---
+open_title=Open audio file
+filter_audio=Audio files (*.mp3;*.mp4)
+filter_mp3=MP3 (*.mp3)
+filter_mp4=MP4 (*.mp4)
+filter_all=All files (*.*)
+
+# --- Messages ---
+err_open=Cannot open "%s".\nUnsupported format or corrupted file.
+about_title=About
+about_text=MusicPlayer %hs (app)\n\nAudio player for MP3 / MP4 (Windows).\nDecoding : FFmpeg %hs\nAudio : miniaudio\nPlugins : %d loaded\n\nShortcuts : Space = play/pause, S = stop,\n↑/↓ = volume, Ctrl+O = open

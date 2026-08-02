@@ -13,7 +13,7 @@
 #   make clean
 # ======================================================================
 
-VERSION := 2026.08.003
+VERSION := 2026.08.004
 
 CROSS    := x86_64-w64-mingw32-
 CC       := $(CROSS)gcc
@@ -30,7 +30,7 @@ LDFLAGS  := -Lvendor/ffmpeg/lib \
             -luser32 -lgdi32 -lshell32 -lcomdlg32 -lcomctl32 \
             -static-libgcc -mwindows
 
-SRC := src/main.c src/player.c src/plugin_loader.c
+SRC := src/main.c src/player.c src/plugin_loader.c src/lang.c
 OBJ := $(SRC:.c=.o)
 BIN := bin/MusicPlayer.exe
 
@@ -40,11 +40,12 @@ FFMPEG_DLLS := avcodec-62.dll avformat-62.dll avutil-60.dll swresample-6.dll
 all: dirs $(BIN)
 
 dirs:
-	mkdir -p bin/plugins plugins test dist
+	mkdir -p bin/plugins bin/lang plugins test dist
 
 $(BIN): $(OBJ)
 	$(CC) $(CFLAGS) -o $@ $(OBJ) $(LDFLAGS)
 	cp $(addprefix vendor/ffmpeg/bin/,$(FFMPEG_DLLS)) bin/
+	cp lang/* bin/lang/
 
 %.o: %.c
 	$(CC) $(CFLAGS) -c -o $@ $<
@@ -79,7 +80,7 @@ test: all plugins-examples test-samples
 # Archive portable pour Windows 11
 # ----------------------------------------------------------------------
 zip: all plugins-examples dirs
-	cd bin && zip -q ../dist/MusicPlayer-$(VERSION)-win64.zip MusicPlayer.exe $(FFMPEG_DLLS) plugins/*.dll && \
+	cd bin && zip -q ../dist/MusicPlayer-$(VERSION)-win64.zip MusicPlayer.exe $(FFMPEG_DLLS) plugins/*.dll lang/*.lang && \
 	cd .. && echo "Archive : dist/MusicPlayer-$(VERSION)-win64.zip"
 
 clean:

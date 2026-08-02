@@ -6,6 +6,7 @@
  * convertis en UTF-8 pour le moteur (FFmpeg gère l'UTF-8 sur Windows).
  */
 #include <windows.h>
+#include <shlobj.h>
 #include <commctrl.h>
 #include <commdlg.h>
 #include <shellapi.h>
@@ -17,9 +18,10 @@
 #include "player.h"
 #include "plugin.h"
 #include "plugin_loader.h"
+#include "lang.h"
 
 #ifndef MP_VERSION
-#define MP_VERSION "2026.08.001"
+#define MP_VERSION "2026.08.004"
 #endif
 /* indirection : les arguments de ## ne sont pas expansés, d'où les 2 niveaux */
 #define MP_WIDE2(x) L##x
@@ -36,6 +38,7 @@ enum {
     IDM_VOL_UP = 401, IDM_VOL_DOWN = 402, IDM_VOL_SHOW = 403,
     IDM_PLUGIN_RELOAD = 501,
     IDM_PLUGIN_BASE = 600,  /* items plugins dynamiques */
+    IDM_LANG_BASE = 700,    /* items langues dynamiques */
     IDM_ABOUT = 901
 };
 
@@ -45,6 +48,7 @@ static const float SPEED_VALUES[SPEED_COUNT] = { 0.5f, 1.0f, 1.5f, 2.0f };
 static HWND g_hwnd = NULL;
 static HWND g_status = NULL;
 static wchar_t g_plugins_dir[MAX_PATH] = { 0 };
+static wchar_t g_lang_dir[MAX_PATH] = { 0 };
 
 /* ------------------------------------------------------------------ */
 /* Helpers UTF-8 <-> UTF-16                                            */
@@ -126,7 +130,7 @@ static void status_update(void)
         base = base ? base + 1 : fn;
         utf8_to_wide(base, s1, 280);
     } else {
-        wcscpy(s1, L" (aucun fichier)");
+        wcscpy(s1, lang_get("no_file"));
     }
 
     double pos = mp_get_position(), dur = mp_get_duration();
@@ -136,7 +140,7 @@ static void status_update(void)
     swprintf(s2, 32, L" %ls / %ls", p, d);
 
     swprintf(s3, 32, L" x%.1f", mp_get_speed());
-    swprintf(s4, 48, L" Vol %d%%", (int)(mp_get_volume() * 100.0f + 0.5f));
+    swprintf(s4, 48, lang_get("vol_show"), (int)(mp_get_volume() * 100.0f + 0.5f));
 
     SendMessageW(g_status, SB_SETTEXT, 0, (LPARAM)s1);
     SendMessageW(g_status, SB_SETTEXT, 1, (LPARAM)s2);
@@ -144,9 +148,9 @@ static void status_update(void)
     SendMessageW(g_status, SB_SETTEXT, 3, (LPARAM)s4);
 
     /* titre + état dans la zone centrale */
-    static const wchar_t* state_txt[] = { L"Arrêté", L"Lecture", L"Pause", L"Terminé" };
+    static const char* state_keys[] = { "state_stopped", "state_playing", "state_paused", "state_finished" };
     wchar_t title[320];
-    swprintf(title, 320, L"%ls — %ls", APP_TITLE, state_txt[mp_get_state()]);
+    swprintf(title, 320, L"%ls — %ls", APP_TITLE, lang_get(state_keys[mp_get_state()]));
     SetWindowTextW(g_hwnd, title);
     InvalidateRect(g_hwnd, NULL, TRUE);
 }
@@ -178,19 +182,19 @@ static void refresh_speed_check(HMENU menu)
 static void refresh_volume_item(HMENU menu)
 {
     wchar_t label[32];
-    swprintf(label, 32, L"Volume : %d%%", (int)(mp_get_volume() * 100.0f + 0.5f));
+    swprintf(label, 32, lang_get("vol_show"), (int)(mp_get_volume() * 100.0f + 0.5f));
     ModifyMenuW(menu, IDM_VOL_SHOW, MF_BYCOMMAND | MF_GRAYED | MF_STRING, IDM_VOL_SHOW, label);
 }
 
 static void rebuild_plugins_menu(HMENU parent)
 {
     HMENU m = CreatePopupMenu();
-    AppendMenuW(m, MF_STRING, IDM_PLUGIN_RELOAD, L"Recharger les plugins");
+    AppendMenuW(m, MF_STRING, IDM_PLUGIN_RELOAD, lang_get("plugins_reload"));
     AppendMenuW(m, MF_SEPARATOR, 0, NULL);
 
     int n = mp_plugins_count();
     if (n == 0) {
-        AppendMenuW(m, MF_GRAYED | MF_STRING, 0, L"(aucun plugin)");
+        AppendMenuW(m, MF_GRAYED | MF_STRING, 0, lang_get("plugins_none"));
     } else {
         for (int i = 0; i < n; i++) {
             mp_plugin* p = mp_plugins_get(i);
@@ -205,7 +209,24 @@ static void rebuild_plugins_menu(HMENU parent)
     }
     /* remplace l'ancien sous-menu Plugins (position 3) */
     RemoveMenu(parent, 3, MF_BYPOSITION);
-    InsertMenuW(parent, 3, MF_BYPOSITION | MF_POPUP, (UINT_PTR)m, L"Plugins");
+    InsertMenuW(parent, 3, MF_BYPOSITION | MF_POPUP, (UINT_PTR)m, lang_get("menu_plugins"));
+    DrawMenuBar(g_hwnd);
+}
+
+/* Sous-menu des langues disponibles (position 4) */
+static void rebuild_lang_menu(HMENU parent)
+{
+    HMENU m = CreatePopupMenu();
+    int n = 0;
+    const lang_info* li = lang_list(&n);
+    for (int i = 0; i < n; i++) {
+        AppendMenuW(m, MF_STRING, IDM_LANG_BASE + i, li[i].name);
+        if (wcscmp(li[i].code, lang_code()) == 0)
+            CheckMenuRadioItem(m, IDM_LANG_BASE, IDM_LANG_BASE + n - 1,
+                               IDM_LANG_BASE + i, MF_BYCOMMAND);
+    }
+    RemoveMenu(parent, 4, MF_BYPOSITION);
+    InsertMenuW(parent, 4, MF_BYPOSITION | MF_POPUP, (UINT_PTR)m, lang_get("menu_lang"));
     DrawMenuBar(g_hwnd);
 }
 
@@ -214,59 +235,96 @@ static HMENU create_menus(void)
     HMENU bar = CreateMenu();
 
     HMENU mFile = CreatePopupMenu();
-    AppendMenuW(mFile, MF_STRING, IDM_OPEN, L"&Ouvrir…\tCtrl+O");
+    AppendMenuW(mFile, MF_STRING, IDM_OPEN, lang_get("open"));
     AppendMenuW(mFile, MF_SEPARATOR, 0, NULL);
-    AppendMenuW(mFile, MF_STRING, IDM_EXIT, L"&Quitter");
-    AppendMenuW(bar, MF_POPUP, (UINT_PTR)mFile, L"&Fichier");
+    AppendMenuW(mFile, MF_STRING, IDM_EXIT, lang_get("quit"));
+    AppendMenuW(bar, MF_POPUP, (UINT_PTR)mFile, lang_get("menu_file"));
 
     HMENU mPlay = CreatePopupMenu();
-    AppendMenuW(mPlay, MF_STRING, IDM_PLAYPAUSE, L"&Lecture / Pause\tEspace");
-    AppendMenuW(mPlay, MF_STRING, IDM_STOP, L"&Stop\tS");
+    AppendMenuW(mPlay, MF_STRING, IDM_PLAYPAUSE, lang_get("play_pause"));
+    AppendMenuW(mPlay, MF_STRING, IDM_STOP, lang_get("stop"));
     AppendMenuW(mPlay, MF_SEPARATOR, 0, NULL);
-    AppendMenuW(mPlay, MF_POPUP, (UINT_PTR)build_speed_menu(), L"&Vitesse");
-    AppendMenuW(bar, MF_POPUP, (UINT_PTR)mPlay, L"&Lecture");
+    AppendMenuW(mPlay, MF_POPUP, (UINT_PTR)build_speed_menu(), lang_get("speed"));
+    AppendMenuW(bar, MF_POPUP, (UINT_PTR)mPlay, lang_get("menu_play"));
 
     HMENU mVol = CreatePopupMenu();
-    AppendMenuW(mVol, MF_STRING, IDM_VOL_UP, L"&Monter\t↑");
-    AppendMenuW(mVol, MF_STRING, IDM_VOL_DOWN, L"&Descendre\t↓");
+    AppendMenuW(mVol, MF_STRING, IDM_VOL_UP, lang_get("vol_up"));
+    AppendMenuW(mVol, MF_STRING, IDM_VOL_DOWN, lang_get("vol_down"));
     AppendMenuW(mVol, MF_SEPARATOR, 0, NULL);
-    AppendMenuW(mVol, MF_GRAYED | MF_STRING, IDM_VOL_SHOW, L"Volume : 80%");
-    AppendMenuW(bar, MF_POPUP, (UINT_PTR)mVol, L"&Volume");
+    AppendMenuW(mVol, MF_GRAYED | MF_STRING, IDM_VOL_SHOW, lang_get("vol_show"));
+    AppendMenuW(bar, MF_POPUP, (UINT_PTR)mVol, lang_get("menu_volume"));
 
-    AppendMenuW(bar, MF_POPUP, (UINT_PTR)CreatePopupMenu(), L"P&lugins");
+    AppendMenuW(bar, MF_POPUP, (UINT_PTR)CreatePopupMenu(), lang_get("menu_plugins"));
+    AppendMenuW(bar, MF_POPUP, (UINT_PTR)CreatePopupMenu(), lang_get("menu_lang"));
 
     HMENU mHelp = CreatePopupMenu();
-    AppendMenuW(mHelp, MF_STRING, IDM_ABOUT, L"À &propos…");
-    AppendMenuW(bar, MF_POPUP, (UINT_PTR)mHelp, L"A&ide");
+    AppendMenuW(mHelp, MF_STRING, IDM_ABOUT, lang_get("about"));
+    AppendMenuW(bar, MF_POPUP, (UINT_PTR)mHelp, lang_get("menu_help"));
 
     return bar;
+}
+
+/* Reconstruction complète de la barre de menus (changement de langue) */
+static void rebuild_menus(void)
+{
+    HMENU old = GetMenu(g_hwnd);
+    HMENU bar = create_menus();
+    SetMenu(g_hwnd, bar);
+    refresh_speed_check(GetSubMenu(bar, 1));
+    rebuild_plugins_menu(bar);
+    rebuild_lang_menu(bar);
+    if (old) DestroyMenu(old);
+    mp_plugins_apply_skins(g_hwnd);
 }
 
 /* ------------------------------------------------------------------ */
 /* Dialogues                                                           */
 /* ------------------------------------------------------------------ */
+/* Construction du filtre de fichiers (chaîne à double \0) */
+static int add_filter(wchar_t* out, int cap, const wchar_t* s)
+{
+    int len = (int)wcslen(s);
+    if (len + 2 > cap) return 0;
+    memcpy(out, s, (size_t)len * sizeof(wchar_t));
+    out[len] = 0;
+    return len + 1;
+}
+
+static void build_open_filter(wchar_t* out, int out_chars)
+{
+    int n = 0;
+    n += add_filter(out + n, out_chars - n, lang_get("filter_audio"));
+    n += add_filter(out + n, out_chars - n, L"*.mp3;*.mp4");
+    n += add_filter(out + n, out_chars - n, lang_get("filter_mp3"));
+    n += add_filter(out + n, out_chars - n, L"*.mp3");
+    n += add_filter(out + n, out_chars - n, lang_get("filter_mp4"));
+    n += add_filter(out + n, out_chars - n, L"*.mp4");
+    n += add_filter(out + n, out_chars - n, lang_get("filter_all"));
+    n += add_filter(out + n, out_chars - n, L"*.*");
+    if (n + 1 < out_chars) out[n] = 0;   /* double \0 final */
+}
+
 static void do_open_dialog(void)
 {
     wchar_t path_w[MAX_PATH] = { 0 };
+    wchar_t filter[512] = { 0 };
+    build_open_filter(filter, 512);
     OPENFILENAMEW ofn;
     memset(&ofn, 0, sizeof(ofn));
     ofn.lStructSize = sizeof(ofn);
     ofn.hwndOwner = g_hwnd;
-    ofn.lpstrFilter = L"Fichiers audio (*.mp3;*.mp4)\0*.mp3;*.mp4\0"
-                      L"MP3 (*.mp3)\0*.mp3\0"
-                      L"MP4 (*.mp4)\0*.mp4\0"
-                      L"Tous les fichiers (*.*)\0*.*\0";
+    ofn.lpstrFilter = filter;
     ofn.lpstrFile = path_w;
     ofn.nMaxFile = MAX_PATH;
     ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST;
-    ofn.lpstrTitle = L"Ouvrir un fichier audio";
+    ofn.lpstrTitle = lang_get("open_title");
 
     if (GetOpenFileNameW(&ofn)) {
         char path_utf8[MAX_PATH * 3];
         wide_to_utf8(path_w, path_utf8, sizeof(path_utf8));
         if (mp_open(path_utf8) != 0) {
             wchar_t msg[600];
-            swprintf(msg, 600, L"Impossible d'ouvrir \"%ls\".\nFormat non supporté ou fichier corrompu.", path_w);
+            swprintf(msg, 600, lang_get("err_open"), path_w);
             MessageBoxW(g_hwnd, msg, APP_TITLE, MB_ICONERROR);
         }
     }
@@ -275,14 +333,8 @@ static void do_open_dialog(void)
 static void do_about(void)
 {
     wchar_t msg[1024];
-    swprintf(msg, 1024,
-        L"MusicPlayer " MP_VERSION_W L"\n\n"
-        L"Lecteur audio MP3 / MP4 pour Windows.\n"
-        L"Décodage : FFmpeg %hs\nAudio : miniaudio 0.11\nPlugins : %d chargé(s)\n\n"
-        L"Raccourcis : Espace = lecture/pause, S = stop,\n"
-        L"↑/↓ = volume, Ctrl+O = ouvrir",
-        av_version_info(), mp_plugins_count());
-    MessageBoxW(g_hwnd, msg, L"À propos", MB_OK | MB_ICONINFORMATION);
+    swprintf(msg, 1024, lang_get("about_text"), MP_VERSION, av_version_info(), mp_plugins_count());
+    MessageBoxW(g_hwnd, msg, lang_get("about_title"), MB_OK | MB_ICONINFORMATION);
 }
 
 /* ------------------------------------------------------------------ */
@@ -381,8 +433,8 @@ static void paint_center(HDC hdc, RECT* rc)
 
     SetBkMode(hdc, TRANSPARENT);
     const char* fn = mp_get_file_name();
-    static const wchar_t* state_txt[] = { L"Arrêté", L"Lecture en cours", L"En pause", L"Terminé" };
-    const wchar_t* st = state_txt[mp_get_state()];
+    static const char* state_keys[] = { "center_stopped", "center_playing", "center_paused", "center_finished" };
+    const wchar_t* st = lang_get(state_keys[mp_get_state()]);
 
     HFONT big = CreateFontW(22, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
                             DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
@@ -415,6 +467,51 @@ static void paint_center(HDC hdc, RECT* rc)
     DeleteObject(small);
 
     draw_progress_bar(hdc, &bar_rc);
+}
+
+/* ------------------------------------------------------------------ */
+/* Préférence de langue (persistée dans %APPDATA%\MusicPlayer)         */
+/* ------------------------------------------------------------------ */
+static void lang_pref_path(wchar_t* out, int out_chars)
+{
+    wchar_t appdata[MAX_PATH];
+    if (SHGetFolderPathW(NULL, CSIDL_APPDATA, NULL, 0, appdata) == S_OK) {
+        swprintf(out, out_chars, L"%ls\\MusicPlayer", appdata);
+        CreateDirectoryW(out, NULL);
+        wcscat(out, L"\\lang.txt");
+    } else {
+        out[0] = 0;
+    }
+}
+
+static void lang_pref_save(const wchar_t* code)
+{
+    wchar_t path[MAX_PATH];
+    lang_pref_path(path, MAX_PATH);
+    if (!path[0]) return;
+    FILE* f = _wfopen(path, L"wb");
+    if (f) {
+        char buf[16] = { 0 };
+        WideCharToMultiByte(CP_UTF8, 0, code, -1, buf, 16, NULL, NULL);
+        fwrite(buf, 1, strlen(buf), f);
+        fclose(f);
+    }
+}
+
+static void lang_pref_load(void)
+{
+    wchar_t path[MAX_PATH];
+    lang_pref_path(path, MAX_PATH);
+    if (!path[0]) return;
+    FILE* f = _wfopen(path, L"rb");
+    if (f) {
+        char buf[16] = { 0 };
+        fread(buf, 1, 15, f);
+        fclose(f);
+        wchar_t code[8] = { 0 };
+        MultiByteToWideChar(CP_UTF8, 0, buf, -1, code, 8);
+        if (code[0]) lang_set(code);
+    }
 }
 
 /* ------------------------------------------------------------------ */
@@ -453,13 +550,24 @@ static void on_command(int id, HMENU bar)
         if (id >= IDM_SPEED_BASE && id < IDM_SPEED_BASE + SPEED_COUNT) {
             mp_set_speed(SPEED_VALUES[id - IDM_SPEED_BASE]);
             refresh_speed_check(GetSubMenu(GetMenu(g_hwnd), 1));
-        } else if (id >= IDM_PLUGIN_BASE) {
+        } else if (id >= IDM_PLUGIN_BASE && id < IDM_LANG_BASE) {
             int i = id - IDM_PLUGIN_BASE;
             mp_plugin* p = mp_plugins_get(i);
             if (p) {
                 mp_plugins_set_enabled(i, !p->enabled);
                 mp_plugins_apply_skins(g_hwnd);
                 rebuild_plugins_menu(GetMenu(g_hwnd));
+            }
+        } else if (id >= IDM_LANG_BASE) {
+            int i = id - IDM_LANG_BASE;
+            int n = 0;
+            const lang_info* li = lang_list(&n);
+            if (i >= 0 && i < n) {
+                if (lang_set(li[i].code) == 0) {
+                    lang_pref_save(li[i].code);
+                    rebuild_menus();
+                    status_update();
+                }
             }
         }
         break;
@@ -488,7 +596,7 @@ static LRESULT CALLBACK wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         wide_to_utf8(path_w, path_utf8, sizeof(path_utf8));
         if (mp_open(path_utf8) != 0) {
             wchar_t msg[600];
-            swprintf(msg, 600, L"Impossible d'ouvrir \"%ls\".\nFormat non supporté ou fichier corrompu.", path_w);
+            swprintf(msg, 600, lang_get("err_open"), path_w);
             MessageBoxW(hwnd, msg, APP_TITLE, MB_ICONERROR);
         }
         return 0;
@@ -554,11 +662,11 @@ static int run_selftest(int argc, char** argv)
     FILE* log = fopen("selftest.log", "w");
     if (!log) return 2;
 
-    fprintf(log, "MusicPlayer " MP_VERSION " — selftest\n");
+    fprintf(log, "MusicPlayer " MP_VERSION " — self-test\n");
     fprintf(log, "FFmpeg : %s\n", av_version_info());
 
     mp_init();
-    fprintf(log, "Périphérique audio : %s\n", mp_audio_device_ok() ? "OK" : "ABSENT (mode silencieux)");
+    fprintf(log, "Audio device : %s\n", mp_audio_device_ok() ? "OK" : "ABSENT (silent mode)");
     int all_ok = 1;
 
     /* argv[0] est le premier token de la ligne de commande ("--selftest") */
@@ -573,7 +681,7 @@ static int run_selftest(int argc, char** argv)
             double pos = mp_get_position();
             double dur = mp_get_duration();
             ok = (st == MP_STATE_PLAYING) && pos > 0.05 && dur > 0.0;
-            fprintf(log, "  lecture   : état=%d pos=%.2fs dur=%.2fs -> %s\n",
+            fprintf(log, "  playback  : state=%d pos=%.2fs dur=%.2fs -> %s\n",
                     st, pos, dur, ok ? "PASS" : "FAIL");
 
             /* test vitesse */
@@ -581,7 +689,7 @@ static int run_selftest(int argc, char** argv)
             Sleep(150);
             float sp = mp_get_speed();
             int sp_ok = (sp == 2.0f);
-            fprintf(log, "  vitesse   : x%.1f -> %s\n", sp, sp_ok ? "PASS" : "FAIL");
+            fprintf(log, "  speed     : x%.1f -> %s\n", sp, sp_ok ? "PASS" : "FAIL");
             ok &= sp_ok;
             mp_set_speed(1.0f);
 
@@ -600,7 +708,7 @@ static int run_selftest(int argc, char** argv)
             double pos2 = mp_get_position();
             int st2 = mp_get_state();
             int stop_ok = (st2 == MP_STATE_STOPPED && pos2 == 0.0);
-            fprintf(log, "  stop      : état=%d pos=%.2fs -> %s\n", st2, pos2,
+            fprintf(log, "  stop      : state=%d pos=%.2fs -> %s\n", st2, pos2,
                     stop_ok ? "PASS" : "FAIL");
             ok &= stop_ok;
 
@@ -608,14 +716,14 @@ static int run_selftest(int argc, char** argv)
             mp_play();
             Sleep((DWORD)(dur * 1000.0) + 1200);
             int fin_ok = (mp_get_state() == MP_STATE_FINISHED);
-            fprintf(log, "  fin       : état=%d (durée=%.2fs) -> %s\n",
+            fprintf(log, "  end       : state=%d (dur=%.2fs) -> %s\n",
                     mp_get_state(), dur, fin_ok ? "PASS" : "FAIL");
             ok &= fin_ok;
 
             mp_stop();
         } else {
             ok = 0;
-            fprintf(log, "  ouverture : FAIL\n");
+            fprintf(log, "  open      : FAIL\n");
         }
         all_ok &= ok;
     }
@@ -636,6 +744,7 @@ static void resolve_plugins_dir(void)
     wchar_t* slash = wcsrchr(exe, L'\\');
     if (slash) *slash = L'\0';
     swprintf(g_plugins_dir, MAX_PATH, L"%ls\\plugins", exe);
+    swprintf(g_lang_dir, MAX_PATH, L"%ls\\lang", exe);
 }
 
 int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR lpCmdLine, int nCmdShow)
@@ -665,10 +774,14 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR lpCmdLine, int nCmdSh
     {
         char dir_utf8[MAX_PATH * 2], dbg[600];
         wide_to_utf8(g_plugins_dir, dir_utf8, sizeof(dir_utf8));
-        _snprintf(dbg, sizeof(dbg), "Répertoire plugins : %s", dir_utf8);
+        _snprintf(dbg, sizeof(dbg), "Plugins directory : %s", dir_utf8);
         log_line(dbg);
     }
     mp_plugins_scan(g_plugins_dir, &g_host);
+
+    /* langue : préférence mémorisée, sinon langue du système, sinon anglais */
+    lang_init(g_lang_dir, NULL);
+    lang_pref_load();
 
     WNDCLASSW wc;
     memset(&wc, 0, sizeof(wc));
@@ -680,7 +793,7 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR lpCmdLine, int nCmdSh
     wc.lpszClassName = L"MusicPlayerWnd";
     if (!RegisterClassW(&wc)) {
         char dbg[256];
-        _snprintf(dbg, sizeof(dbg), "RegisterClassW a échoué (err=%lu)", GetLastError());
+        _snprintf(dbg, sizeof(dbg), "RegisterClassW failed (err=%lu)", GetLastError());
         log_line(dbg);
     }
 
@@ -690,22 +803,23 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR lpCmdLine, int nCmdSh
                              NULL, NULL, hInst, NULL);
     if (!g_hwnd) {
         char dbg[256];
-        _snprintf(dbg, sizeof(dbg), "CreateWindowExW a échoué (err=%lu)", GetLastError());
+        _snprintf(dbg, sizeof(dbg), "CreateWindowExW failed (err=%lu)", GetLastError());
         log_line(dbg);
         return 1;
     }
-    log_line("Fenêtre créée");
+    log_line("Window created");
 
     HMENU bar = create_menus();
     SetMenu(g_hwnd, bar);
     refresh_speed_check(GetSubMenu(bar, 1));
     rebuild_plugins_menu(bar);
+    rebuild_lang_menu(bar);
     mp_plugins_apply_skins(g_hwnd);
-    log_line("Menus construits");
+    log_line("Menus built");
 
     ShowWindow(g_hwnd, SW_SHOW);
     UpdateWindow(g_hwnd);
-    log_line("Fenêtre affichée");
+    log_line("Window shown");
 
     /* fichier passé en ligne de commande : "MusicPlayer.exe chemin.mp3" */
     if (lpCmdLine && *lpCmdLine) {
@@ -719,7 +833,7 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR lpCmdLine, int nCmdSh
         }
         if (mp_open(file) != 0) {
             char dbg[512];
-            _snprintf(dbg, sizeof(dbg), "Ouverture en ligne de commande a échoué : %s", file);
+            _snprintf(dbg, sizeof(dbg), "Command-line open failed : %s", file);
             log_line(dbg);
         }
     }
