@@ -12,18 +12,19 @@
 #include <windows.h>
 #include <math.h>
 #include <string.h>
+#include <stdio.h>
 
 #define FFT_SIZE 1024
 #define COLS     24        /* colonnes de fréquences */
 #define ROWS     14        /* rangées de temps (historique) */
 #define SEGS     6         /* segments du dégradé vertical */
-#define CAP_SIZE 4096
+#define CAP_SIZE 32768     /* tampon audio : ~0,74 s à 44,1 kHz */
 
 static const mp_host_api* g_host = NULL;
 
 static float    g_window[FFT_SIZE];
-static float    g_last[CAP_SIZE];
-static unsigned g_last_frames = 0;
+static float    g_ring[CAP_SIZE];       /* tampon audio continu */
+static unsigned g_ring_frames = 0;
 static CRITICAL_SECTION g_cap_lock;
 
 static float  g_hist[ROWS][COLS];      /* hist[0] = maintenant, [ROWS-1] = passé */
@@ -115,8 +116,8 @@ static int init(mp_plugin* self, const mp_host_api* host)
     g_grid_pen = CreatePen(PS_SOLID, 1, RGB(28, 32, 62));
 
     InitializeCriticalSection(&g_cap_lock);
-    g_last_frames = 0;
-    memset(g_last, 0, sizeof(g_last));
+    g_ring_frames = 0;
+    memset(g_ring, 0, sizeof(g_ring));
     memset(g_hist, 0, sizeof(g_hist));
     memset(g_smooth, 0, sizeof(g_smooth));
 
@@ -146,14 +147,29 @@ static void audio_frames(mp_plugin* self, const float* samples, unsigned frames,
     if (channels == 0 || frames == 0) return;
     if (frames > CAP_SIZE) frames = CAP_SIZE;
 
+    /* mono + accumulation dans le tampon (ring simple) */
     EnterCriticalSection(&g_cap_lock);
-    for (unsigned i = 0; i < frames; i++) {
-        float mono = samples[i * channels];
-        for (unsigned c = 1; c < channels; c++)
-            mono += samples[i * channels + c];
-        g_last[i] = mono / (float)channels;
+    if (g_ring_frames + frames > CAP_SIZE) {
+        unsigned drop = g_ring_frames + frames - CAP_SIZE;
+        memmove(g_ring, g_ring + drop, (CAP_SIZE - frames) * sizeof(float));
+        float* dst = g_ring + CAP_SIZE - frames;
+        for (unsigned i = 0; i < frames; i++) {
+            float m = samples[i * channels];
+            for (unsigned c = 1; c < channels; c++)
+                m += samples[i * channels + c];
+            dst[i] = m / (float)channels;
+        }
+        g_ring_frames = CAP_SIZE;
+    } else {
+        float* dst = g_ring + g_ring_frames;
+        for (unsigned i = 0; i < frames; i++) {
+            float m = samples[i * channels];
+            for (unsigned c = 1; c < channels; c++)
+                m += samples[i * channels + c];
+            dst[i] = m / (float)channels;
+        }
+        g_ring_frames += frames;
     }
-    g_last_frames = frames;
     LeaveCriticalSection(&g_cap_lock);
 }
 
@@ -168,17 +184,28 @@ static void render(mp_plugin* self, void* hdc_v, int width, int height)
     RECT all = { 0, 0, width, height };
     FillRect(hdc, &all, g_black);
 
-    /* niveaux FFT → rangée courante */
+    /* niveaux FFT : analyse le tampon à chaque frame (30 FPS) */
     float re[FFT_SIZE], im[FFT_SIZE];
+    int has_data = 0;
     EnterCriticalSection(&g_cap_lock);
-    unsigned n = g_last_frames;
-    if (n > 0) { memset(re, 0, sizeof(re)); memcpy(re, g_last, n * sizeof(float)); }
+    if (g_ring_frames >= FFT_SIZE) {
+        memcpy(re, g_ring + g_ring_frames - FFT_SIZE, FFT_SIZE * sizeof(float));
+        has_data = 1;
+    }
     LeaveCriticalSection(&g_cap_lock);
 
-    if (n > 0) {
-        memset(im, 0, sizeof(im));
-        for (int i = 0; i < FFT_SIZE; i++) re[i] *= g_window[i];
-        fft_radix2(re, im, FFT_SIZE);
+    if (has_data) {
+        /* détection de silence : les zéros (rafales Wine / pause) ne doivent
+         * pas vider le paysage — retombée très lente au lieu du lissage */
+        float e = 0.0f;
+        for (int i = 0; i < FFT_SIZE; i++) e += re[i] * re[i];
+        e = sqrtf(e / FFT_SIZE);
+        if (e < 0.002f) {
+            for (int c = 0; c < COLS; c++) g_smooth[c] *= 0.995f;
+        } else {
+            memset(im, 0, sizeof(im));
+            for (int i = 0; i < FFT_SIZE; i++) re[i] *= g_window[i];
+            fft_radix2(re, im, FFT_SIZE);
         const float gain = 12.0f;
         int max_bin = FFT_SIZE / 2;
         float row[COLS];
@@ -195,27 +222,28 @@ static void render(mp_plugin* self, void* hdc_v, int width, int height)
             if (mag > 1.0f) mag = 1.0f;
             row[c] = mag;
         }
-        /* lissage : montée rapide, descente lente */
-        for (int c = 0; c < COLS; c++) {
-            if (row[c] > g_smooth[c]) g_smooth[c] = row[c];
-            else g_smooth[c] = row[c] + (g_smooth[c] - row[c]) * 0.93f;
-            row[c] = g_smooth[c];
+            /* lissage : montée rapide, descente lente */
+            for (int c = 0; c < COLS; c++) {
+                if (row[c] > g_smooth[c]) g_smooth[c] = row[c];
+                else g_smooth[c] = row[c] + (g_smooth[c] - row[c]) * 0.93f;
+                row[c] = g_smooth[c];
+            }
+            /* décalage : le présent devient l'historique */
+            for (int r = ROWS - 1; r >= 1; r--)
+                memcpy(g_hist[r], g_hist[r - 1], sizeof(g_hist[0]));
+            memcpy(g_hist[0], row, sizeof(row));
         }
-        /* décalage : le présent devient l'historique */
-        for (int r = ROWS - 1; r >= 1; r--)
-            memcpy(g_hist[r], g_hist[r - 1], sizeof(g_hist[0]));
-        memcpy(g_hist[0], row, sizeof(row));
     }
 
     /* --- géométrie : vue 3D isométrique de côté (axes en diagonale) --- */
     float ax = 0.985f, ay = 0.17f;    /* colonnes (fréquences) → bas-droite */
-    float bx = 0.94f, by = 0.34f;     /* rangées (temps) → haut-gauche */
+    float bx = 0.94f, by = -0.34f;    /* rangées (temps) → HAUT-gauche (le passé s'éloigne vers le fond) */
     float c0 = (COLS - 1) * 0.5f;
     float r0 = (ROWS - 1) * 0.5f;
 
     /* échelle : la grille tient dans la zone (fond rétréci 50 %) */
     float gw = COLS * ax + ROWS * bx;
-    float gh = COLS * ay + ROWS * by;
+    float gh = COLS * ay + ROWS * 0.34f;   /* |by| : hauteur projetée */
     float cell = (float)width / gw;
     float cell_h = (float)(height * 0.78f) / gh;
     if (cell_h < cell) cell = cell_h;
@@ -267,8 +295,6 @@ static void render(mp_plugin* self, void* hdc_v, int width, int height)
         int bh_max = (int)(max_h * sc);
         int bw2 = (int)(bw * sc);
         if (bw2 < 2) bw2 = 2;
-        int lat = bw2 / 3;
-        if (lat < 1) lat = 1;
         for (int c = 0; c < COLS; c++) {
             float lvl = g_hist[r][c];
             int bh = (int)(lvl * bh_max);
@@ -277,6 +303,20 @@ static void render(mp_plugin* self, void* hdc_v, int width, int height)
             float yb = base_y + ((c - c0) * ay + (r - r0) * by) * cell * sc;
             int x0 = (int)x - bw2 / 2;
             int ybi = (int)yb;
+            int lat = bw2 / 2;               /* profondeur de la face latérale */
+            if (lat < 1) lat = 1;
+            int laty = lat * 17 / 47;        /* pente de l'axe du temps : 0.34/0.94 ≈ 0.36 */
+
+            /* face latérale droite (vers l'axe des fréquences, teinte moyenne) */
+            POINT side[4] = {
+                { x0 + bw2, ybi },
+                { x0 + bw2 + lat, ybi - laty },
+                { x0 + bw2 + lat, ybi - laty - bh },
+                { x0 + bw2, ybi - bh }
+            };
+            HBRUSH oldb2 = (HBRUSH)SelectObject(hdc, g_brushes[c][SEGS * 2 / 5]);
+            HPEN oldp2 = (HPEN)SelectObject(hdc, GetStockObject(NULL_PEN));
+            Polygon(hdc, side, 4);
 
             /* face avant : dégradé vertical (sombre → lumineux) */
             for (int s = 0; s < SEGS; s++) {
@@ -285,22 +325,12 @@ static void render(mp_plugin* self, void* hdc_v, int width, int height)
                 RECT rc = { x0, y0, x0 + bw2, y1 };
                 FillRect(hdc, &rc, g_brushes[c][s]);
             }
-            /* face latérale gauche (vers le fond, sombre) */
-            POINT side[4] = {
-                { x0, ybi },
-                { x0 - lat, ybi - lat / 2 },
-                { x0 - lat, ybi - lat / 2 - bh },
-                { x0, ybi - bh }
-            };
-            HBRUSH oldb2 = (HBRUSH)SelectObject(hdc, g_brushes[c][0]);
-            HPEN oldp2 = (HPEN)SelectObject(hdc, GetStockObject(NULL_PEN));
-            Polygon(hdc, side, 4);
             /* dessus (lumineux) */
             POINT top[4] = {
                 { x0, ybi - bh },
-                { x0 - lat, ybi - lat / 2 - bh },
-                { x0 + bw2 - lat, ybi - lat / 2 - bh },
-                { x0 + bw2, ybi - bh }
+                { x0 + bw2, ybi - bh },
+                { x0 + bw2 + lat, ybi - laty - bh },
+                { x0 + lat, ybi - laty - bh }
             };
             SelectObject(hdc, g_brushes[c][SEGS - 1]);
             Polygon(hdc, top, 4);

@@ -2,6 +2,12 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.013] — 2026-08-02
+
+### Fixed
+- **3D Isometric : bug critique d'affichage** — la hauteur projetée `gh` devenait négative avec l'axe du temps inversé (`by < 0`), ce qui donnait une échelle de grille négative : barres placées hors écran / scène inversée. Corrigé avec la valeur absolue.
+- Analyse audio stabilisée : **tampon continu de 0,74 s** (au lieu d'un bloc unique) + **détection de silence** (les zéros ne vident plus le paysage, retombée très lente) — le paysage se remplit désormais régulièrement, y compris sous Wine
+
 ## [2026.08.012] — 2026-08-02
 
 ### Changed
