@@ -9,18 +9,18 @@ session de développement.
 |---|---|
 | Session | `20260802_181701_f23c7f` |
 | Modèle | deepseek-v4-flash (provider deepseek) |
-| Messages | 413 |
-| Appels API | 166 |
-| Tokens d'entrée (input) | 120 607 |
-| Tokens de sortie (output) | 246 745 |
-| Dont raisonnement | 141 535 |
-| Cache lecture (cache_read) | 31 295 232 |
+| Messages | 425 |
+| Appels API | 172 |
+| Tokens d'entrée (input) | 125 497 |
+| Tokens de sortie (output) | 250 676 |
+| Dont raisonnement | 143 149 |
+| Cache lecture (cache_read) | 33 302 912 |
 | Cache écriture (cache_write) | 0 |
-| **Total (input + output)** | **367 352** |
-| Coût estimé | ≈ 0,174 USD |
+| **Total (input + output)** | **376 173** |
+| Coût estimé | ≈ 0,181 USD |
 
-> Le gros du coût est amorti par le cache de lecture (31,3 M de tokens
-> relus à prix réduit) : coût facturable ≈ 0,17 $ pour toute la session.
+> Le gros du coût est amorti par le cache de lecture (33,3 M de tokens
+> relus à prix réduit) : coût facturable ≈ 0,18 $ pour toute la session.
 
 ## Comment relire le compteur
 
