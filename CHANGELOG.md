@@ -2,6 +2,12 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.017] — 2026-08-02
+
+### Fixed
+- **Menu File ▸ Open folder… affichait la clé « menu_open_folder »** : les nouvelles clés de l'anglais embarqué (`menu_open_folder`, `err_folder`, mises à jour…) manquaient dans le tableau par défaut
+- **Plantage au clic sur Open folder…** : le dialogue de sélection de dossier passe de `SHBrowseForFolderW` (instable sans COM initialisé) au dialogue moderne **IFileOpenDialog** (FOS_PICKFOLDERS, COM initialisé) — plus stable sur Windows 11
+
 ## [2026.08.016] — 2026-08-02
 
 ### Added

@@ -8,6 +8,7 @@
 #include <windows.h>
 #include <windowsx.h>
 #include <shlobj.h>
+#include <shobjidl.h>
 #include <commctrl.h>
 #include <commdlg.h>
 #include <shellapi.h>
@@ -468,23 +469,35 @@ static void do_open_dialog(void)
 
 static void do_open_folder_dialog(void)
 {
-    BROWSEINFOW bi;
-    memset(&bi, 0, sizeof(bi));
-    bi.hwndOwner = g_hwnd;
-    bi.lpszTitle = lang_get("open_folder_title");
-    bi.ulFlags = BIF_RETURNONLYFSDIRS | BIF_NEWDIALOGSTYLE;
-    LPITEMIDLIST pidl = SHBrowseForFolderW(&bi);
-    if (pidl) {
-        wchar_t dir[MAX_PATH];
-        if (SHGetPathFromIDListW(pidl, dir)) {
-            if (playlist_open_folder(dir) != 0) {
-                wchar_t msg[600];
-                swprintf(msg, 600, lang_get("err_folder"), dir);
-                MessageBoxW(g_hwnd, msg, APP_TITLE, MB_ICONERROR);
+    /* dialogue moderne (Vista+) : IFileOpenDialog en mode "choisir un
+     * dossier" — plus fiable que SHBrowseForFolderW (nécessite le COM) */
+    HRESULT hr = CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);
+    IFileOpenDialog* pfd = NULL;
+    HRESULT h = CoCreateInstance(&CLSID_FileOpenDialog, NULL, CLSCTX_INPROC_SERVER,
+                                 &IID_IFileOpenDialog, (void**)&pfd);
+    if (SUCCEEDED(h) && pfd) {
+        DWORD opts = 0;
+        pfd->lpVtbl->GetOptions(pfd, &opts);
+        pfd->lpVtbl->SetOptions(pfd, opts | FOS_PICKFOLDERS);
+        pfd->lpVtbl->SetTitle(pfd, lang_get("open_folder_title"));
+        if (SUCCEEDED(pfd->lpVtbl->Show(pfd, g_hwnd))) {
+            IShellItem* item = NULL;
+            if (SUCCEEDED(pfd->lpVtbl->GetResult(pfd, &item)) && item) {
+                wchar_t* path = NULL;
+                if (SUCCEEDED(item->lpVtbl->GetDisplayName(item, SIGDN_FILESYSPATH, &path)) && path) {
+                    if (playlist_open_folder(path) != 0) {
+                        wchar_t msg[600];
+                        swprintf(msg, 600, lang_get("err_folder"), path);
+                        MessageBoxW(g_hwnd, msg, APP_TITLE, MB_ICONERROR);
+                    }
+                    CoTaskMemFree(path);
+                }
+                item->lpVtbl->Release(item);
             }
         }
-        CoTaskMemFree(pidl);
+        pfd->lpVtbl->Release(pfd);
     }
+    if (hr == S_OK || hr == S_FALSE) CoUninitialize();
 }
 
 static void do_about(void)
