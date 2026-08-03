@@ -29,6 +29,156 @@
 #include "player.h"
 #include "plugin_loader.h"
 
+static uint32_t g_device_rate = 44100; /* taux du périph (défini plus bas) */
+
+/* ------------------------------------------------------------------ */
+/* Mode DJ local : platine B (2e décodeur FFmpeg) mixé dans le device  */
+/* ------------------------------------------------------------------ */
+static AVFormatContext* g_dj_fmt = NULL;
+static AVCodecContext*  g_dj_codec = NULL;
+static SwrContext*      g_dj_swr = NULL;
+static int              g_dj_stream = -1;
+static volatile LONG    g_dj_active = 0;   /* platine B en lecture */
+static volatile LONG    g_dj_eof = 0;
+static volatile LONG    g_dj_paused = 0;
+static volatile float   g_dj_vol_a = 1.0f; /* volumes des platines */
+static volatile float   g_dj_vol_b = 1.0f;
+static volatile float   g_dj_xf = 0.5f;    /* crossfader 0 = A, 1 = B */
+static float            g_dj_buf[4096 * 2];/* tampon de décodage B */
+static LONG             g_dj_buf_n = 0;
+static LONG             g_dj_buf_pos = 0;
+
+int mp_dj_b_open(const char* path)
+{
+    mp_dj_b_close();
+    if (avformat_open_input(&g_dj_fmt, path, NULL, NULL) != 0) return -1;
+    if (avformat_find_stream_info(g_dj_fmt, NULL) < 0) return -1;
+    for (unsigned i = 0; i < g_dj_fmt->nb_streams; i++) {
+        AVCodecParameters* p = g_dj_fmt->streams[i]->codecpar;
+        if (p->codec_type != AVMEDIA_TYPE_AUDIO) continue;
+        const AVCodec* codec = avcodec_find_decoder(p->codec_id);
+        if (!codec) return -1;
+        g_dj_codec = avcodec_alloc_context3(codec);
+        if (!g_dj_codec) return -1;
+        if (avcodec_parameters_to_context(g_dj_codec, p) < 0) return -1;
+        if (avcodec_open2(g_dj_codec, codec, NULL) < 0) return -1;
+        AVChannelLayout out_layout = AV_CHANNEL_LAYOUT_STEREO;
+        if (swr_alloc_set_opts2(&g_dj_swr, &out_layout, AV_SAMPLE_FMT_FLT,
+                                (int)g_device_rate,
+                                &g_dj_codec->ch_layout, g_dj_codec->sample_fmt,
+                                g_dj_codec->sample_rate, 0, NULL) == 0 &&
+            g_dj_swr)
+            swr_init(g_dj_swr);
+        g_dj_stream = (int)i;
+        break;
+    }
+    if (!g_dj_codec) return -1;
+    g_dj_eof = 0;
+    g_dj_paused = 0;
+    g_dj_buf_n = 0;
+    g_dj_buf_pos = 0;
+    InterlockedExchange(&g_dj_active, 1);
+    return 0;
+}
+
+void mp_dj_b_close(void)
+{
+    InterlockedExchange(&g_dj_active, 0);
+    if (g_dj_swr) { swr_free(&g_dj_swr); g_dj_swr = NULL; }
+    if (g_dj_codec) { avcodec_free_context(&g_dj_codec); g_dj_codec = NULL; }
+    if (g_dj_fmt) { avformat_close_input(&g_dj_fmt); g_dj_fmt = NULL; }
+    g_dj_stream = -1;
+    g_dj_buf_n = 0;
+    g_dj_buf_pos = 0;
+}
+
+int mp_dj_b_active(void) { return (int)g_dj_active; }
+void mp_dj_b_pause(void) { g_dj_paused = !g_dj_paused; }
+int  mp_dj_b_paused(void) { return (int)g_dj_paused; }
+void mp_dj_b_set_vol(float v)
+{
+    if (v < 0.0f) v = 0.0f; else if (v > 1.5f) v = 1.5f;
+    g_dj_vol_b = v;
+}
+float mp_dj_b_get_vol(void) { return g_dj_vol_b; }
+void mp_dj_a_set_vol(float v)
+{
+    if (v < 0.0f) v = 0.0f; else if (v > 1.5f) v = 1.5f;
+    g_dj_vol_a = v;
+}
+float mp_dj_a_get_vol(void) { return g_dj_vol_a; }
+void mp_dj_set_xf(float x)
+{
+    if (x < 0.0f) x = 0.0f; else if (x > 1.0f) x = 1.0f;
+    g_dj_xf = x;
+}
+float mp_dj_get_xf(void) { return g_dj_xf; }
+
+/* Remplit dst (frames stéréo) avec le décodage de la platine B. */
+static uint32_t dj_b_fill(float* dst, uint32_t frames)
+{
+    uint32_t out = 0;
+    while (out < frames) {
+        if (g_dj_buf_pos < g_dj_buf_n) {
+            uint32_t n = (uint32_t)(g_dj_buf_n - g_dj_buf_pos);
+            if (n > frames - out) n = frames - out;
+            memcpy(dst + (size_t)out * 2,
+                   g_dj_buf + (size_t)g_dj_buf_pos * 2,
+                   (size_t)n * 2 * sizeof(float));
+            g_dj_buf_pos += (LONG)n;
+            out += n;
+            continue;
+        }
+        if (g_dj_eof) break;
+        AVPacket* pkt = av_packet_alloc();
+        AVFrame* fr = av_frame_alloc();
+        int got_any = 0;
+        while (!got_any && !g_dj_eof) {
+            int r = av_read_frame(g_dj_fmt, pkt);
+            if (r < 0) { g_dj_eof = 1; break; }
+            if (pkt->stream_index != g_dj_stream) {
+                av_packet_unref(pkt);
+                continue;
+            }
+            if (avcodec_send_packet(g_dj_codec, pkt) == 0) {
+                while (avcodec_receive_frame(g_dj_codec, fr) == 0) {
+                    if (g_dj_swr) {
+                        uint8_t* out_ptrs[1] = { (uint8_t*)g_dj_buf };
+                        int got = swr_convert(g_dj_swr, out_ptrs, 4096,
+                                              (const uint8_t**)fr->extended_data,
+                                              fr->nb_samples);
+                        if (got > 0) {
+                            g_dj_buf_n = got;
+                            g_dj_buf_pos = 0;
+                            got_any = 1;
+                        }
+                    }
+                    av_frame_unref(fr);
+                    if (got_any) break;
+                }
+            }
+            av_packet_unref(pkt);
+        }
+        av_frame_free(&fr);
+        av_packet_free(&pkt);
+        if (!got_any) break;
+    }
+    return out;
+}
+
+/* Lecture de la platine B (appelé par le callback du device). */
+uint32_t mp_dj_b_read(float* dst, uint32_t frames)
+{
+    if (!g_dj_active || g_dj_paused) {
+        memset(dst, 0, (size_t)frames * 2 * sizeof(float));
+        return frames;
+    }
+    uint32_t n = dj_b_fill(dst, frames);
+    if (n < frames)
+        memset(dst + (size_t)n * 2, 0, (size_t)(frames - n) * 2 * sizeof(float));
+    return frames;
+}
+
 /* ------------------------------------------------------------------ */
 /* Ring buffer SPSC (Single Producer / Single Consumer)                */
 /* 2^18 frames stéréo f32 ≈ 6 s à 44,1 kHz — 2,1 Mo                    */
@@ -102,7 +252,6 @@ static uint32_t ring_read(ring_t* r, float* dst, uint32_t frames)
 /* ------------------------------------------------------------------ */
 static ma_device      g_device;
 static int            g_device_ok = 0;
-static uint32_t       g_device_rate = 44100;
 
 static ring_t         g_ring;
 static AVFormatContext* g_fmt = NULL;
@@ -313,16 +462,33 @@ static void data_cb(ma_device* dev, void* out, const void* in, ma_uint32 frames)
             memset(dst + (size_t)got * 2, 0, (size_t)(frames - got) * 2 * sizeof(float));
             if (g_eof) InterlockedCompareExchange((LONG*)&g_state, MP_STATE_FINISHED, MP_STATE_PLAYING);
         }
-        /* effets audio des plugins (si le périph a le bon format) */
-        mp_plugins_audio_process(dst, frames, 2, g_device_rate);
-        /* flux lecture seule pour les plugins visuels */
-        mp_plugins_audio_frames(dst, frames, 2, g_device_rate);
-        /* sortie "téléphone seul" : le haut-parleur local reste muet */
-        if (g_audio_out == 1)
-            memset(dst, 0, (size_t)frames * 2 * sizeof(float));
     } else {
         memset(dst, 0, (size_t)frames * 2 * sizeof(float));
     }
+
+    /* platine B (mode DJ local) : mixée avec la platine A */
+    if (g_dj_active) {
+        float tmp[4096 * 2];
+        uint32_t nb = mp_dj_b_read(tmp, frames);
+        (void)nb;
+        for (uint32_t i = 0; i < frames * 2; i++) {
+            float v = dst[i] * g_dj_vol_a * (1.0f - g_dj_xf) +
+                      tmp[i] * g_dj_vol_b * g_dj_xf;
+            if (v > 1.0f) v = 1.0f; else if (v < -1.0f) v = -1.0f;
+            dst[i] = v;
+        }
+    } else {
+        for (uint32_t i = 0; i < frames * 2; i++)
+            dst[i] *= g_dj_vol_a;
+    }
+
+    /* effets audio des plugins (si le périph a le bon format) */
+    mp_plugins_audio_process(dst, frames, 2, g_device_rate);
+    /* flux lecture seule pour les plugins visuels */
+    mp_plugins_audio_frames(dst, frames, 2, g_device_rate);
+    /* sortie "téléphone seul" : le haut-parleur local reste muet */
+    if (g_audio_out == 1)
+        memset(dst, 0, (size_t)frames * 2 * sizeof(float));
 }
 
 /* ------------------------------------------------------------------ */

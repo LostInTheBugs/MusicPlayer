@@ -73,4 +73,20 @@ uint32_t mp_web_read(float* dst, uint32_t frames);
 void mp_set_audio_out(int mode);
 int  mp_get_audio_out(void);
 
+/* ------------------------------------------------------------------ */
+/* Mode DJ local : platine B (2e décodeur) mixée dans le device        */
+/* ------------------------------------------------------------------ */
+int      mp_dj_b_open(const char* path);
+void     mp_dj_b_close(void);
+int      mp_dj_b_active(void);
+void     mp_dj_b_pause(void);
+int      mp_dj_b_paused(void);
+void     mp_dj_b_set_vol(float v);
+float    mp_dj_b_get_vol(void);
+void     mp_dj_a_set_vol(float v);
+float    mp_dj_a_get_vol(void);
+void     mp_dj_set_xf(float x);
+float    mp_dj_get_xf(void);
+uint32_t mp_dj_b_read(float* dst, uint32_t frames);
+
 #endif /* MP_PLAYER_H */

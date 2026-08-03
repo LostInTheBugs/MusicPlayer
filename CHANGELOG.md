@@ -2,6 +2,11 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.029] — 2026-08-03
+
+### Added
+- **Mode DJ local complet sur l'ordinateur** : chaque platine a ses boutons **▶ lecture / ⏸ pause / ■ stop** (la platine B est un **2e décodeur indépendant** réellement mixé dans la sortie audio) et son **curseur de volume** ; en bas de la console : le **crossfader A/B** et le **curseur de pitch** (vitesse) — le vrai mixage 2 voies se fait maintenant aussi sur l'ordinateur, pas seulement sur le web
+
 ## [2026.08.028-c5] — 2026-08-03
 
 ### Added

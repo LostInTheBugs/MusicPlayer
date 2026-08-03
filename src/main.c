@@ -80,7 +80,10 @@ static int  g_dj_mode = 0;        /* 1 = mode DJ Mixing (synchro web) */
 static int  g_dj_track_a = -1;    /* piste choisie sur la platine A */
 static int  g_dj_track_b = -1;    /* piste choisie sur la platine B */
 static RECT g_dj_rc_a, g_dj_rc_b; /* platines de la console DJ locale */
-static RECT g_dj_play_a, g_dj_play_b; /* boutons lecture des platines */
+static RECT g_dj_bplay_a, g_dj_bpause_a, g_dj_bstop_a; /* boutons A */
+static RECT g_dj_bplay_b, g_dj_bpause_b, g_dj_bstop_b; /* boutons B */
+static RECT g_dj_svol_a, g_dj_svol_b, g_dj_sxf, g_dj_spitch; /* sliders */
+static int  g_dj_drag = -1;   /* slider en cours de glissement (1=A,2=B,3=xf,4=pitch) */
 static RECT g_rc_play, g_rc_stop, g_rc_next, g_rc_shuffle, g_rc_plist, g_rc_fs, g_rc_vol;
 static int  g_vol_drag = 0;   /* curseur de volume en cours de glissement */
 
@@ -312,6 +315,11 @@ static void        host_dj_toggle(void)
     if (g_dj_mode) {
         g_dj_track_a = g_plist_idx >= 0 ? g_plist_idx : 0;
         g_dj_track_b = (g_plist_idx + 1 < g_plist_n) ? g_plist_idx + 1 : 0;
+        mp_dj_a_set_vol(1.0f);
+        mp_dj_b_set_vol(1.0f);
+        mp_dj_set_xf(0.5f);
+    } else {
+        mp_dj_b_close();
     }
     if (g_hwnd) InvalidateRect(g_hwnd, NULL, TRUE);
     status_update();
@@ -1957,6 +1965,46 @@ static void draw_progress_bar(HDC hdc, const RECT* rc)
 /* ------------------------------------------------------------------ */
 /* Console DJ locale (mode DJ Mixing)                                  */
 /* ------------------------------------------------------------------ */
+static void draw_dj_slider(HDC hdc, const RECT* rc, float val, COLORREF fill)
+{
+    HBRUSH t = CreateSolidBrush(RGB(20, 24, 30));
+    FillRect(hdc, rc, t);
+    DeleteObject(t);
+    RECT f = *rc;
+    f.right = f.left + (LONG)((f.right - f.left) * val);
+    if (f.right > f.left) {
+        HBRUSH fb = CreateSolidBrush(fill);
+        FillRect(hdc, &f, fb);
+        DeleteObject(fb);
+    }
+    HPEN pen = CreatePen(PS_SOLID, 1, RGB(92, 108, 128));
+    HBRUSH ob = (HBRUSH)SelectObject(hdc, GetStockObject(NULL_BRUSH));
+    HPEN op = (HPEN)SelectObject(hdc, pen);
+    Rectangle(hdc, rc->left, rc->top, rc->right, rc->bottom);
+    SelectObject(hdc, op);
+    SelectObject(hdc, ob);
+    DeleteObject(pen);
+}
+
+static void draw_dj_button(HDC hdc, const RECT* rc, const wchar_t* label,
+                           COLORREF bg)
+{
+    HBRUSH b = CreateSolidBrush(bg);
+    FillRect(hdc, rc, b);
+    DeleteObject(b);
+    HPEN pen = CreatePen(PS_SOLID, 1, RGB(20, 24, 30));
+    HBRUSH ob = (HBRUSH)SelectObject(hdc, GetStockObject(NULL_BRUSH));
+    HPEN op = (HPEN)SelectObject(hdc, pen);
+    Rectangle(hdc, rc->left, rc->top, rc->right, rc->bottom);
+    SelectObject(hdc, op);
+    SelectObject(hdc, ob);
+    DeleteObject(pen);
+    SetBkMode(hdc, TRANSPARENT);
+    SetTextColor(hdc, RGB(255, 255, 255));
+    RECT lr = *rc;
+    DrawTextW(hdc, label, -1, &lr, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+}
+
 static void paint_dj_console(HDC hdc, const RECT* rc)
 {
     RECT r = *rc;
@@ -1967,18 +2015,18 @@ static void paint_dj_console(HDC hdc, const RECT* rc)
 
     int w = r.right - r.left;
     int h = r.bottom - r.top;
-    if (w < 220 || h < 70) return;
-    int dw = (w - 40) / 2;
+    if (w < 320 || h < 90) return;
+    int dw = (w - 60) / 2;
     if (dw > 320) dw = 320;
 
     g_dj_rc_a.left = r.left + 10;
-    g_dj_rc_a.top = r.top + 10;
+    g_dj_rc_a.top = r.top + 8;
     g_dj_rc_a.right = g_dj_rc_a.left + dw;
-    g_dj_rc_a.bottom = r.bottom - 10;
+    g_dj_rc_a.bottom = r.bottom - 58;
     g_dj_rc_b.left = r.right - 10 - dw;
-    g_dj_rc_b.top = r.top + 10;
+    g_dj_rc_b.top = r.top + 8;
     g_dj_rc_b.right = r.right - 10;
-    g_dj_rc_b.bottom = r.bottom - 10;
+    g_dj_rc_b.bottom = r.bottom - 58;
 
     /* platines */
     HBRUSH deck = CreateSolidBrush(RGB(38, 44, 54));
@@ -2006,55 +2054,116 @@ static void paint_dj_console(HDC hdc, const RECT* rc)
                             ? g_plist[g_dj_track_b] : L"Choisir une piste…";
 
     RECT ta_rc = g_dj_rc_a;
-    ta_rc.top += 8;
-    ta_rc.bottom = ta_rc.top + 24;
+    ta_rc.top += 6;
+    ta_rc.bottom = ta_rc.top + 20;
     SetTextColor(hdc, RGB(122, 162, 247));
     DrawTextW(hdc, L"DECK A", -1, &ta_rc, DT_CENTER | DT_TOP);
-    ta_rc.top += 20;
-    ta_rc.bottom = ta_rc.top + 20;
+    ta_rc.top += 18;
+    ta_rc.bottom = ta_rc.top + 18;
     SetTextColor(hdc, RGB(232, 238, 244));
     DrawTextW(hdc, ta, -1, &ta_rc, DT_CENTER | DT_TOP | DT_END_ELLIPSIS);
 
     RECT tb_rc = g_dj_rc_b;
-    tb_rc.top += 8;
-    tb_rc.bottom = tb_rc.top + 24;
+    tb_rc.top += 6;
+    tb_rc.bottom = tb_rc.top + 20;
     SetTextColor(hdc, RGB(122, 162, 247));
     DrawTextW(hdc, L"DECK B", -1, &tb_rc, DT_CENTER | DT_TOP);
-    tb_rc.top += 20;
-    tb_rc.bottom = tb_rc.top + 20;
+    tb_rc.top += 18;
+    tb_rc.bottom = tb_rc.top + 18;
     SetTextColor(hdc, RGB(232, 238, 244));
     DrawTextW(hdc, tb, -1, &tb_rc, DT_CENTER | DT_TOP | DT_END_ELLIPSIS);
 
-    /* boutons lecture (▶) en bas de chaque platine */
-    g_dj_play_a.left = g_dj_rc_a.left + 8;
-    g_dj_play_a.top = g_dj_rc_a.bottom - 40;
-    g_dj_play_a.right = g_dj_play_a.left + 36;
-    g_dj_play_a.bottom = g_dj_rc_a.bottom - 8;
-    g_dj_play_b.left = g_dj_rc_b.left + 8;
-    g_dj_play_b.top = g_dj_rc_b.bottom - 40;
-    g_dj_play_b.right = g_dj_play_b.left + 36;
-    g_dj_play_b.bottom = g_dj_rc_b.bottom - 8;
-    for (int d = 0; d < 2; d++) {
-        RECT pb = d == 0 ? g_dj_play_a : g_dj_play_b;
-        HBRUSH pbb = CreateSolidBrush(RGB(47, 111, 228));
-        FillRect(hdc, &pb, pbb);
-        DeleteObject(pbb);
-        POINT tri[3] = {
-            { pb.left + 10, pb.top + 6 },
-            { pb.left + 10, pb.bottom - 6 },
-            { pb.left + 27, (pb.top + pb.bottom) / 2 }
-        };
-        HBRUSH tb2 = CreateSolidBrush(RGB(255, 255, 255));
-        HPEN op2 = (HPEN)SelectObject(hdc, GetStockObject(NULL_PEN));
-        HBRUSH ob2 = (HBRUSH)SelectObject(hdc, tb2);
-        Polygon(hdc, tri, 3);
-        SelectObject(hdc, op2);
-        SelectObject(hdc, ob2);
-        DeleteObject(tb2);
+    /* sliders volume */
+    g_dj_svol_a.left = g_dj_rc_a.left + 8;
+    g_dj_svol_a.right = g_dj_rc_a.right - 8;
+    g_dj_svol_a.top = g_dj_rc_a.top + 44;
+    g_dj_svol_a.bottom = g_dj_svol_a.top + 10;
+    draw_dj_slider(hdc, &g_dj_svol_a, mp_dj_a_get_vol(), RGB(47, 111, 228));
+    g_dj_svol_b.left = g_dj_rc_b.left + 8;
+    g_dj_svol_b.right = g_dj_rc_b.right - 8;
+    g_dj_svol_b.top = g_dj_rc_b.top + 44;
+    g_dj_svol_b.bottom = g_dj_svol_b.top + 10;
+    draw_dj_slider(hdc, &g_dj_svol_b, mp_dj_b_get_vol(), RGB(47, 111, 228));
+
+    /* boutons ▶ ⏸ ■ */
+    int bw = (g_dj_rc_a.right - g_dj_rc_a.left - 28) / 3;
+    if (bw < 20) bw = 20;
+    int by = g_dj_rc_a.bottom - 36;
+    g_dj_bplay_a.left = g_dj_rc_a.left + 8;
+    g_dj_bplay_a.top = by;
+    g_dj_bplay_a.right = g_dj_bplay_a.left + bw;
+    g_dj_bplay_a.bottom = by + 26;
+    g_dj_bpause_a.left = g_dj_bplay_a.right + 6;
+    g_dj_bpause_a.top = by;
+    g_dj_bpause_a.right = g_dj_bpause_a.left + bw;
+    g_dj_bpause_a.bottom = by + 26;
+    g_dj_bstop_a.left = g_dj_bpause_a.right + 6;
+    g_dj_bstop_a.top = by;
+    g_dj_bstop_a.right = g_dj_bstop_a.left + bw;
+    g_dj_bstop_a.bottom = by + 26;
+    draw_dj_button(hdc, &g_dj_bplay_a, L"▶", RGB(47, 111, 228));
+    draw_dj_button(hdc, &g_dj_bpause_a, L"⏸", RGB(150, 120, 60));
+    draw_dj_button(hdc, &g_dj_bstop_a, L"■", RGB(180, 64, 58));
+
+    g_dj_bplay_b.left = g_dj_rc_b.left + 8;
+    g_dj_bplay_b.top = by;
+    g_dj_bplay_b.right = g_dj_bplay_b.left + bw;
+    g_dj_bplay_b.bottom = by + 26;
+    g_dj_bpause_b.left = g_dj_bplay_b.right + 6;
+    g_dj_bpause_b.top = by;
+    g_dj_bpause_b.right = g_dj_bpause_b.left + bw;
+    g_dj_bpause_b.bottom = by + 26;
+    g_dj_bstop_b.left = g_dj_bpause_b.right + 6;
+    g_dj_bstop_b.top = by;
+    g_dj_bstop_b.right = g_dj_bstop_b.left + bw;
+    g_dj_bstop_b.bottom = by + 26;
+    draw_dj_button(hdc, &g_dj_bplay_b, L"▶", RGB(47, 111, 228));
+    draw_dj_button(hdc, &g_dj_bpause_b, L"⏸", RGB(150, 120, 60));
+    draw_dj_button(hdc, &g_dj_bstop_b, L"■", RGB(180, 64, 58));
+
+    /* crossfader */
+    g_dj_sxf.left = r.left + 100;
+    g_dj_sxf.right = r.right - 100;
+    g_dj_sxf.top = r.bottom - 42;
+    g_dj_sxf.bottom = g_dj_sxf.top + 10;
+    draw_dj_slider(hdc, &g_dj_sxf, mp_dj_get_xf(), RGB(230, 126, 34));
+    SetTextColor(hdc, RGB(232, 238, 244));
+    RECT xa = { r.left + 8, g_dj_sxf.top - 3, r.left + 96, g_dj_sxf.bottom + 3 };
+    DrawTextW(hdc, L"A", -1, &xa, DT_RIGHT | DT_VCENTER | DT_SINGLELINE);
+    RECT xb = { r.right - 96, g_dj_sxf.top - 3, r.right - 8, g_dj_sxf.bottom + 3 };
+    DrawTextW(hdc, L"B", -1, &xb, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+
+    /* pitch (vitesse globale) */
+    if (h > 130) {
+        g_dj_spitch.left = r.left + 100;
+        g_dj_spitch.right = r.right - 100;
+        g_dj_spitch.top = r.bottom - 22;
+        g_dj_spitch.bottom = g_dj_spitch.top + 10;
+        float sp = (mp_get_speed() - 0.5f) / 1.5f;
+        if (sp < 0.0f) sp = 0.0f; else if (sp > 1.0f) sp = 1.0f;
+        draw_dj_slider(hdc, &g_dj_spitch, sp, RGB(122, 162, 247));
+        SetTextColor(hdc, RGB(232, 238, 244));
+        RECT xp = { r.left + 8, g_dj_spitch.top - 3, r.right - 8, g_dj_spitch.bottom + 3 };
+        DrawTextW(hdc, L"Pitch", -1, &xp, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
     }
 
     SelectObject(hdc, of);
-    (void)h;
+}
+
+/* Applique une valeur à un slider DJ selon sa position */
+static void dj_drag_set(int which, POINT pt)
+{
+    RECT* rc = which == 1 ? &g_dj_svol_a : which == 2 ? &g_dj_svol_b
+              : which == 3 ? &g_dj_sxf : &g_dj_spitch;
+    int span = rc->right - rc->left;
+    if (span <= 0) return;
+    float v = (float)(pt.x - rc->left) / (float)span;
+    if (v < 0.0f) v = 0.0f; else if (v > 1.0f) v = 1.0f;
+    if (which == 1)      mp_dj_a_set_vol(v);
+    else if (which == 2) mp_dj_b_set_vol(v);
+    else if (which == 3) mp_dj_set_xf(v);
+    else                 mp_set_speed(0.5f + v * 1.5f);
+    InvalidateRect(g_hwnd, NULL, TRUE);
 }
 
 /* Sélecteur de piste d'une platine (menu popup façon "select") */
@@ -2332,16 +2441,39 @@ static void mouse_down(HWND hwnd, int x, int y)
     get_center_rect(hwnd, &rc);
     layout_controls(&rc);
 
-    /* mode DJ : clic sur les boutons lecture = jouer la piste de la
-     * platine ; clic sur une platine = choisir la piste (menu) */
+    /* mode DJ : boutons des platines, sliders, sélection des pistes */
     if (g_dj_mode) {
         POINT pt = { x, y };
-        if (PtInRect(&g_dj_play_a, pt)) {
+        if (PtInRect(&g_dj_bplay_a, pt)) {
             if (g_dj_track_a >= 0 && g_dj_track_a < g_plist_n)
                 playlist_play_index(g_dj_track_a);
-        } else if (PtInRect(&g_dj_play_b, pt)) {
-            if (g_dj_track_b >= 0 && g_dj_track_b < g_plist_n)
-                playlist_play_index(g_dj_track_b);
+        } else if (PtInRect(&g_dj_bpause_a, pt)) {
+            mp_play_pause();
+        } else if (PtInRect(&g_dj_bstop_a, pt)) {
+            mp_stop();
+        } else if (PtInRect(&g_dj_bplay_b, pt)) {
+            if (g_dj_track_b >= 0 && g_dj_track_b < g_plist_n) {
+                char utf8[MAX_PATH * 3];
+                wide_to_utf8(g_plist[g_dj_track_b], utf8, sizeof(utf8));
+                if (mp_dj_b_open(utf8) != 0)
+                    log_line("DJ deck B: open failed");
+            }
+        } else if (PtInRect(&g_dj_bpause_b, pt)) {
+            mp_dj_b_pause();
+        } else if (PtInRect(&g_dj_bstop_b, pt)) {
+            mp_dj_b_close();
+        } else if (PtInRect(&g_dj_svol_a, pt)) {
+            g_dj_drag = 1;
+            dj_drag_set(1, pt);
+        } else if (PtInRect(&g_dj_svol_b, pt)) {
+            g_dj_drag = 2;
+            dj_drag_set(2, pt);
+        } else if (PtInRect(&g_dj_sxf, pt)) {
+            g_dj_drag = 3;
+            dj_drag_set(3, pt);
+        } else if (PtInRect(&g_dj_spitch, pt)) {
+            g_dj_drag = 4;
+            dj_drag_set(4, pt);
         } else if (PtInRect(&g_dj_rc_a, pt)) {
             dj_pick_track(hwnd, 0);
         } else if (PtInRect(&g_dj_rc_b, pt)) {
@@ -2485,6 +2617,11 @@ static void on_command(int id, HMENU bar)
         if (g_dj_mode) {
             g_dj_track_a = g_plist_idx >= 0 ? g_plist_idx : 0;
             g_dj_track_b = (g_plist_idx + 1 < g_plist_n) ? g_plist_idx + 1 : 0;
+            mp_dj_a_set_vol(1.0f);
+            mp_dj_b_set_vol(1.0f);
+            mp_dj_set_xf(0.5f);
+        } else {
+            mp_dj_b_close();
         }
         InvalidateRect(g_hwnd, NULL, TRUE);
         status_update();
@@ -2630,9 +2767,15 @@ static LRESULT CALLBACK wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         mouse_down(hwnd, GET_X_LPARAM(lp), GET_Y_LPARAM(lp));
         return 0;
     case WM_MOUSEMOVE:
+        if (g_dj_drag > 0) {
+            POINT pt = { GET_X_LPARAM(lp), GET_Y_LPARAM(lp) };
+            dj_drag_set(g_dj_drag, pt);
+            return 0;
+        }
         if (g_vol_drag) mouse_move(GET_X_LPARAM(lp));
         return 0;
     case WM_LBUTTONUP:
+        g_dj_drag = -1;
         mouse_up();
         return 0;
     case WM_TIMER:
