@@ -2,6 +2,11 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.034] — 2026-08-03
+
+### Changed
+- **Plugin visuel Fractale réécrit (v2.0)** : une **vraie fractale de Mandelbrot** (Sea Horse Valley) et **Julia** qui **zoome au rythme de la musique** — l'énergie des basses est analysée sur le flux audio, chaque battement pousse le zoom vers l'intérieur de la fractale (décroissance douce entre deux battements), teintes animées, rendu fluide en résolution réduite agrandie
+
 ## [2026.08.033-c1] — 2026-08-03
 
 ### Fixed
