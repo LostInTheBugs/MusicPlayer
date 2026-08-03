@@ -2,6 +2,15 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.016] — 2026-08-02
+
+### Added
+- **Lecture d'un dossier (playlist)** : File ▸ Open folder…, glisser-déposer d'un dossier ou en ligne de commande — scan récursif des MP3/MP4 (sous-dossiers inclus), tri par nom, lecture automatique du morceau suivant, arrêt en fin de playlist ; compteur « [n/total] » dans la barre d'état
+- **Bouton ⏭ Suivant** dans la barre de contrôles (raccourci N)
+
+### Fixed
+- chemins de la playlist tronqués : `%ls` obligatoire pour `wchar_t*` dans `swprintf` (MinGW) — le scan scannait le mauvais dossier
+
 ## [2026.08.015] — 2026-08-02
 
 ### Added

@@ -327,7 +327,6 @@ int mp_open(const char* path)
 
     if (avformat_open_input(&g_fmt, path, NULL, NULL) < 0) { mp_close(); return -1; }
     if (avformat_find_stream_info(g_fmt, NULL) < 0)        { mp_close(); return -1; }
-
     g_stream_idx = av_find_best_stream(g_fmt, AVMEDIA_TYPE_AUDIO, -1, -1, NULL, 0);
     if (g_stream_idx < 0) { mp_close(); return -1; }
 

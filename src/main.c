@@ -12,6 +12,7 @@
 #include <commdlg.h>
 #include <shellapi.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include <libavutil/avutil.h>
@@ -34,8 +35,8 @@
 
 /* IDs de commandes */
 enum {
-    IDM_OPEN = 101, IDM_EXIT = 102,
-    IDM_PLAYPAUSE = 201, IDM_STOP = 202,
+    IDM_OPEN = 101, IDM_OPEN_FOLDER = 103, IDM_EXIT = 102,
+    IDM_PLAYPAUSE = 201, IDM_STOP = 202, IDM_NEXT = 203,
     IDM_SPEED_BASE = 300,   /* +0 → 0.5x, +1 → 1.0x, +2 → 1.5x, +3 → 2.0x */
     IDM_VOL_UP = 401, IDM_VOL_DOWN = 402, IDM_VOL_SHOW = 403,
     IDM_PLUGIN_RELOAD = 501,
@@ -60,8 +61,104 @@ static wchar_t g_lang_dir[MAX_PATH] = { 0 };
 
 static int  g_fullscreen = 0;
 static RECT g_win_normal = { 0, 0, 640, 300 };
-static RECT g_rc_play, g_rc_stop, g_rc_fs, g_rc_vol;
+static RECT g_rc_play, g_rc_stop, g_rc_next, g_rc_fs, g_rc_vol;
 static int  g_vol_drag = 0;   /* curseur de volume en cours de glissement */
+
+static void status_update(void);        /* définie plus bas */
+static void wide_to_utf8(const wchar_t* in, char* out, int out_chars); /* idem */
+static void log_line(const char* s);    /* idem */
+
+/* ------------------------------------------------------------------ */
+/* Playlist : lecture d'un dossier (avec ses sous-dossiers)            */
+/* ------------------------------------------------------------------ */
+#define PLAYLIST_MAX 4096
+static wchar_t* g_plist[PLAYLIST_MAX];
+static int      g_plist_n = 0;
+static int      g_plist_idx = -1;
+
+static void playlist_clear(void)
+{
+    for (int i = 0; i < g_plist_n; i++) free(g_plist[i]);
+    g_plist_n = 0;
+    g_plist_idx = -1;
+}
+
+static void playlist_scan(const wchar_t* dir)
+{
+    wchar_t pat[MAX_PATH];
+    swprintf(pat, MAX_PATH, L"%ls\\*", dir);
+    WIN32_FIND_DATAW fd;
+    HANDLE h = FindFirstFileW(pat, &fd);
+    if (h == INVALID_HANDLE_VALUE) return;
+    do {
+        if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
+            if (wcscmp(fd.cFileName, L".") != 0 && wcscmp(fd.cFileName, L"..") != 0) {
+                wchar_t sub[MAX_PATH];
+                swprintf(sub, MAX_PATH, L"%ls\\%ls", dir, fd.cFileName);
+                playlist_scan(sub);
+            }
+        } else {
+            const wchar_t* e = wcsrchr(fd.cFileName, L'.');
+            if (e && (!_wcsicmp(e, L".mp3") || !_wcsicmp(e, L".mp4")) &&
+                g_plist_n < PLAYLIST_MAX) {
+                size_t cap = wcslen(dir) + wcslen(fd.cFileName) + 2;
+                wchar_t* full = (wchar_t*)malloc(cap * sizeof(wchar_t));
+                if (full) {
+                    swprintf(full, cap, L"%ls\\%ls", dir, fd.cFileName);
+                    g_plist[g_plist_n++] = full;
+                }
+            }
+        }
+    } while (FindNextFileW(h, &fd));
+    FindClose(h);
+}
+
+static int playlist_cmp(const void* a, const void* b)
+{
+    return _wcsicmp(*(const wchar_t* const*)a, *(const wchar_t* const*)b);
+}
+
+static int playlist_play_index(int i)
+{
+    if (i < 0 || i >= g_plist_n) return -1;
+    g_plist_idx = i;
+    char utf8[MAX_PATH * 3];
+    wide_to_utf8(g_plist[i], utf8, sizeof(utf8));
+    int rc = mp_open(utf8);
+    return rc;
+}
+
+/* Ouvre un dossier en playlist : scan récursif + tri + lecture du premier */
+static int playlist_open_folder(const wchar_t* dir)
+{
+    playlist_clear();
+    playlist_scan(dir);
+    if (g_plist_n == 0) return -1;
+    qsort(g_plist, g_plist_n, sizeof(wchar_t*), playlist_cmp);
+    return playlist_play_index(0);
+}
+
+/* Passe au morceau suivant ; à la fin de la playlist : stop */
+static void playlist_next(void)
+{
+    if (g_plist_n == 0) return;
+    if (g_plist_idx + 1 >= g_plist_n) {
+        g_plist_idx = g_plist_n;       /* marque la fin de la playlist */
+        mp_stop();
+    } else if (playlist_play_index(g_plist_idx + 1) != 0) {
+        g_plist_idx++;                 /* fichier illisible : on saute */
+        playlist_next();
+    }
+    status_update();
+}
+
+/* Appelé par le timer : enchaîne automatiquement à la fin d'un morceau */
+static void playlist_tick(void)
+{
+    if (g_plist_n > 0 && g_plist_idx >= 0 && g_plist_idx < g_plist_n &&
+        mp_get_state() == MP_STATE_FINISHED)
+        playlist_next();
+}
 
 /* ------------------------------------------------------------------ */
 /* Helpers UTF-8 <-> UTF-16                                            */
@@ -144,6 +241,11 @@ static void status_update(void)
         utf8_to_wide(base, s1, 280);
     } else {
         wcscpy(s1, lang_get("no_file"));
+    }
+    if (g_plist_n > 0 && g_plist_idx >= 0 && g_plist_idx < g_plist_n) {
+        wchar_t tmp[280];
+        wcscpy(tmp, s1);
+        swprintf(s1, 280, L"[%d/%d] %ls", g_plist_idx + 1, g_plist_n, tmp);
     }
 
     double pos = mp_get_position(), dur = mp_get_duration();
@@ -270,6 +372,7 @@ static HMENU create_menus(void)
 
     HMENU mFile = CreatePopupMenu();
     AppendMenuW(mFile, MF_STRING, IDM_OPEN, lang_get("open"));
+    AppendMenuW(mFile, MF_STRING, IDM_OPEN_FOLDER, lang_get("menu_open_folder"));
     AppendMenuW(mFile, MF_SEPARATOR, 0, NULL);
     AppendMenuW(mFile, MF_STRING, IDM_EXIT, lang_get("quit"));
     AppendMenuW(bar, MF_POPUP, (UINT_PTR)mFile, lang_get("menu_file"));
@@ -363,6 +466,27 @@ static void do_open_dialog(void)
     }
 }
 
+static void do_open_folder_dialog(void)
+{
+    BROWSEINFOW bi;
+    memset(&bi, 0, sizeof(bi));
+    bi.hwndOwner = g_hwnd;
+    bi.lpszTitle = lang_get("open_folder_title");
+    bi.ulFlags = BIF_RETURNONLYFSDIRS | BIF_NEWDIALOGSTYLE;
+    LPITEMIDLIST pidl = SHBrowseForFolderW(&bi);
+    if (pidl) {
+        wchar_t dir[MAX_PATH];
+        if (SHGetPathFromIDListW(pidl, dir)) {
+            if (playlist_open_folder(dir) != 0) {
+                wchar_t msg[600];
+                swprintf(msg, 600, lang_get("err_folder"), dir);
+                MessageBoxW(g_hwnd, msg, APP_TITLE, MB_ICONERROR);
+            }
+        }
+        CoTaskMemFree(pidl);
+    }
+}
+
 static void do_about(void)
 {
     wchar_t msg[1024];
@@ -384,7 +508,11 @@ static void layout_controls(const RECT* rc)
     x += bs + 6;
     g_rc_stop.left = x; g_rc_stop.top = y + 4;
     g_rc_stop.right = x + bs; g_rc_stop.bottom = y + 4 + bs;
-    x += bs + 18;
+    x += bs + 6;
+    /* bouton suivant */
+    g_rc_next.left = x; g_rc_next.top = y + 4;
+    g_rc_next.right = x + bs; g_rc_next.bottom = y + 4 + bs;
+    x += bs + 6;
     /* curseur de volume */
     g_rc_vol.left = x;
     g_rc_vol.top = y + (CTRL_H - 16) / 2;
@@ -429,6 +557,31 @@ static void draw_glyph_stop(HDC hdc, RECT* r)
     HBRUSH wh = (HBRUSH)GetStockObject(WHITE_BRUSH);
     RECT s = { r->left + 3, r->top + 3, r->right - 3, r->bottom - 3 };
     FillRect(hdc, &s, wh);
+}
+
+static void draw_glyph_next(HDC hdc, RECT* r)
+{
+    /* ⏭ : deux triangles pointant à droite */
+    HBRUSH wh = (HBRUSH)GetStockObject(WHITE_BRUSH);
+    HPEN pen = CreatePen(PS_SOLID, 1, RGB(255, 255, 255));
+    HBRUSH oldb = (HBRUSH)SelectObject(hdc, wh);
+    HPEN oldp = (HPEN)SelectObject(hdc, pen);
+    int w = (r->right - r->left) / 2;
+    POINT t1[3] = {
+        { r->left + 1, r->top },
+        { r->left + 1, r->bottom },
+        { r->left + w - 2, (r->top + r->bottom) / 2 }
+    };
+    POINT t2[3] = {
+        { r->left + w + 1, r->top },
+        { r->left + w + 1, r->bottom },
+        { r->right - 1, (r->top + r->bottom) / 2 }
+    };
+    Polygon(hdc, t1, 3);
+    Polygon(hdc, t2, 3);
+    SelectObject(hdc, oldb);
+    SelectObject(hdc, oldp);
+    DeleteObject(pen);
 }
 
 static void draw_glyph_fullscreen(HDC hdc, RECT* r)
@@ -494,6 +647,16 @@ static void paint_controls(HDC hdc, const RECT* rc)
     RECT gs = g_rc_stop;
     gs.left += 2; gs.right -= 2; gs.top += 2; gs.bottom -= 2;
     draw_glyph_stop(hdc, &gs);
+
+    /* bouton suivant */
+    HBRUSH bnext = CreateSolidBrush(RGB(52, 120, 246));
+    oldb = (HBRUSH)SelectObject(hdc, bnext);
+    RoundRect(hdc, g_rc_next.left, g_rc_next.top, g_rc_next.right, g_rc_next.bottom, 8, 8);
+    SelectObject(hdc, oldb);
+    DeleteObject(bnext);
+    RECT gn = g_rc_next;
+    gn.left += 3; gn.right -= 3; gn.top += 3; gn.bottom -= 3;
+    draw_glyph_next(hdc, &gn);
 
     /* bouton plein écran */
     HBRUSH bfs = CreateSolidBrush(RGB(110, 118, 136));
@@ -749,6 +912,9 @@ static void mouse_down(HWND hwnd, int x, int y)
                y >= g_rc_stop.top && y <= g_rc_stop.bottom) {
         mp_stop();
         status_update();
+    } else if (x >= g_rc_next.left && x <= g_rc_next.right &&
+               y >= g_rc_next.top && y <= g_rc_next.bottom) {
+        playlist_next();
     } else if (x >= g_rc_fs.left && x <= g_rc_fs.right &&
                y >= g_rc_fs.top && y <= g_rc_fs.bottom) {
         toggle_fullscreen(hwnd);
@@ -826,9 +992,11 @@ static void on_command(int id, HMENU bar)
     (void)bar;
     switch (id) {
     case IDM_OPEN:      do_open_dialog(); break;
+    case IDM_OPEN_FOLDER: do_open_folder_dialog(); break;
     case IDM_EXIT:      SendMessageW(g_hwnd, WM_CLOSE, 0, 0); break;
     case IDM_PLAYPAUSE: mp_play_pause(); break;
     case IDM_STOP:      mp_stop(); break;
+    case IDM_NEXT:      playlist_next(); break;
     case IDM_FULLSCREEN: toggle_fullscreen(g_hwnd); break;
     case IDM_CHECK_UPDATE:
         mp_update_check_async(g_hwnd, 1);
@@ -927,12 +1095,20 @@ static LRESULT CALLBACK wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         wchar_t path_w[MAX_PATH];
         DragQueryFileW((HDROP)wp, 0, path_w, MAX_PATH);
         DragFinish((HDROP)wp);
-        char path_utf8[MAX_PATH * 3];
-        wide_to_utf8(path_w, path_utf8, sizeof(path_utf8));
-        if (mp_open(path_utf8) != 0) {
-            wchar_t msg[600];
-            swprintf(msg, 600, lang_get("err_open"), path_w);
-            MessageBoxW(hwnd, msg, APP_TITLE, MB_ICONERROR);
+        if (GetFileAttributesW(path_w) & FILE_ATTRIBUTE_DIRECTORY) {
+            if (playlist_open_folder(path_w) != 0) {
+                wchar_t msg[600];
+                swprintf(msg, 600, lang_get("err_folder"), path_w);
+                MessageBoxW(hwnd, msg, APP_TITLE, MB_ICONERROR);
+            }
+        } else {
+            char path_utf8[MAX_PATH * 3];
+            wide_to_utf8(path_w, path_utf8, sizeof(path_utf8));
+            if (mp_open(path_utf8) != 0) {
+                wchar_t msg[600];
+                swprintf(msg, 600, lang_get("err_open"), path_w);
+                MessageBoxW(hwnd, msg, APP_TITLE, MB_ICONERROR);
+            }
         }
         return 0;
     }
@@ -940,6 +1116,7 @@ static LRESULT CALLBACK wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         switch (wp) {
         case VK_SPACE:   mp_play_pause(); break;
         case 'S':        mp_stop(); break;
+        case 'N':        playlist_next(); break;
         case VK_UP:      SendMessageW(hwnd, WM_COMMAND, IDM_VOL_UP, 0); break;
         case VK_DOWN:    SendMessageW(hwnd, WM_COMMAND, IDM_VOL_DOWN, 0); break;
         case VK_F11:     toggle_fullscreen(hwnd); break;
@@ -978,6 +1155,8 @@ static LRESULT CALLBACK wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
             mp_update_check_async(hwnd, 0);
             return 0;
         }
+        if (wp == 1)
+            playlist_tick();       /* enchaîne à la fin d'un morceau */
         status_update();
         return 0;
 
@@ -1238,7 +1417,8 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR lpCmdLine, int nCmdSh
     UpdateWindow(g_hwnd);
     log_line("Window shown");
 
-    /* fichier passé en ligne de commande : "MusicPlayer.exe chemin.mp3" */
+    /* fichier ou dossier passé en ligne de commande :
+       "MusicPlayer.exe chemin.mp3" ou "MusicPlayer.exe C:\Musique" */
     if (lpCmdLine && *lpCmdLine) {
         char file[MAX_PATH * 3];
         strncpy(file, lpCmdLine, sizeof(file) - 1);
@@ -1248,7 +1428,15 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR lpCmdLine, int nCmdSh
             memmove(file, file + 1, len - 2);
             file[len - 2] = '\0';
         }
-        if (mp_open(file) != 0) {
+        if (GetFileAttributesA(file) & FILE_ATTRIBUTE_DIRECTORY) {
+            wchar_t dir_w[MAX_PATH];
+            utf8_to_wide(file, dir_w, MAX_PATH);
+            if (playlist_open_folder(dir_w) != 0) {
+                char dbg[512];
+                _snprintf(dbg, sizeof(dbg), "Command-line folder open failed : %s", file);
+                log_line(dbg);
+            }
+        } else if (mp_open(file) != 0) {
             char dbg[512];
             _snprintf(dbg, sizeof(dbg), "Command-line open failed : %s", file);
             log_line(dbg);

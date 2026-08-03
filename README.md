@@ -7,7 +7,8 @@ cross-compiled from Linux with MinGW-w64.
 - Audio output: **miniaudio** (WASAPI / DirectSound / WinMM)
 - Speed from 0.5× to 2× in 0.5 steps · volume 0–200 % (boost included) · stop resets to 0 s
 - Drag & drop files, keyboard shortcuts
-- **Play/Pause/Stop buttons + volume slider** (0–100 % blue, 100–200 % orange boost) built into the window
+- **Play/Pause/Stop/Next buttons + volume slider** (0–100 % blue, 100–200 % orange boost) built into the window
+- **Folder playback**: File ▸ Open folder… (or drag & drop a folder, or pass it on the command line) — all MP3/MP4 are played in order, subfolders included, next track starts automatically
 - **Fullscreen** for visual plugins (F11 or the ⛶ button)
 - **Progress bar** with color gradient
 - **Update checker**: manual (Settings ▸ Check for updates…) and automatic at startup (compares with the latest GitHub release)
@@ -18,7 +19,7 @@ cross-compiled from Linux with MinGW-w64.
 
 ## Version
 
-`2026.08.015` — see [CHANGELOG.md](CHANGELOG.md)
+`2026.08.016` — see [CHANGELOG.md](CHANGELOG.md)
 
 ## Run on Windows 11
 
@@ -81,8 +82,10 @@ would require pairing it with a native UI (not included).
 | Action | Menu | Shortcut |
 |---|---|---|
 | Open MP3/MP4 | File ▸ Open… | Ctrl+O (or drag & drop) |
+| Open folder (playlist) | File ▸ Open folder… | drag & drop a folder |
 | Play / Pause | window button | Space |
 | Stop (reset to 0 s) | window button | S |
+| Next track | window button ⏭ | N |
 | Speed 0.5× / 1× / 1.5× / 2× | Settings ▸ Speed | — |
 | Volume | window slider | ↑ / ↓ |
 | Fullscreen | Settings ▸ Fullscreen | F11 (or ⛶ / Esc) |
