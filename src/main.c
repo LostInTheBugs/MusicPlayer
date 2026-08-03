@@ -76,11 +76,12 @@ static wchar_t g_lang_dir[MAX_PATH] = { 0 };
 static int  g_fullscreen = 0;   /* mode plein écran (F11 / Échap) */
 static RECT g_win_normal = { 0, 0, 640, 300 };
 static int  g_fs_screens = 0;   /* nb d'écrans pour le plein écran (0 = 1) */
-static int  g_fs_mode[4] = { 0, 0, 0, 0 }; /* contenu des écrans 2..4 :
+static int  g_fs_mode[4] = { 0, 0, 0, 0 }; /* contenu des écrans 1..4 :
                                             0 = visuel, 1 = playlist,
                                             2 = lyrics, 3 = jaquette */
 static HWND g_fs_wins[4] = { NULL, NULL, NULL, NULL }; /* fenêtres annexes */
 static HWND g_fs_win = NULL;    /* fenêtre principale en plein écran multi */
+static int  g_fs_win_count = 0; /* nb de fenêtres annexes ouvertes */
 static int  g_cd_mode = 0;        /* 1 = lecture CD audio (MCI) */
 static int  g_cd_was_playing = 0; /* détection fin de piste */
 static int  g_dj_mode = 0;        /* 1 = mode DJ Mixing (synchro web) */
@@ -1457,6 +1458,7 @@ static INT_PTR CALLBACK interface_dlg_proc(HWND h, UINT m, WPARAM w, LPARAM l)
         /* plein écran multi-écrans */
         {
             int nmons = GetSystemMetrics(SM_CMONITORS);
+            if (nmons > 4) nmons = 4;
             wchar_t lbl[160];
             wsprintfW(lbl, L"(%d screen%s detected)", nmons,
                       nmons > 1 ? L"s" : L"");
@@ -1475,10 +1477,21 @@ static INT_PTR CALLBACK interface_dlg_proc(HWND h, UINT m, WPARAM w, LPARAM l)
                 L"Visual effect", L"Playlist", L"Lyrics", L"Cover"
             };
             for (int i = 0; i < 3; i++) {
+                HWND lbl2 = GetDlgItem(h, 1034 + i);
                 HWND m = GetDlgItem(h, 1041 + i);
-                for (int j = 0; j < 4; j++)
-                    SendMessageW(m, CB_ADDSTRING, 0, (LPARAM)fmodes[j]);
-                SendMessageW(m, CB_SETCURSEL, g_fs_mode[i], 0);
+                if (i < nmons) {
+                    wchar_t t[64];
+                    wsprintfW(t, L"Screen %d shows :", i + 1);
+                    SetWindowTextW(lbl2, t);
+                    ShowWindow(lbl2, SW_SHOW);
+                    ShowWindow(m, SW_SHOW);
+                    for (int j = 0; j < 4; j++)
+                        SendMessageW(m, CB_ADDSTRING, 0, (LPARAM)fmodes[j]);
+                    SendMessageW(m, CB_SETCURSEL, g_fs_mode[i], 0);
+                } else {
+                    ShowWindow(lbl2, SW_HIDE);
+                    ShowWindow(m, SW_HIDE);
+                }
             }
         }
         return TRUE;
@@ -2395,6 +2408,12 @@ static void dj_pick_track(HWND hwnd, int deck)
     }
 }
 
+static BOOL CALLBACK fsview_enum(HMONITOR mon, HDC hdc, LPRECT rc, LPARAM lp);
+static void toggle_fullscreen(HWND hwnd);
+static void fsview_paint_playlist(HDC hdc, int w, int h);
+static void fsview_paint_lyrics(HDC hdc, int w, int h);
+static void fsview_paint_cover(HDC hdc, int w, int h);
+
 static void paint_center(HDC hdc, RECT* rc)
 {
     RECT vis_rc, bar_rc, ctrl_rc;
@@ -2432,6 +2451,27 @@ static void paint_center(HDC hdc, RECT* rc)
             dj_rc.bottom -= (CTRL_H + PROGRESS_H);
         paint_dj_console(hdc, &dj_rc);
         return;
+    }
+
+    /* plein écran : le 1er écran peut afficher autre chose que le visuel */
+    if (g_fullscreen && g_fs_mode[0] != 0) {
+        int w = vis_rc.right - vis_rc.left;
+        int h = vis_rc.bottom - vis_rc.top;
+        if (g_fs_mode[0] == 1) {
+            fsview_paint_playlist(hdc, w, h);
+            return;
+        }
+        if (g_fs_mode[0] == 2) {
+            fsview_paint_lyrics(hdc, w, h);
+            return;
+        }
+        if (g_fs_mode[0] == 3) {
+            HBRUSH bg = CreateSolidBrush(RGB(12, 14, 18));
+            FillRect(hdc, &vis_rc, bg);
+            DeleteObject(bg);
+            fsview_paint_cover(hdc, w, h);
+            return;
+        }
     }
 
     /* un plugin visuel actif remplace le texte par son rendu */
@@ -2483,9 +2523,6 @@ static void paint_center(HDC hdc, RECT* rc)
 /* ------------------------------------------------------------------ */
 /* Fenêtres plein écran par écran (visuel, playlist, lyrics, jaquette) */
 /* ------------------------------------------------------------------ */
-static BOOL CALLBACK fsview_enum(HMONITOR mon, HDC hdc, LPRECT rc, LPARAM lp);
-static void toggle_fullscreen(HWND hwnd);
-
 static void fsview_paint_cover(HDC hdc, int w, int h)
 {
     const char* name = mp_get_file_name();
@@ -2668,12 +2705,15 @@ static void fsview_close_all(void)
             g_fs_wins[i] = NULL;
         }
     }
+    g_fs_win_count = 0;
 }
 
 static void fsview_open_all(int nscreens)
 {
-    /* la fenêtre principale occupe l'écran 1 ; les fenêtres annexes
-     * les écrans 2..nscreens */
+    /* la fenêtre principale occupe le moniteur où elle se trouve ;
+     * les fenêtres annexes couvrent les autres moniteurs, chacune avec
+     * le contenu configuré pour son écran (g_fs_mode[1..n]) */
+    (void)nscreens;
     WNDCLASSW wc;
     if (!GetClassInfoW(GetModuleHandleW(NULL), L"MusicPlayerFsView", &wc)) {
         memset(&wc, 0, sizeof(wc));
@@ -2684,30 +2724,23 @@ static void fsview_open_all(int nscreens)
         wc.lpszClassName = L"MusicPlayerFsView";
         RegisterClassW(&wc);
     }
-    EnumDisplayMonitors(NULL, NULL, fsview_enum, (LPARAM)&nscreens);
+    g_fs_win_count = 0;
+    EnumDisplayMonitors(NULL, NULL, fsview_enum, 0);
 }
 
 static BOOL CALLBACK fsview_enum(HMONITOR mon, HDC hdc, LPRECT rc, LPARAM lp)
 {
     (void)hdc;
     (void)rc;
-    int nscreens = *(int*)lp;
+    (void)lp;
     MONITORINFO mi;
     mi.cbSize = sizeof(mi);
     GetMonitorInfoW(mon, &mi);
-    /* écran 1 = celui de la fenêtre principale : les annexes sont les
-     * autres écrans, dans l'ordre d'énumération */
-    static int order = 0;
-    if (order == 0) {
-        order++;
-        return TRUE;
-    }
-    int idx = order;      /* écran 2..n */
-    order++;
-    if (idx > nscreens) {
-        order = 0;
-        return FALSE;
-    }
+    /* pas de fenêtre annexe sur le moniteur de la fenêtre principale */
+    HMONITOR main_mon = MonitorFromWindow(g_hwnd, MONITOR_DEFAULTTONEAREST);
+    if (mon == main_mon) return TRUE;
+    if (g_fs_win_count >= g_fs_screens - 1) return FALSE;
+    int mode = g_fs_mode[1 + g_fs_win_count];
     HWND w = CreateWindowExW(WS_EX_TOPMOST, L"MusicPlayerFsView", L"",
                              WS_POPUP,
                              mi.rcMonitor.left, mi.rcMonitor.top,
@@ -2715,16 +2748,12 @@ static BOOL CALLBACK fsview_enum(HMONITOR mon, HDC hdc, LPRECT rc, LPARAM lp)
                              mi.rcMonitor.bottom - mi.rcMonitor.top,
                              NULL, NULL, GetModuleHandleW(NULL), NULL);
     if (w) {
-        SetWindowLongPtrW(w, GWLP_USERDATA, (LONG_PTR)g_fs_mode[idx - 2]);
+        SetWindowLongPtrW(w, GWLP_USERDATA, (LONG_PTR)mode);
         ShowWindow(w, SW_SHOW);
         SetFocus(w);
         SetTimer(w, 1, 33, NULL);
-        g_fs_wins[idx - 2] = w;
-        g_fs_win = w;
-    }
-    if (idx >= nscreens) {
-        order = 0;
-        return FALSE;
+        g_fs_wins[g_fs_win_count] = w;
+        g_fs_win_count++;
     }
     return TRUE;
 }
@@ -2757,6 +2786,7 @@ static void toggle_fullscreen(HWND hwnd)
         if (g_fs_screens >= 2) fsview_open_all(g_fs_screens);
     } else {
         fsview_close_all();
+        g_fs_win = NULL;
         SetWindowLongW(hwnd, GWL_STYLE, WS_OVERLAPPEDWINDOW);
         SetWindowLongW(hwnd, GWL_EXSTYLE,
                        GetWindowLongW(hwnd, GWL_EXSTYLE) & ~WS_EX_TOPMOST);

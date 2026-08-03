@@ -2,6 +2,14 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.033-c1] — 2026-08-03
+
+### Fixed
+- **Plein écran multi-écrans corrigé** :
+  - le dialog Interface affiche **Screen 1, 2, 3…** selon le nombre d'écrans détectés (fini les « 2, 3, 4 » fixes) et **chaque écran a son contenu**, y compris le 1er (visuel, playlist, lyrics ou jaquette appliqué à la fenêtre principale)
+  - les fenêtres annexes couvrent les **autres moniteurs** (celui de la fenêtre principale exclu), toutes en vrai plein écran
+  - la **sortie du plein écran** ferme bien toutes les fenêtres annexes et restaure complètement
+
 ## [2026.08.033] — 2026-08-03
 
 ### Changed
