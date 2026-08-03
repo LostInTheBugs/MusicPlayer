@@ -2,6 +2,12 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.028-c1] — 2026-08-03
+
+### Fixed
+- **Page web réparée** : le script appelait un élément qui n'existait plus (`meta`) et plantait à chaque rafraîchissement — la jaquette et la playliste ne s'affichaient plus. Les métadonnées sont maintenant écrites dans leurs propres zones (titre, artiste, album, année)
+- **Lien vers le mode DJ Mixing** ajouté sur la page principale (bouton « 🎚️ DJ Mixing »)
+
 ## [2026.08.028] — 2026-08-03
 
 ### Added
