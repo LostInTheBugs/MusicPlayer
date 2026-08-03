@@ -7,6 +7,8 @@
  */
 #include <winsock2.h>
 #include <windows.h>
+#include <commctrl.h>
+#include <gdiplus.h>
 #include <windowsx.h>
 #include <shlobj.h>
 #include <shobjidl.h>
@@ -73,6 +75,7 @@ static int  g_vol_drag = 0;   /* curseur de volume en cours de glissement */
 
 static void status_update(void);        /* définie plus bas */
 static void lang_pref_save(const wchar_t* code); /* idem */
+static INT_PTR dlg_skin_color(HWND h, WPARAM w, LPARAM l); /* idem */
 static void wide_to_utf8(const wchar_t* in, char* out, int out_chars); /* idem */
 static void log_line(const char* s);    /* idem */
 static void playlist_win_rebuild(void); /* fenêtre playlist */
@@ -310,8 +313,63 @@ static mp_skin_colors g_skin = {
     RGB(92, 98, 116),    /* prog_border */
 };
 
+static ULONG_PTR g_gdiplus_token = 0;  /* GDI+ initialisé au démarrage */
+static GpImage* g_skin_bg = NULL;      /* image de fond du skin */
+
+/* ------------------------------------------------------------------ */
+/* Barre de menus dessinée (owner-draw) avec la palette du skin        */
+/* ------------------------------------------------------------------ */
+static wchar_t g_bar_texts[8][64];
+static int g_bar_text_n = 0;
+
+static const wchar_t* bar_text_dup(const wchar_t* s)
+{
+    if (g_bar_text_n >= 8) return L"";
+    wcsncpy(g_bar_texts[g_bar_text_n], s, 63);
+    g_bar_texts[g_bar_text_n][63] = 0;
+    return g_bar_texts[g_bar_text_n++];
+}
+
+static void append_bar_item(HMENU bar, HMENU popup, const wchar_t* text)
+{
+    AppendMenuW(bar, MF_POPUP | MF_OWNERDRAW, (UINT_PTR)popup,
+                (LPCWSTR)bar_text_dup(text));
+}
+
+/* mesuré puis dessiné : WM_MEASUREITEM / WM_DRAWITEM (ODT_MENU) */
+static void menu_measure(MEASUREITEMSTRUCT* mi)
+{
+    const wchar_t* t = (const wchar_t*)mi->itemData;
+    HDC hdc = GetDC(g_hwnd);
+    HFONT f = (HFONT)GetStockObject(DEFAULT_GUI_FONT);
+    HFONT old = (HFONT)SelectObject(hdc, f);
+    SIZE sz;
+    GetTextExtentPoint32W(hdc, t, (int)wcslen(t), &sz);
+    SelectObject(hdc, old);
+    ReleaseDC(g_hwnd, hdc);
+    mi->itemWidth = sz.cx + 28;
+    mi->itemHeight = sz.cy + 10;
+}
+
+static void menu_draw(DRAWITEMSTRUCT* di)
+{
+    const wchar_t* t = (const wchar_t*)di->itemData;
+    int hot = (di->itemState & ODS_SELECTED) != 0;
+    HBRUSH b = CreateSolidBrush(hot ? g_skin.accent : g_skin.ctrl_bar);
+    FillRect(di->hDC, &di->rcItem, b);
+    DeleteObject(b);
+    SetBkMode(di->hDC, TRANSPARENT);
+    SetTextColor(di->hDC, hot ? RGB(255, 255, 255) : g_skin.text);
+    HFONT f = (HFONT)GetStockObject(DEFAULT_GUI_FONT);
+    HFONT old = (HFONT)SelectObject(di->hDC, f);
+    RECT rc = di->rcItem;
+    DrawTextW(di->hDC, t, -1, &rc, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+    SelectObject(di->hDC, old);
+}
+
 /* recrée les pinceaux de la progression (couleurs figées) */
 static void skin_reset_brushes(void);
+static void menu_bar_bg(void);  /* définie plus bas */
 
 static void host_skin_set_colors(const mp_skin_colors* c)
 {
@@ -320,8 +378,39 @@ static void host_skin_set_colors(const mp_skin_colors* c)
     skin_reset_brushes();
     if (g_hwnd) {
         InvalidateRect(g_hwnd, NULL, TRUE);
+        menu_bar_bg();
         status_update();
     }
+}
+
+/* Image de fond du skin : chargée via GDI+, affichée en WM_ERASEBKGND */
+static void host_skin_set_bg(const char* path_utf8)
+{
+    if (g_skin_bg) {
+        GdipDisposeImage(g_skin_bg);
+        g_skin_bg = NULL;
+    }
+    if (path_utf8 && path_utf8[0]) {
+        wchar_t w[MAX_PATH * 3];
+        MultiByteToWideChar(CP_UTF8, 0, path_utf8, -1, w, MAX_PATH * 3);
+        GpStatus st = GdipLoadImageFromFile(w, &g_skin_bg);
+        (void)st;
+    }
+    if (g_hwnd) InvalidateRect(g_hwnd, NULL, TRUE);
+}
+
+/* Fond de la barre de menus avec la couleur du skin */
+static void menu_bar_bg(void)
+{
+    HMENU m = GetMenu(g_hwnd);
+    if (!m) return;
+    MENUINFO mi;
+    memset(&mi, 0, sizeof(mi));
+    mi.cbSize = sizeof(mi);
+    mi.fMask = MIM_BACKGROUND;
+    mi.hbrBack = CreateSolidBrush(g_skin.ctrl_bar);
+    SetMenuInfo(m, &mi);
+    DrawMenuBar(g_hwnd);
 }
 
 /* ------------------------------------------------------------------ */
@@ -428,6 +517,7 @@ static const mp_host_api g_host = {
     host_web_find_free_port,
     host_web_read,
     host_skin_set_colors,
+    host_skin_set_bg,
     host_get_metadata, host_get_cover, host_plist_path
 };
 
@@ -601,7 +691,7 @@ static HMENU create_menus(void)
     AppendMenuW(mFile, MF_STRING, IDM_OPEN_FOLDER, lang_get("menu_open_folder"));
     AppendMenuW(mFile, MF_SEPARATOR, 0, NULL);
     AppendMenuW(mFile, MF_STRING, IDM_EXIT, lang_get("quit"));
-    AppendMenuW(bar, MF_POPUP, (UINT_PTR)mFile, lang_get("menu_file"));
+    append_bar_item(bar, mFile, lang_get("menu_file"));
 
     /* Paramètres : vitesse, plein écran, interface, mises à jour */
     HMENU mSettings = CreatePopupMenu();
@@ -614,13 +704,13 @@ static HMENU create_menus(void)
     AppendMenuW(mSettings, MF_STRING, IDM_WEB_SERVER, lang_get("menu_web_server"));
     AppendMenuW(mSettings, MF_SEPARATOR, 0, NULL);
     AppendMenuW(mSettings, MF_STRING, IDM_PLUGIN_CFG, lang_get("menu_plugins_cfg"));
-    AppendMenuW(bar, MF_POPUP, (UINT_PTR)mSettings, lang_get("menu_settings"));
+    append_bar_item(bar, mSettings, lang_get("menu_settings"));
 
-    AppendMenuW(bar, MF_POPUP, (UINT_PTR)CreatePopupMenu(), lang_get("menu_plugins"));
+    append_bar_item(bar, (HMENU)CreatePopupMenu(), lang_get("menu_plugins"));
 
     HMENU mHelp = CreatePopupMenu();
     AppendMenuW(mHelp, MF_STRING, IDM_ABOUT, lang_get("about"));
-    AppendMenuW(bar, MF_POPUP, (UINT_PTR)mHelp, lang_get("menu_help"));
+    append_bar_item(bar, mHelp, lang_get("menu_help"));
 
     return bar;
 }
@@ -843,6 +933,9 @@ static INT_PTR CALLBACK web_dlg_proc(HWND h, UINT m, WPARAM w, LPARAM l)
 {
     (void)l;
     switch (m) {
+    case WM_CTLCOLORDLG:
+    case WM_CTLCOLORSTATIC:
+        return dlg_skin_color(h, w, l);
     case WM_INITDIALOG: {
         CheckDlgButton(h, IDC_WEB_CHK, g_web_enabled ? BST_CHECKED : BST_UNCHECKED);
         wchar_t ptxt[16];
@@ -934,10 +1027,26 @@ static void do_web_dialog(void)
 /* Dialog Plugins (Settings ▸ Plugins…) : visibilité dans le menu      */
 /* (les skins se choisissent uniquement dans le menu Plugins ▸ Skins)  */
 /* ------------------------------------------------------------------ */
+static HBRUSH g_dlg_brush = NULL;
+
+/* fond de dialog et textes avec la palette du skin */
+static INT_PTR dlg_skin_color(HWND h, WPARAM w, LPARAM l)
+{
+    (void)h; (void)l;
+    HDC hdc = (HDC)w;
+    if (!g_dlg_brush) g_dlg_brush = CreateSolidBrush(g_skin.bg);
+    SetBkColor(hdc, g_skin.bg);
+    SetTextColor(hdc, g_skin.text);
+    return (INT_PTR)g_dlg_brush;
+}
+
 static INT_PTR CALLBACK plugins_dlg_proc(HWND h, UINT m, WPARAM w, LPARAM l)
 {
     (void)l;
     switch (m) {
+    case WM_CTLCOLORDLG:
+    case WM_CTLCOLORSTATIC:
+        return dlg_skin_color(h, w, l);
     case WM_INITDIALOG: {
         HWND lv = GetDlgItem(h, IDC_PLG_LIST);
         ListView_SetExtendedListViewStyle(lv,
@@ -1022,6 +1131,9 @@ static INT_PTR CALLBACK interface_dlg_proc(HWND h, UINT m, WPARAM w, LPARAM l)
 {
     (void)l;
     switch (m) {
+    case WM_CTLCOLORDLG:
+    case WM_CTLCOLORSTATIC:
+        return dlg_skin_color(h, w, l);
     case WM_INITDIALOG: {
         SetDlgItemTextW(h, IDC_IF_LBL_S, lang_get("interface_skin"));
         SetDlgItemTextW(h, IDC_IF_LBL_L, lang_get("interface_lang"));
@@ -1102,6 +1214,9 @@ static INT_PTR CALLBACK updcfg_dlg_proc(HWND h, UINT m, WPARAM w, LPARAM l)
 {
     (void)l;
     switch (m) {
+    case WM_CTLCOLORDLG:
+    case WM_CTLCOLORSTATIC:
+        return dlg_skin_color(h, w, l);
     case WM_INITDIALOG: {
         int mode = mp_update_get_mode();
         CheckRadioButton(h, IDC_UPD_AUTO, IDC_UPD_OFF,
@@ -1174,6 +1289,9 @@ static INT_PTR CALLBACK upd_dlg_proc(HWND h, UINT m, WPARAM w, LPARAM l)
 {
     (void)l;
     switch (m) {
+    case WM_CTLCOLORDLG:
+    case WM_CTLCOLORSTATIC:
+        return dlg_skin_color(h, w, l);
     case WM_INITDIALOG: {
         wchar_t msg[512];
         swprintf(msg, 512, lang_get("upd_new"), mp_update_latest(), MP_VERSION);
@@ -1302,6 +1420,9 @@ static INT_PTR CALLBACK about_dlg_proc(HWND h, UINT m, WPARAM w, LPARAM l)
 {
     (void)l;
     switch (m) {
+    case WM_CTLCOLORDLG:
+    case WM_CTLCOLORSTATIC:
+        return dlg_skin_color(h, w, l);
     case WM_INITDIALOG: {
         wchar_t l1[160], l2[320];
         swprintf(l1, 160, L"MusicPlayer %hs", MP_VERSION);
@@ -2254,6 +2375,22 @@ static LRESULT CALLBACK wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         }
         return 0;
     }
+    case WM_MEASUREITEM: {
+        MEASUREITEMSTRUCT* mi = (MEASUREITEMSTRUCT*)lp;
+        if (mi->CtlType == ODT_MENU) {
+            menu_measure(mi);
+            return TRUE;
+        }
+        break;
+    }
+    case WM_DRAWITEM: {
+        DRAWITEMSTRUCT* di = (DRAWITEMSTRUCT*)lp;
+        if (di->CtlType == ODT_MENU) {
+            menu_draw(di);
+            return TRUE;
+        }
+        break;
+    }
     case WM_COMMAND:
         on_command(LOWORD(wp), GetMenu(hwnd));
         return 0;
@@ -2269,10 +2406,19 @@ static LRESULT CALLBACK wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
             HDC mem = CreateCompatibleDC(hdc);
             HBITMAP bmp = CreateCompatibleBitmap(hdc, w, h);
             HBITMAP oldbmp = (HBITMAP)SelectObject(mem, bmp);
-            RECT all = { 0, 0, w, h };
-            HBRUSH wb = CreateSolidBrush(g_skin.bg);
-            FillRect(mem, &all, wb);
-            DeleteObject(wb);
+            /* fond de la zone : image du skin si présente, sinon bg */
+            if (g_skin_bg) {
+                GpGraphics* g = NULL;
+                if (GdipCreateFromHDC(mem, &g) == Ok) {
+                    GdipDrawImageRectI(g, g_skin_bg, 0, 0, w, h);
+                    GdipDeleteGraphics(g);
+                }
+            } else {
+                RECT rf = { 0, 0, w, h };
+                HBRUSH wb = CreateSolidBrush(g_skin.bg);
+                FillRect(mem, &rf, wb);
+                DeleteObject(wb);
+            }
             RECT rc2 = { 0, 0, w, h };
             paint_center(mem, &rc2);
             BitBlt(hdc, rc.left, rc.top, w, h, mem, 0, 0, SRCCOPY);
@@ -2289,9 +2435,19 @@ static LRESULT CALLBACK wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         HDC hdc = (HDC)wp;
         RECT rc;
         GetClientRect(hwnd, &rc);
-        HBRUSH wb = CreateSolidBrush(g_skin.bg);
-        FillRect(hdc, &rc, wb);
-        DeleteObject(wb);
+        if (g_skin_bg) {
+            /* image de fond du skin, étirée sur toute la fenêtre */
+            GpGraphics* g = NULL;
+            if (GdipCreateFromHDC(hdc, &g) == Ok) {
+                GdipDrawImageRectI(g, g_skin_bg, 0, 0,
+                                   rc.right - rc.left, rc.bottom - rc.top);
+                GdipDeleteGraphics(g);
+            }
+        } else {
+            HBRUSH wb = CreateSolidBrush(g_skin.bg);
+            FillRect(hdc, &rc, wb);
+            DeleteObject(wb);
+        }
         return 1;
     }
     case WM_GETMINMAXINFO: {
@@ -2460,6 +2616,14 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR lpCmdLine, int nCmdSh
     /* langue : préférence mémorisée, sinon langue du système, sinon anglais */
     lang_init(g_lang_dir, NULL);
     lang_pref_load();
+
+    /* GDI+ : images de fond des skins */
+    {
+        GdiplusStartupInput gsi;
+        memset(&gsi, 0, sizeof(gsi));
+        gsi.GdiplusVersion = 1;
+        GdiplusStartup(&g_gdiplus_token, &gsi, NULL);
+    }
 
     WNDCLASSW wc;
     memset(&wc, 0, sizeof(wc));

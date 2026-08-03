@@ -24,6 +24,10 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#ifndef MAX_PATH
+#define MAX_PATH 260
+#endif
+
 /* API plugins MusicPlayer — version 2 */
 #define MP_PLUGIN_API_VERSION 2
 
@@ -108,6 +112,11 @@ typedef struct mp_host_api {
     /* --- skins : palette de couleurs --- */
     void (*skin_set_colors)(const mp_skin_colors* colors);
 
+    /* --- skins : image de fond (PNG/JPEG/BMP) ---
+     * Chemin UTF-8 de l'image affichée en fond de la fenêtre
+     * principale (étirée). Chaîne vide = aucune image. */
+    void (*skin_set_bg)(const char* path_utf8);
+
     /* --- métadonnées & jaquette des fichiers (plugins SERVICE) --- */
     const char* (*get_metadata)(const char* path, const char* field);
     const unsigned char* (*get_cover)(const char* path, size_t* len);
@@ -175,6 +184,15 @@ typedef struct mp_plugin_api {
     const char* (*get_metadata)(mp_plugin* self, const char* path,
                                 const char* field);
 } mp_plugin_api;
+
+/* Instance d'un plugin chargé (rempli par le chargeur : mp_plugins_scan) */
+struct mp_plugin {
+    void* dll;                      /* handle de la DLL chargée */
+    const mp_plugin_api* api;       /* API du plugin */
+    int enabled;                    /* actif (case/radio du menu Plugins) */
+    int visible;                    /* affiché dans le menu Plugins ? */
+    wchar_t path[MAX_PATH];         /* chemin complet de la DLL */
+};
 
 #define MP_PLUGIN_ENTRY "mp_plugin_entry"
 typedef const mp_plugin_api* (*mp_plugin_entry_fn)(void);

@@ -2,6 +2,16 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.025] — 2026-08-03
+
+### Added
+- **Skins complets** : un skin personnalise maintenant toute l'interface :
+  - **Image de fond** de la fenêtre principale (étirée), affichée sous le visualiseur
+  - **Barre de menus** dessinée avec la palette du skin (fond, texte, survol) — y compris le fond de la barre
+  - **Fenêtres de configuration** (Web server, Plugins, Interface, Update, About) aux couleurs du skin (fond + textes)
+- **Skin Vintage radio** : texture complète d'une radio à lampes (bois, bandeau doré « VINTAGE RADIO », cadran AM gradué, haut-parleur) affichée derrière le visualiseur
+- **Skin Winamp** : texture façon Winamp classique (barre de titre, zone playlist, égaliseur)
+
 ## [2026.08.024] — 2026-08-03
 
 ### Added

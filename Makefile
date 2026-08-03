@@ -13,7 +13,7 @@
 #   make clean
 # ======================================================================
 
-VERSION := 2026.08.024
+VERSION := 2026.08.025
 
 CROSS    := x86_64-w64-mingw32-
 CC       := $(CROSS)gcc
@@ -26,7 +26,7 @@ CFLAGS   := -O2 -Wall -Wextra -std=c11 \
 LDFLAGS  := -Lvendor/ffmpeg/lib \
             -lavformat -lavcodec -lavutil -lswresample \
             -lole32 -luuid -lwinmm -ldsound \
-            -luser32 -lgdi32 -lshell32 -lcomdlg32 -lcomctl32 -lwininet -lws2_32 -liphlpapi \
+            -luser32 -lgdi32 -lshell32 -lcomdlg32 -lcomctl32 -lwininet -lws2_32 -liphlpapi -lgdiplus \
             -static-libgcc -mwindows
 
 SRC := src/main.c src/player.c src/plugin_loader.c src/lang.c src/update.c src/config.c
@@ -88,6 +88,8 @@ plugins-examples: $(BIN)
 	$(CC) -O2 -shared -o bin/plugins/skin_kitsch.dll examples/plugin_skin_kitsch.c -Isrc -static-libgcc
 	$(CC) -O2 -shared -o bin/plugins/skin_cartoon.dll examples/plugin_skin_cartoon.c -Isrc -static-libgcc
 	$(CC) -O2 -shared -o bin/plugins/skin_bnw.dll examples/plugin_skin_bnw.c -Isrc -static-libgcc
+	cp -f examples/radio_bg.png bin/plugins/radio_bg.png
+	cp -f examples/winamp_bg.png bin/plugins/winamp_bg.png
 	@echo "Plugins d'exemple compilés dans bin/plugins/"
 
 # ----------------------------------------------------------------------

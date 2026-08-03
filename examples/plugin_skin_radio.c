@@ -2,6 +2,7 @@
  * MusicPlayer — skin radio vintage.
  * Bois & doré : une vieille radio à lampes.
  */
+#include <windows.h>
 #include "plugin.h"
 
 static const mp_host_api* g_h = NULL;
@@ -21,7 +22,7 @@ static int pl_init(mp_plugin* self, const mp_host_api* host)
 
 static void pl_apply_skin(mp_plugin* self, void* hwnd)
 {
-    (void)self; (void)hwnd;
+    (void)hwnd;
     static const mp_skin_colors c = {
         0x8B5A2B,  /* bg : bois */
         0xFFF3D6,  /* text : ivoire */
@@ -38,6 +39,18 @@ static void pl_apply_skin(mp_plugin* self, void* hwnd)
         0xD4A017   /* prog_border */
     };
     if (g_h && g_h->skin_set_colors) g_h->skin_set_colors(&c);
+    /* texture de la radio (à côté de la DLL) */
+    if (g_h && g_h->skin_set_bg) {
+        wchar_t dir[MAX_PATH];
+        wcsncpy(dir, self->path, MAX_PATH - 1);
+        dir[MAX_PATH - 1] = 0;
+        wchar_t* slash = wcsrchr(dir, L'\\');
+        if (slash) slash[1] = 0;
+        wcscat(dir, L"radio_bg.png");
+        char u8[MAX_PATH * 3];
+        WideCharToMultiByte(CP_UTF8, 0, dir, -1, u8, sizeof(u8), NULL, NULL);
+        g_h->skin_set_bg(u8);
+    }
 }
 
 static const mp_plugin_api g_api = {

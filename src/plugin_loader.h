@@ -4,14 +4,6 @@
 #include <windows.h>
 #include "plugin.h"
 
-typedef struct mp_plugin {
-    HMODULE dll;                    /* handle de la DLL chargée */
-    const mp_plugin_api* api;       /* API du plugin */
-    int enabled;                    /* actif (case/radio du menu Plugins) */
-    int visible;                    /* affiché dans le menu Plugins ? */
-    wchar_t path[MAX_PATH];         /* chemin complet de la DLL */
-} mp_plugin;
-
 /* Analyse le répertoire <dir> (UTF-16) et charge chaque DLL exportant
  * mp_plugin_entry. Les plugins déjà chargés sont déchargés d'abord. */
 void mp_plugins_scan(const wchar_t* dir, const mp_host_api* host);
