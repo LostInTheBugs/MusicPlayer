@@ -81,6 +81,15 @@ static void cfg_set(const char* key, int on)
     fclose(out);
 }
 
+/* 1 si le plugin est visible dans le menu Plugins (clé "key.vis",
+ * défaut : visible) */
+static int cfg_get_vis(const char* key)
+{
+    char k[320];
+    _snprintf(k, sizeof(k), "%s.vis", key);
+    return cfg_get(k);
+}
+
 /* clé de configuration d'un plugin : nom du fichier sans ".dll" */
 static void plugin_key(const wchar_t* dll_path, char* out, int out_bytes)
 {
@@ -155,6 +164,8 @@ static int load_one(const wchar_t* dir, const wchar_t* name, const mp_host_api* 
         char key[256];
         plugin_key(full, key, sizeof(key));
         p->enabled = cfg_get(key);
+        p->visible = cfg_get_vis(key);
+        if (api->type() & MP_PLUGIN_SKIN) p->visible = 1;  /* skins : toujours au menu */
     }
 
     if (api->init && api->init(p, host) != 0) {
@@ -214,6 +225,24 @@ void mp_plugins_set_enabled(int i, int on)
     cfg_set(key, p->enabled);
 }
 
+int mp_plugins_is_visible(int i)
+{
+    mp_plugin* p = mp_plugins_get(i);
+    return p ? p->visible : 0;
+}
+
+void mp_plugins_set_visible(int i, int on)
+{
+    mp_plugin* p = mp_plugins_get(i);
+    if (!p) return;
+    p->visible = on ? 1 : 0;
+    char key[256];
+    plugin_key(p->path, key, sizeof(key));
+    char k[320];
+    _snprintf(k, sizeof(k), "%s.vis", key);
+    cfg_set(k, p->visible);
+}
+
 /* Diffuse un événement aux plugins SERVICE actifs. */
 void mp_plugins_service(int event, void* data)
 {
@@ -259,6 +288,7 @@ void mp_plugins_apply_skins(void* hwnd)
         if (p->api->apply_skin) {
             p->api->apply_skin(p, hwnd);
             applied = 1;
+            break;   /* un seul skin actif (radio) */
         }
     }
     if (!applied && g_host && g_host->skin_set_colors) {

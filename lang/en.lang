@@ -45,7 +45,7 @@ plugins_skins=Skins
 plugins_services=Services
 menu_plugins_cfg=&Plugins…
 plugins_dlg_title=Plugins
-plugins_dlg_lbl=Activate or deactivate plugins :
+plugins_dlg_lbl=Plugins to show in the Plugins menu :
 
 # --- Settings menu ---
 fullscreen=&Fullscreen

@@ -59,7 +59,7 @@ static const struct { const char* key; const wchar_t* val; } g_en[] = {
     { "plugins_services", L"Services" },
     { "menu_plugins_cfg", L"&Plugins…" },
     { "plugins_dlg_title", L"Plugins" },
-    { "plugins_dlg_lbl",  L"Activate or deactivate plugins :" },
+    { "plugins_dlg_lbl",  L"Plugins to show in the Plugins menu :" },
     { "fullscreen",       L"&Fullscreen" },
     { "menu_check_updates", L"Check for &updates…" },
     { "menu_auto_update", L"Check for updates at &startup" },

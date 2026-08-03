@@ -7,7 +7,8 @@
 typedef struct mp_plugin {
     HMODULE dll;                    /* handle de la DLL chargée */
     const mp_plugin_api* api;       /* API du plugin */
-    int enabled;                    /* activé dans le menu ? */
+    int enabled;                    /* actif (case/radio du menu Plugins) */
+    int visible;                    /* affiché dans le menu Plugins ? */
     wchar_t path[MAX_PATH];         /* chemin complet de la DLL */
 } mp_plugin;
 
@@ -21,8 +22,13 @@ int mp_plugins_count(void);
 /* Accès au plugin i (0 <= i < count). */
 mp_plugin* mp_plugins_get(int i);
 
-/* Active/désactive un plugin. */
+/* Active/désactive un plugin (état actif : case/radio du menu Plugins). */
 void mp_plugins_set_enabled(int i, int on);
+
+/* Visibilité dans le menu Plugins (Settings ▸ Plugins…). Les skins sont
+ * toujours visibles. */
+int mp_plugins_is_visible(int i);
+void mp_plugins_set_visible(int i, int on);
 
 /* Applique les peaux des plugins de type SKIN actifs (appelé par l'UI). */
 void mp_plugins_apply_skins(void* hwnd);

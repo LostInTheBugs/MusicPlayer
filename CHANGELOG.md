@@ -2,6 +2,14 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.023-c1] — 2026-08-03
+
+### Fixed
+- **Skins : plus de désactivation** — choisir un skin dans Plugins ▸ Skins ne retire plus les autres skins de la liste : les 11 restent toujours affichés, la sélection (radio) ne change que le skin actif
+- **Dialog Plugins (Settings ▸ Plugins…)** : il définit désormais les plugins **affichés dans le menu Plugins** (libellé corrigé : « Plugins to show in the Plugins menu ») ; **les skins n'y figurent plus** — ils se choisissent uniquement dans Plugins ▸ Skins
+- **Menu Plugins** : sélectionner/désélectionner un plugin (case ou radio) ne l'enlève plus de la liste
+- Un seul skin est appliqué au démarrage (le premier actif de la sélection radio)
+
 ## [2026.08.023] — 2026-08-03
 
 ### Added

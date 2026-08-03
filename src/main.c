@@ -518,13 +518,14 @@ static void refresh_speed_check(HMENU menu)
     CheckMenuRadioItem(menu, IDM_SPEED_BASE, IDM_SPEED_BASE + SPEED_COUNT - 1,
                        IDM_SPEED_BASE + idx, MF_BYCOMMAND);
 }
-/* Menu Plugins : sous-menus par type (un seul visuel actif, radio).
- * Les plugins désactivés (Settings ▸ Plugins) n'apparaissent pas. */
+/* Menu Plugins : sous-menus par type (un seul visuel/skin actif, radio).
+ * Tous les plugins visibles (Settings ▸ Plugins…) y figurent ; la case ou
+ * le point radio reflète l'état actif, et un clic ne retire rien du menu. */
 static void rebuild_plugins_menu(HMENU parent)
 {
     HMENU mVis = CreatePopupMenu();   /* visuels : radio */
     HMENU mFX = CreatePopupMenu();    /* effets audio : cases */
-    HMENU mSkin = CreatePopupMenu();  /* skins : cases */
+    HMENU mSkin = CreatePopupMenu();  /* skins : radio */
     HMENU mSvc = CreatePopupMenu();   /* services : cases */
 
     int n = mp_plugins_count();
@@ -532,7 +533,7 @@ static void rebuild_plugins_menu(HMENU parent)
     int skin_active = -1;
     for (int i = 0; i < n; i++) {
         mp_plugin* p = mp_plugins_get(i);
-        if (!p || !p->api || !p->enabled) continue;   /* désactivé : absent */
+        if (!p || !p->api || !p->visible) continue;   /* masqué : absent */
         wchar_t label[160], name_w[128], ver_w[32];
         utf8_to_wide(p->api->name(), name_w, 128);
         utf8_to_wide(p->api->version() ? p->api->version() : "?", ver_w, 32);
@@ -938,7 +939,8 @@ static void do_web_dialog(void)
 }
 
 /* ------------------------------------------------------------------ */
-/* Dialog Plugins (Settings ▸ Plugins…) : activation par cases         */
+/* Dialog Plugins (Settings ▸ Plugins…) : visibilité dans le menu      */
+/* (les skins se choisissent uniquement dans le menu Plugins ▸ Skins)  */
 /* ------------------------------------------------------------------ */
 static INT_PTR CALLBACK plugins_dlg_proc(HWND h, UINT m, WPARAM w, LPARAM l)
 {
@@ -962,9 +964,11 @@ static INT_PTR CALLBACK plugins_dlg_proc(HWND h, UINT m, WPARAM w, LPARAM l)
         c2.cx = 100; c2.pszText = L"Description";
         ListView_InsertColumn(lv, 2, &c2);
         int n = mp_plugins_count();
+        int row = 0;
         for (int i = 0; i < n; i++) {
             mp_plugin* p = mp_plugins_get(i);
             if (!p || !p->api) continue;
+            if (p->api->type() & MP_PLUGIN_SKIN) continue;  /* skins : menu uniquement */
             wchar_t name_w[160], desc_w[240];
             utf8_to_wide(p->api->name() ? p->api->name() : "?", name_w, 160);
             utf8_to_wide(p->api->description() ? p->api->description() : "",
@@ -973,17 +977,17 @@ static INT_PTR CALLBACK plugins_dlg_proc(HWND h, UINT m, WPARAM w, LPARAM l)
             unsigned t = p->api->type();
             if (t & MP_PLUGIN_VISUAL) type_w = L"Visual";
             else if (t & MP_PLUGIN_AUDIO_EFFECT) type_w = L"Audio effect";
-            else if (t & MP_PLUGIN_SKIN) type_w = L"Skin";
             else if (t & MP_PLUGIN_SERVICE) type_w = L"Service";
             LVITEMW it;
             memset(&it, 0, sizeof(it));
             it.mask = LVIF_TEXT;
-            it.iItem = i;
+            it.iItem = row;
             it.pszText = name_w;
             ListView_InsertItem(lv, &it);
-            ListView_SetItemText(lv, i, 1, (wchar_t*)type_w);
-            ListView_SetItemText(lv, i, 2, desc_w);
-            ListView_SetCheckState(lv, i, p->enabled ? TRUE : FALSE);
+            ListView_SetItemText(lv, row, 1, (wchar_t*)type_w);
+            ListView_SetItemText(lv, row, 2, desc_w);
+            ListView_SetCheckState(lv, row, p->visible ? TRUE : FALSE);
+            row++;
         }
         SetDlgItemTextW(h, IDC_PLG_LBL, lang_get("plugins_dlg_lbl"));
         SetWindowTextW(h, lang_get("plugins_dlg_title"));
@@ -993,10 +997,13 @@ static INT_PTR CALLBACK plugins_dlg_proc(HWND h, UINT m, WPARAM w, LPARAM l)
         if (LOWORD(w) == IDOK) {
             HWND lv = GetDlgItem(h, IDC_PLG_LIST);
             int n = mp_plugins_count();
+            int row = 0;
             for (int i = 0; i < n; i++) {
                 mp_plugin* p = mp_plugins_get(i);
                 if (!p || !p->api) continue;
-                mp_plugins_set_enabled(i, ListView_GetCheckState(lv, i) ? 1 : 0);
+                if (p->api->type() & MP_PLUGIN_SKIN) continue;
+                mp_plugins_set_visible(i, ListView_GetCheckState(lv, row) ? 1 : 0);
+                row++;
             }
             /* reconfigurer les services (serveur web…) */
             mp_plugins_service(MP_SERVICE_WEB_APPLY, NULL);
