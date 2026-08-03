@@ -2,6 +2,12 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.027] — 2026-08-03
+
+### Added
+- **Disposition personnalisable par skin** : chaque skin peut **cacher la barre de menus** (menu accessible par **clic droit**) et **déplacer les boutons de contrôle** (en haut, à la place du menu, ou en bas) — l'image de fond couvre **toute la fenêtre**
+- **Skin Vintage radio** : la barre de menus est remplacée par les boutons de contrôle en haut ; le menu reste accessible par clic droit
+
 ## [2026.08.026-c1] — 2026-08-03
 
 ### Fixed

@@ -122,6 +122,13 @@ typedef struct mp_host_api {
      * Sans appel, la zone par défaut est utilisée. */
     void (*skin_set_visual_rect)(int x, int y, int w, int h);
 
+    /* --- skins : disposition de la fenêtre ---
+     * menu_visible : 1 = barre de menus en haut (défaut), 0 = cachée
+     *   (menu accessible par clic droit).
+     * ctrl_top : 1 = boutons de contrôle en haut (à la place du menu),
+     *   0 = en bas (défaut). */
+    void (*skin_set_layout)(int menu_visible, int ctrl_top);
+
     /* --- métadonnées & jaquette des fichiers (plugins SERVICE) --- */
     const char* (*get_metadata)(const char* path, const char* field);
     const unsigned char* (*get_cover)(const char* path, size_t* len);

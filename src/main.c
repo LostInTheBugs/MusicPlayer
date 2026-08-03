@@ -76,6 +76,7 @@ static int  g_vol_drag = 0;   /* curseur de volume en cours de glissement */
 
 static void status_update(void);        /* définie plus bas */
 static void lang_pref_save(const wchar_t* code); /* idem */
+static void on_command(int id, HMENU bar);       /* idem */
 static INT_PTR dlg_skin_color(HWND h, WPARAM w, LPARAM l); /* idem */
 static void wide_to_utf8(const wchar_t* in, char* out, int out_chars); /* idem */
 static void log_line(const char* s);    /* idem */
@@ -317,6 +318,9 @@ static mp_skin_colors g_skin = {
 static ULONG_PTR g_gdiplus_token = 0;  /* GDI+ initialisé au démarrage */
 static GpImage* g_skin_bg = NULL;      /* image de fond du skin */
 static RECT g_skin_vis = { -1, -1, -1, -1 };  /* zone du visualiseur (skin) */
+static int g_skin_menu_visible = 1;    /* barre de menus affichée ? */
+static int g_skin_ctrl_top = 0;        /* contrôles en haut (skin) ? */
+static HMENU g_menu_bar = NULL;        /* barre de menus (cachable) */
 
 /* ------------------------------------------------------------------ */
 /* Barre de menus dessinée (owner-draw) avec la palette du skin        */
@@ -409,6 +413,26 @@ static void host_skin_set_visual_rect(int x, int y, int w, int h)
     g_skin_vis.right = x + w;
     g_skin_vis.bottom = y + h;
     if (g_hwnd) InvalidateRect(g_hwnd, NULL, TRUE);
+}
+
+/* Affiche ou cache la barre de menus selon la disposition du skin */
+static void apply_menu_visibility(void)
+{
+    if (!g_hwnd) return;
+    SetMenu(g_hwnd, g_skin_menu_visible ? g_menu_bar : NULL);
+    DrawMenuBar(g_hwnd);
+}
+
+/* Disposition imposée par le skin : menu caché, contrôles en haut... */
+static void host_skin_set_layout(int menu_visible, int ctrl_top)
+{
+    g_skin_menu_visible = menu_visible ? 1 : 0;
+    g_skin_ctrl_top = ctrl_top ? 1 : 0;
+    if (g_hwnd) {
+        apply_menu_visibility();
+        InvalidateRect(g_hwnd, NULL, TRUE);
+        status_update();
+    }
 }
 
 /* Fond de la barre de menus avec la couleur du skin */
@@ -531,6 +555,7 @@ static const mp_host_api g_host = {
     host_skin_set_colors,
     host_skin_set_bg,
     host_skin_set_visual_rect,
+    host_skin_set_layout,
     host_get_metadata, host_get_cover, host_plist_path
 };
 
@@ -721,14 +746,33 @@ static HMENU create_menus(void)
 /* Reconstruction complète de la barre de menus (changement de langue) */
 static void rebuild_menus(void)
 {
-    HMENU old = GetMenu(g_hwnd);
-    HMENU bar = create_menus();
-    SetMenu(g_hwnd, bar);
-    HMENU mSettings = GetSubMenu(bar, 1);
+    HMENU old = g_menu_bar;
+    g_menu_bar = create_menus();
+    SetMenu(g_hwnd, g_skin_menu_visible ? g_menu_bar : NULL);
+    HMENU mSettings = GetSubMenu(g_menu_bar, 1);
     refresh_speed_check(GetSubMenu(mSettings, 0));
-    rebuild_plugins_menu(bar);             /* position 2 dans la barre */
+    rebuild_plugins_menu(g_menu_bar);          /* position 2 dans la barre */
+    DrawMenuBar(g_hwnd);
     if (old) DestroyMenu(old);
     mp_plugins_apply_skins(g_hwnd);
+}
+
+/* Menu contextuel (clic droit) — utilisé quand la barre est cachée */
+static void show_context_menu(HWND hwnd)
+{
+    HMENU bar = g_menu_bar;
+    if (!bar) return;
+    HMENU m = CreatePopupMenu();
+    AppendMenuW(m, MF_POPUP, (UINT_PTR)GetSubMenu(bar, 0), lang_get("menu_file"));
+    AppendMenuW(m, MF_POPUP, (UINT_PTR)GetSubMenu(bar, 1), lang_get("menu_settings"));
+    AppendMenuW(m, MF_POPUP, (UINT_PTR)GetSubMenu(bar, 2), lang_get("menu_plugins"));
+    AppendMenuW(m, MF_POPUP, (UINT_PTR)GetSubMenu(bar, 3), lang_get("menu_help"));
+    POINT pt;
+    GetCursorPos(&pt);
+    int r = (int)TrackPopupMenu(m, TPM_RIGHTBUTTON | TPM_RETURNCMD,
+                                pt.x, pt.y, 0, hwnd, NULL);
+    DestroyMenu(m);
+    if (r) on_command(r, GetMenu(hwnd));
 }
 
 /* ------------------------------------------------------------------ */
@@ -1460,7 +1504,8 @@ static void do_about(void)
 /* ------------------------------------------------------------------ */
 static void layout_controls(const RECT* rc)
 {
-    int y = rc->bottom - CTRL_H;
+    int y = rc->bottom - CTRL_H;      /* en bas par défaut */
+    if (g_skin_ctrl_top) y = rc->top; /* le skin met les contrôles en haut */
     int x = rc->left + 8;
     int bs = CTRL_H - 8;                 /* taille des boutons carrés */
     g_rc_play.left = x; g_rc_play.top = y + 4;
@@ -1839,6 +1884,15 @@ static void paint_center(HDC hdc, RECT* rc)
         vis_rc = *rc;
         bar_rc.left = bar_rc.right = ctrl_rc.left = ctrl_rc.right = 0;
         bar_rc.top = bar_rc.bottom = ctrl_rc.top = ctrl_rc.bottom = 0;
+    } else if (g_skin_ctrl_top) {
+        /* contrôles en haut (à la place du menu), progression dessous */
+        ctrl_rc = *rc;
+        ctrl_rc.bottom = rc->top + CTRL_H;
+        bar_rc = *rc;
+        bar_rc.top = ctrl_rc.bottom;
+        bar_rc.bottom = ctrl_rc.bottom + PROGRESS_H;
+        vis_rc = *rc;
+        vis_rc.top = bar_rc.bottom;
     } else {
         /* contrôles en bas, progression au-dessus, visuel au-dessus */
         ctrl_rc = *rc;
@@ -2386,6 +2440,9 @@ static LRESULT CALLBACK wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         }
         return 0;
     }
+    case WM_RBUTTONUP:
+        show_context_menu(hwnd);
+        return 0;
     case WM_MEASUREITEM: {
         MEASUREITEMSTRUCT* mi = (MEASUREITEMSTRUCT*)lp;
         if (mi->CtlType == ODT_MENU) {

@@ -315,6 +315,10 @@ void mp_plugins_apply_skins(void* hwnd)
         g_host->skin_set_colors(&def);
     }
     if (!applied && g_host && g_host->skin_set_bg) g_host->skin_set_bg("");
+    if (!applied && g_host && g_host->skin_set_layout)
+        g_host->skin_set_layout(1, 0);
+    if (!applied && g_host && g_host->skin_set_visual_rect)
+        g_host->skin_set_visual_rect(-1, -1, -1, -1);
 }
 
 void mp_plugins_audio_process(float* samples, unsigned frames,
