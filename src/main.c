@@ -56,7 +56,6 @@ enum {
     IDM_INTERFACE = 805,    /* Settings ▸ Interface… (skin + langue) */
     IDM_UPDATE_CFG = 806,   /* Settings ▸ Update… (mode de mise à jour) */
     IDM_DJ_MODE = 807,      /* Settings ▸ DJ Mixing (synchro web) */
-    IDM_TS_CFG = 808,       /* Settings ▸ Broadcast to TeamSpeak… */
     IDM_NETWORK = 809,      /* Settings ▸ Network… (services réseau) */
     IDM_ABOUT = 901
 };
@@ -812,7 +811,6 @@ static HMENU create_menus(void)
     AppendMenuW(mSettings, MF_POPUP, (UINT_PTR)build_speed_menu(), lang_get("speed"));
     AppendMenuW(mSettings, MF_STRING, IDM_FULLSCREEN, lang_get("fullscreen"));
     AppendMenuW(mSettings, MF_STRING, IDM_DJ_MODE, lang_get("menu_dj"));
-    AppendMenuW(mSettings, MF_STRING, IDM_TS_CFG, lang_get("menu_ts"));
     AppendMenuW(mSettings, MF_STRING, IDM_NETWORK, lang_get("menu_net"));
     AppendMenuW(mSettings, MF_SEPARATOR, 0, NULL);
     AppendMenuW(mSettings, MF_STRING, IDM_INTERFACE, lang_get("menu_interface"));
@@ -1287,69 +1285,6 @@ static void do_plugins_dialog(void)
 {
     DialogBoxParamW(GetModuleHandleW(NULL), MAKEINTRESOURCEW(IDD_PLUGINS),
                     g_hwnd, plugins_dlg_proc, 0);
-}
-
-/* ------------------------------------------------------------------ */
-/* Dialog Broadcast to TeamSpeak (Settings ▸ Broadcast to TeamSpeak…)  */
-/* ------------------------------------------------------------------ */
-#define IDC_TS_ON  1030
-#define IDC_TS_DEV 1031
-
-static INT_PTR CALLBACK ts_dlg_proc(HWND h, UINT m, WPARAM w, LPARAM l)
-{
-    (void)l;
-    switch (m) {
-    case WM_CTLCOLORDLG:
-    case WM_CTLCOLORSTATIC:
-        return dlg_skin_color(h, w, l);
-    case WM_INITDIALOG: {
-        SendMessageW(GetDlgItem(h, IDC_TS_ON), BM_SETCHECK,
-                     mp_ts_active() ? BST_CHECKED : BST_UNCHECKED, 0);
-        char names[32][256];
-        int n = mp_ts_devices(names, 32);
-        HWND cb = GetDlgItem(h, IDC_TS_DEV);
-        for (int i = 0; i < n; i++) {
-            wchar_t wname[256];
-            utf8_to_wide(names[i], wname, 256);
-            SendMessageW(cb, CB_ADDSTRING, 0, (LPARAM)wname);
-        }
-        if (n > 0) SendMessageW(cb, CB_SETCURSEL, 0, 0);
-        return TRUE;
-    }
-    case WM_COMMAND:
-        if (LOWORD(w) == IDOK) {
-            int on = (int)SendMessageW(GetDlgItem(h, IDC_TS_ON),
-                                       BM_GETCHECK, 0, 0) == BST_CHECKED;
-            if (on) {
-                wchar_t dev_w[256];
-                SendMessageW(GetDlgItem(h, IDC_TS_DEV), WM_GETTEXT,
-                             256, (LPARAM)dev_w);
-                char dev[256];
-                WideCharToMultiByte(CP_UTF8, 0, dev_w, -1,
-                                    dev, sizeof(dev), NULL, NULL);
-                if (mp_ts_start(dev) != 0) {
-                    MessageBoxW(h, lang_get("ts_fail"), APP_TITLE,
-                                MB_ICONERROR);
-                }
-            } else {
-                mp_ts_stop();
-            }
-            EndDialog(h, 1);
-        } else if (LOWORD(w) == IDCANCEL) {
-            EndDialog(h, 0);
-        }
-        return TRUE;
-    case WM_CLOSE:
-        EndDialog(h, 0);
-        return TRUE;
-    }
-    return FALSE;
-}
-
-static void do_ts_dialog(void)
-{
-    DialogBoxW(GetModuleHandleW(NULL), MAKEINTRESOURCEW(110), g_hwnd,
-               ts_dlg_proc);
 }
 
 /* ------------------------------------------------------------------ */
@@ -3156,9 +3091,6 @@ static void on_command(int id, HMENU bar)
         break;
     case IDM_UPDATE_CFG:
         do_update_cfg_dialog();
-        break;
-    case IDM_TS_CFG:
-        do_ts_dialog();
         break;
     case IDM_NETWORK:
         do_net_dialog();

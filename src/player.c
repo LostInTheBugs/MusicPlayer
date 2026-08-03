@@ -197,8 +197,6 @@ void mp_dj_mix_into(float* dst, uint32_t frames)
     }
 }
 
-
-
 /* ------------------------------------------------------------------ */
 /* Ring buffer SPSC (Single Producer / Single Consumer)                */
 /* 2^18 frames stéréo f32 ≈ 6 s à 44,1 kHz — 2,1 Mo                    */
@@ -275,93 +273,7 @@ static int            g_device_ok = 0;
 
 static ring_t         g_ring;
 
-/* ------------------------------------------------------------------ */
-/* Diffusion TeamSpeak : 2e sortie miniaudio vers un périphérique      */
-/* (ex. Virtual Audio Cable "CABLE Input" — à sélectionner comme       */
-/* micro dans TeamSpeak 3)                                             */
-/* ------------------------------------------------------------------ */
-static ma_device g_ts_device;
-static ma_device_id g_ts_id;
-static int        g_ts_has_id = 0;
-static volatile LONG g_ts_active = 0;
 
-static void ts_cb(ma_device* dev, void* out, const void* in, ma_uint32 frames)
-{
-    (void)dev; (void)in;
-    float* dst = (float*)out;
-    uint32_t got = ring_read(&g_ring, dst, frames);
-    if (got < frames)
-        memset(dst + (size_t)got * 2, 0,
-               (size_t)(frames - got) * 2 * sizeof(float));
-    /* platine B du mode DJ incluse dans la diffusion */
-    mp_dj_mix_into(dst, frames);
-    mp_plugins_audio_process(dst, frames, 2, 44100);
-}
-
-/* Liste les périphériques de sortie (noms UTF-8). Retourne le compte. */
-int mp_ts_devices(char names[][256], int max)
-{
-    ma_context ctx;
-    if (ma_context_init(NULL, 0, NULL, &ctx) != MA_SUCCESS) return 0;
-    ma_device_info* infos = NULL;
-    ma_uint32 n = 0;
-    int count = 0;
-    if (ma_context_get_devices(&ctx, NULL, NULL, &infos, &n) == MA_SUCCESS) {
-        for (ma_uint32 i = 0; i < n && count < max; i++) {
-            strncpy(names[count], infos[i].name, 255);
-            names[count][255] = 0;
-            count++;
-        }
-    }
-    ma_context_uninit(&ctx);
-    return count;
-}
-
-/* Démarre la diffusion vers le périphérique nommé (UTF-8). 0 = OK. */
-int mp_ts_start(const char* name_utf8)
-{
-    mp_ts_stop();
-    ma_context ctx;
-    if (ma_context_init(NULL, 0, NULL, &ctx) != MA_SUCCESS) return -1;
-    ma_device_info* infos = NULL;
-    ma_uint32 n = 0;
-    g_ts_has_id = 0;
-    if (ma_context_get_devices(&ctx, NULL, NULL, &infos, &n) == MA_SUCCESS) {
-        for (ma_uint32 i = 0; i < n; i++) {
-            if (!strcmp(infos[i].name, name_utf8)) {
-                g_ts_id = infos[i].id;
-                g_ts_has_id = 1;
-                break;
-            }
-        }
-    }
-    ma_context_uninit(&ctx);
-    if (!g_ts_has_id) return -1;
-
-    ma_device_config cfg = ma_device_config_init(ma_device_type_playback);
-    cfg.playback.format = ma_format_f32;
-    cfg.playback.channels = 2;
-    cfg.sampleRate = 44100;
-    cfg.dataCallback = ts_cb;
-    cfg.playback.pDeviceID = &g_ts_id;
-    if (ma_device_init(NULL, &cfg, &g_ts_device) != MA_SUCCESS) return -1;
-    if (ma_device_start(&g_ts_device) != MA_SUCCESS) {
-        ma_device_uninit(&g_ts_device);
-        return -1;
-    }
-    InterlockedExchange(&g_ts_active, 1);
-    return 0;
-}
-
-void mp_ts_stop(void)
-{
-    if (g_ts_active) {
-        ma_device_uninit(&g_ts_device);
-        InterlockedExchange(&g_ts_active, 0);
-    }
-}
-
-int mp_ts_active(void) { return (int)g_ts_active; }
 static AVFormatContext* g_fmt = NULL;
 static AVCodecContext*  g_codec = NULL;
 static int            g_stream_idx = -1;

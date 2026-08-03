@@ -2,6 +2,11 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.033] — 2026-08-03
+
+### Changed
+- **TeamSpeak Broadcast devient un plugin** : retiré du menu Settings, il vit maintenant dans **Plugins ▸ Services ▸ TeamSpeak Broadcast** (comme REST API, DLNA…). Au démarrage il choisit automatiquement le périphérique (nom exact dans `ts_device.txt` à côté de la DLL, sinon un câble audio virtuel « CABLE »/« VoiceMeeter », sinon le périphérique par défaut)
+
 ## [2026.08.032] — 2026-08-03
 
 ### Added

@@ -74,14 +74,6 @@ void mp_set_audio_out(int mode);
 int  mp_get_audio_out(void);
 
 /* ------------------------------------------------------------------ */
-/* Diffusion TeamSpeak (2e sortie vers un périphérique)                */
-/* ------------------------------------------------------------------ */
-int  mp_ts_devices(char names[][256], int max);
-int  mp_ts_start(const char* name_utf8);
-void mp_ts_stop(void);
-int  mp_ts_active(void);
-
-/* ------------------------------------------------------------------ */
 /* Mode DJ local : platine B (2e décodeur) mixée dans le device        */
 /* ------------------------------------------------------------------ */
 int      mp_dj_b_open(const char* path);

@@ -13,7 +13,7 @@
 #   make clean
 # ======================================================================
 
-VERSION := 2026.08.032
+VERSION := 2026.08.033
 
 CROSS    := x86_64-w64-mingw32-
 CC       := $(CROSS)gcc
@@ -79,6 +79,7 @@ plugins-examples: $(BIN)
 	$(CC) -O2 -shared -o bin/plugins/upnp.dll examples/plugin_upnp.c -Isrc -lws2_32 -static-libgcc
 	$(CC) -O2 -shared -o bin/plugins/multiroom.dll examples/plugin_multiroom.c -Isrc -lws2_32 -static-libgcc
 	$(CC) -O2 -shared -o bin/plugins/soundquality.dll examples/plugin_soundquality.c -Isrc -static-libgcc -lm
+	$(CC) -O2 -shared -o bin/plugins/ts.dll examples/plugin_ts.c -Isrc -Ivendor -static-libgcc -lole32 -lwinmm
 	cp -f examples/multiroom.txt bin/plugins/multiroom.txt
 	$(CC) -O2 -shared -o bin/plugins/metadata.dll examples/plugin_metadata.c -Isrc -static-libgcc
 	$(CC) -O2 -shared -o bin/plugins/lyrics.dll examples/plugin_lyrics.c -Isrc -static-libgcc -luser32 -lgdi32
