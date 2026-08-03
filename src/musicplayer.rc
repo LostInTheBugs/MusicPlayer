@@ -1,8 +1,42 @@
 #include <windows.h>
 IDI_MUSICPLAYER ICON "musicplayer.ico"
 
-/* Dialog "Serveur web" (Settings ▸ Web server…) — ID numérique 104
-   (doit correspondre à IDD_WEB dans main.c) */
+/* Dialog "Plugins" (Settings ▸ Plugins…) — ID numérique 105 */
+105 DIALOG 0, 0, 380, 246
+STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Plugins"
+FONT 8, "MS Shell Dlg"
+BEGIN
+    LTEXT "Activate or deactivate plugins :", 1004, 14, 12, 220, 12
+    CONTROL "", 2005, "SysListView32", LVS_REPORT | LVS_SINGLESEL | WS_BORDER | WS_TABSTOP, 14, 26, 352, 184
+    DEFPUSHBUTTON "OK", 1, 130, 218, 60, 16
+    PUSHBUTTON "Cancel", 2, 200, 218, 60, 16
+END
+
+/* Dialog "Mise à jour disponible" — ID numérique 106 */
+106 DIALOG 0, 0, 330, 132
+STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Update available"
+FONT 8, "MS Shell Dlg"
+BEGIN
+    LTEXT "A new version is available :", 1005, 14, 12, 302, 40
+    DEFPUSHBUTTON "Update now", 1, 14, 64, 96, 16
+    PUSHBUTTON "Later", 2, 118, 64, 96, 16
+    PUSHBUTTON "Skip this version", 3, 222, 64, 96, 16
+END
+/* Dialog "À propos" — ID numérique 107 */
+107 DIALOG 0, 0, 330, 140
+STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "About"
+FONT 8, "MS Shell Dlg"
+BEGIN
+    LTEXT "", 1006, 14, 14, 302, 16
+    LTEXT "", 1007, 14, 34, 302, 16
+    LTEXT "https://github.com/LostInTheBugs/MusicPlayer", 1008, 14, 56, 302, 16
+    DEFPUSHBUTTON "OK", 1, 100, 108, 60, 16
+    PUSHBUTTON "Open GitHub", 2, 170, 108, 96, 16
+END
+
 104 DIALOG 0, 0, 300, 244
 STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "Web server"

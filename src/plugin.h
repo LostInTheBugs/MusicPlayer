@@ -38,6 +38,7 @@ typedef struct mp_plugin mp_plugin;
 
 /* Événements transverses (hook service) */
 #define MP_SERVICE_WEB_APPLY 1   /* reconfigurer le serveur web */
+#define MP_SERVICE_CLICK    2    /* clic sur le plugin dans le menu Plugins */
 
 /*
  * API offerte par l'hôte (MusicPlayer) aux plugins.

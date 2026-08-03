@@ -2,6 +2,18 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.021] — 2026-08-03
+
+### Added
+- **Settings ▸ Plugins…** : fenêtre listant tous les plugins avec cases à cocher pour les activer/désactiver (état persisté dans `plugins.ini`)
+- **Plugin Lyrics** : affiche les paroles de la chanson (fichier `.lrc` placé à côté du morceau) — clic dans Plugins ▸ Services
+- **Barre de progression cliquable** : cliquer dessus pour aller directement à un moment de la musique
+- **Icône de la fenêtre et de la barre des tâches** (WM_SETICON)
+- **À propos : lien GitHub cliquable** (bouton « Open GitHub »)
+
+### Changed
+- **Mise à jour automatique** : fenêtre d'avertissement à 3 choix avant l'installation — « Mettre à jour maintenant » (télécharge le zip, ferme et relance automatiquement l'application), « Plus tard », « Ignorer cette version » (seules les versions suivantes seront proposées)
+
 ## [2026.08.020] — 2026-08-03
 
 ### Changed

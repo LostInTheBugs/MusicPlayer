@@ -491,6 +491,29 @@ void mp_stop(void)
     g_state = MP_STATE_STOPPED;
 }
 
+void mp_seek(double seconds)
+{
+    if (!g_fmt || g_state == MP_STATE_STOPPED) return;
+    if (seconds < 0.0) seconds = 0.0;
+    if (g_duration > 0.0 && seconds > g_duration) seconds = g_duration;
+
+    /* arrête la boucle de décodage en cours */
+    g_interrupt = 1;
+    while (g_decoding) Sleep(5);
+    g_interrupt = 0;
+
+    /* seek dans le flux + purge du décodeur */
+    int64_t ts = (int64_t)(seconds * AV_TIME_BASE);
+    av_seek_frame(g_fmt, -1, ts, AVSEEK_FLAG_BACKWARD);
+    if (g_codec) avcodec_flush_buffers(g_codec);
+    ring_clear(&g_ring);
+    g_eof = 0;
+    g_samples_decoded = (LONG64)(seconds * g_src_rate);
+
+    if (g_state == MP_STATE_FINISHED) g_state = MP_STATE_PAUSED;
+    if (g_state == MP_STATE_PLAYING) g_wake = 1;
+}
+
 void mp_set_volume(float v)
 {
     if (v < 0.0f) v = 0.0f;

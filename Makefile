@@ -13,7 +13,7 @@
 #   make clean
 # ======================================================================
 
-VERSION := 2026.08.020
+VERSION := 2026.08.021
 
 CROSS    := x86_64-w64-mingw32-
 CC       := $(CROSS)gcc
@@ -75,6 +75,7 @@ plugins-examples: $(BIN)
 	$(CC) -O2 -shared -o bin/plugins/hypnotic.dll examples/plugin_hypnotic.c -Isrc -static-libgcc -lgdi32 -lm
 	$(CC) -O2 -shared -o bin/plugins/webserver.dll examples/plugin_webserver.c -Isrc -static-libgcc -lws2_32
 	$(CC) -O2 -shared -o bin/plugins/metadata.dll examples/plugin_metadata.c -Isrc -static-libgcc
+	$(CC) -O2 -shared -o bin/plugins/lyrics.dll examples/plugin_lyrics.c -Isrc -static-libgcc -luser32 -lgdi32
 	@echo "Plugins d'exemple compilés dans bin/plugins/"
 
 # ----------------------------------------------------------------------

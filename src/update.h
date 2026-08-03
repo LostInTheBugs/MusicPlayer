@@ -21,4 +21,12 @@ void mp_update_set_auto(int on);
 /* Dernière version trouvée (valide après MP_UPDATE_DONE) */
 const char* mp_update_latest(void);
 
+/* Ignore une version : elle ne sera plus proposée aux vérifications
+ * suivantes (seules les versions postérieures le seront). */
+void mp_update_skip(const char* version);
+
+/* Télécharge le zip de la release `tag` vers `out_path` (UTF-16).
+ * Retourne 0 si OK, -1 en cas d'erreur réseau ou d'écriture. */
+int mp_update_download(const char* tag, const wchar_t* out_path);
+
 #endif

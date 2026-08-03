@@ -44,7 +44,7 @@ enum {
     IDM_SPEED_BASE = 300,   /* +0 → 0.5x, +1 → 1.0x, +2 → 1.5x, +3 → 2.0x */
     IDM_VOL_UP = 401, IDM_VOL_DOWN = 402, IDM_VOL_SHOW = 403,
     IDM_PLUGIN_RELOAD = 501,
-    IDM_PLUGIN_CFG_BASE = 550,  /* Settings ▸ Plugins : activation */
+    IDM_PLUGIN_CFG = 502,   /* Settings ▸ Plugins… */
     IDM_PLUGIN_BASE = 600,  /* items plugins dynamiques */
     IDM_LANG_BASE = 700,    /* items langues dynamiques */
     IDM_FULLSCREEN = 801,
@@ -454,21 +454,6 @@ static void rebuild_plugins_menu(HMENU parent)
     DrawMenuBar(g_hwnd);
 }
 
-/* Settings ▸ Plugins : liste des plugins avec cases (activation) */
-static void rebuild_plugin_cfg_menu(HMENU m)
-{
-    int n = mp_plugins_count();
-    for (int i = 0; i < n; i++) {
-        mp_plugin* p = mp_plugins_get(i);
-        if (!p || !p->api || !p->api->name) continue;
-        const char* nm = p->api->name();
-        wchar_t nmw[160];
-        utf8_to_wide(nm ? nm : "?", nmw, 160);
-        AppendMenuW(m, MF_STRING | (p->enabled ? MF_CHECKED : MF_UNCHECKED),
-                    IDM_PLUGIN_CFG_BASE + i, nmw);
-    }
-}
-
 /* Sous-menu des langues disponibles (dans le menu Paramètres, position 3) */
 static void rebuild_lang_menu(HMENU settings)
 {
@@ -511,7 +496,7 @@ static HMENU create_menus(void)
     AppendMenuW(mSettings, MF_SEPARATOR, 0, NULL);
     AppendMenuW(mSettings, MF_STRING, IDM_WEB_SERVER, lang_get("menu_web_server"));
     AppendMenuW(mSettings, MF_SEPARATOR, 0, NULL);
-    AppendMenuW(mSettings, MF_POPUP, (UINT_PTR)CreatePopupMenu(), lang_get("menu_plugins_cfg"));
+    AppendMenuW(mSettings, MF_STRING, IDM_PLUGIN_CFG, lang_get("menu_plugins_cfg"));
     AppendMenuW(bar, MF_POPUP, (UINT_PTR)mSettings, lang_get("menu_settings"));
 
     AppendMenuW(bar, MF_POPUP, (UINT_PTR)CreatePopupMenu(), lang_get("menu_plugins"));
@@ -532,7 +517,6 @@ static void rebuild_menus(void)
     HMENU mSettings = GetSubMenu(bar, 1);
     refresh_speed_check(GetSubMenu(mSettings, 0));
     rebuild_lang_menu(mSettings);          /* position 3 dans Paramètres */
-    rebuild_plugin_cfg_menu(GetSubMenu(mSettings, GetMenuItemCount(mSettings) - 1));
     rebuild_plugins_menu(bar);             /* position 2 dans la barre */
     if (old) DestroyMenu(old);
     mp_plugins_apply_skins(g_hwnd);
@@ -620,6 +604,9 @@ static void do_open_folder_dialog(void)
 /* Serveur web : configuration (activé, port, sortie audio)            */
 /* ------------------------------------------------------------------ */
 #define IDD_WEB         104
+#define IDD_PLUGINS     105
+#define IDD_UPDATE      106
+#define IDD_ABOUT       107
 #define IDC_WEB_CHK     2001
 #define IDC_WEB_EDIT    2002
 #define IDC_WEB_COMBO   2003
@@ -627,6 +614,11 @@ static void do_open_folder_dialog(void)
 #define IDC_WEB_PORT_LBL 1001
 #define IDC_WEB_AUD_LBL 1002
 #define IDC_WEB_LIST_LBL 1003
+#define IDC_PLG_LBL     1004
+#define IDC_UPD_LBL     1005
+#define IDC_ABT_L1      1006
+#define IDC_ABT_L2      1007
+#define IDC_PLG_LIST    2005
 
 /* liste des interfaces réseau (pour le dialog) */
 typedef struct {
@@ -812,6 +804,138 @@ static void do_web_dialog(void)
 }
 
 /* ------------------------------------------------------------------ */
+/* Dialog Plugins (Settings ▸ Plugins…) : activation par cases         */
+/* ------------------------------------------------------------------ */
+static INT_PTR CALLBACK plugins_dlg_proc(HWND h, UINT m, WPARAM w, LPARAM l)
+{
+    (void)l;
+    switch (m) {
+    case WM_INITDIALOG: {
+        HWND lv = GetDlgItem(h, IDC_PLG_LIST);
+        ListView_SetExtendedListViewStyle(lv,
+            LVS_EX_CHECKBOXES | LVS_EX_FULLROWSELECT);
+        LVCOLUMNW c0, c1, c2;
+        memset(&c0, 0, sizeof(c0));
+        c0.mask = LVCF_TEXT | LVCF_WIDTH;
+        c0.cx = 150; c0.pszText = L"Plugin";
+        ListView_InsertColumn(lv, 0, &c0);
+        memset(&c1, 0, sizeof(c1));
+        c1.mask = LVCF_TEXT | LVCF_WIDTH;
+        c1.cx = 90; c1.pszText = L"Type";
+        ListView_InsertColumn(lv, 1, &c1);
+        memset(&c2, 0, sizeof(c2));
+        c2.mask = LVCF_TEXT | LVCF_WIDTH;
+        c2.cx = 100; c2.pszText = L"Description";
+        ListView_InsertColumn(lv, 2, &c2);
+        int n = mp_plugins_count();
+        for (int i = 0; i < n; i++) {
+            mp_plugin* p = mp_plugins_get(i);
+            if (!p || !p->api) continue;
+            wchar_t name_w[160], desc_w[240];
+            utf8_to_wide(p->api->name() ? p->api->name() : "?", name_w, 160);
+            utf8_to_wide(p->api->description() ? p->api->description() : "",
+                         desc_w, 240);
+            const wchar_t* type_w = L"";
+            unsigned t = p->api->type();
+            if (t & MP_PLUGIN_VISUAL) type_w = L"Visual";
+            else if (t & MP_PLUGIN_AUDIO_EFFECT) type_w = L"Audio effect";
+            else if (t & MP_PLUGIN_SKIN) type_w = L"Skin";
+            else if (t & MP_PLUGIN_SERVICE) type_w = L"Service";
+            LVITEMW it;
+            memset(&it, 0, sizeof(it));
+            it.mask = LVIF_TEXT;
+            it.iItem = i;
+            it.pszText = name_w;
+            ListView_InsertItem(lv, &it);
+            ListView_SetItemText(lv, i, 1, (wchar_t*)type_w);
+            ListView_SetItemText(lv, i, 2, desc_w);
+            ListView_SetCheckState(lv, i, p->enabled ? TRUE : FALSE);
+        }
+        SetDlgItemTextW(h, IDC_PLG_LBL, lang_get("plugins_dlg_lbl"));
+        SetWindowTextW(h, lang_get("plugins_dlg_title"));
+        return TRUE;
+    }
+    case WM_COMMAND:
+        if (LOWORD(w) == IDOK) {
+            HWND lv = GetDlgItem(h, IDC_PLG_LIST);
+            int n = mp_plugins_count();
+            for (int i = 0; i < n; i++) {
+                mp_plugin* p = mp_plugins_get(i);
+                if (!p || !p->api) continue;
+                mp_plugins_set_enabled(i, ListView_GetCheckState(lv, i) ? 1 : 0);
+            }
+            /* reconfigurer les services (serveur web…) */
+            mp_plugins_service(MP_SERVICE_WEB_APPLY, NULL);
+            rebuild_menus();
+            EndDialog(h, 1);
+        } else if (LOWORD(w) == IDCANCEL) {
+            EndDialog(h, 0);
+        }
+        return TRUE;
+    }
+    return FALSE;
+}
+
+static void do_plugins_dialog(void)
+{
+    DialogBoxParamW(GetModuleHandleW(NULL), MAKEINTRESOURCEW(IDD_PLUGINS),
+                    g_hwnd, plugins_dlg_proc, 0);
+}
+
+/* ------------------------------------------------------------------ */
+/* Mise à jour : téléchargement + application + relancement auto       */
+/* ------------------------------------------------------------------ */
+static void apply_update_and_restart(const wchar_t* zip_path,
+                                     const wchar_t* exe_path)
+{
+    /* PowerShell extrait le zip dans le dossier de l'exe puis relance
+     * l'application ; on ferme MusicPlayer juste après. */
+    wchar_t dir[MAX_PATH];
+    wcscpy(dir, exe_path);
+    wchar_t* slash = wcsrchr(dir, L'\\');
+    if (slash) *slash = 0;
+    wchar_t ps[2048];
+    swprintf(ps, 2048,
+        L"powershell -NoProfile -WindowStyle Hidden -Command \""
+        L"Expand-Archive -Force -Path '%ls' -DestinationPath '%ls'; "
+        L"Start-Process -FilePath '%ls'\"",
+        zip_path, dir, exe_path);
+    STARTUPINFOW si;
+    memset(&si, 0, sizeof(si));
+    si.cb = sizeof(si);
+    PROCESS_INFORMATION pi;
+    if (CreateProcessW(NULL, ps, NULL, NULL, FALSE, CREATE_NO_WINDOW,
+                       NULL, NULL, &si, &pi)) {
+        CloseHandle(pi.hThread);
+        CloseHandle(pi.hProcess);
+    }
+    PostMessageW(g_hwnd, WM_CLOSE, 0, 0);
+}
+
+static INT_PTR CALLBACK upd_dlg_proc(HWND h, UINT m, WPARAM w, LPARAM l)
+{
+    (void)l;
+    switch (m) {
+    case WM_INITDIALOG: {
+        wchar_t msg[512];
+        swprintf(msg, 512, lang_get("upd_new"), mp_update_latest(), MP_VERSION);
+        SetDlgItemTextW(h, IDC_UPD_LBL, msg);
+        SetDlgItemTextW(h, 1, lang_get("upd_now"));
+        SetDlgItemTextW(h, 2, lang_get("upd_later"));
+        SetDlgItemTextW(h, 3, lang_get("upd_skip"));
+        SetWindowTextW(h, lang_get("upd_title"));
+        return TRUE;
+    }
+    case WM_COMMAND:
+        if (LOWORD(w) == 1)                    EndDialog(h, 1);
+        else if (LOWORD(w) == 2 || LOWORD(w) == IDCANCEL) EndDialog(h, 2);
+        else if (LOWORD(w) == 3)               EndDialog(h, 3);
+        return TRUE;
+    }
+    return FALSE;
+}
+
+/* ------------------------------------------------------------------ */
 /* Reprise / sauvegarde de la session (config.yml)                     */
 /* ------------------------------------------------------------------ */
 static void resume_last_session(void)
@@ -916,11 +1040,36 @@ void web_set_audio_out(int mode)
     web_save_config();
 }
 
+static INT_PTR CALLBACK about_dlg_proc(HWND h, UINT m, WPARAM w, LPARAM l)
+{
+    (void)l;
+    switch (m) {
+    case WM_INITDIALOG: {
+        wchar_t l1[160], l2[320];
+        swprintf(l1, 160, L"MusicPlayer %hs", MP_VERSION);
+        swprintf(l2, 320, L"FFmpeg %hs · %d plugins",
+                 av_version_info(), mp_plugins_count());
+        SetDlgItemTextW(h, IDC_ABT_L1, l1);
+        SetDlgItemTextW(h, IDC_ABT_L2, l2);
+        SetWindowTextW(h, lang_get("about_title"));
+        return TRUE;
+    }
+    case WM_COMMAND:
+        if (LOWORD(w) == 1 || LOWORD(w) == IDCANCEL)
+            EndDialog(h, 0);
+        else if (LOWORD(w) == 2)
+            ShellExecuteW(h, L"open",
+                          L"https://github.com/LostInTheBugs/MusicPlayer",
+                          NULL, NULL, SW_SHOWNORMAL);
+        return TRUE;
+    }
+    return FALSE;
+}
+
 static void do_about(void)
 {
-    wchar_t msg[1024];
-    swprintf(msg, 1024, lang_get("about_text"), MP_VERSION, av_version_info(), mp_plugins_count());
-    MessageBoxW(g_hwnd, msg, lang_get("about_title"), MB_OK | MB_ICONINFORMATION);
+    DialogBoxParamW(GetModuleHandleW(NULL), MAKEINTRESOURCEW(IDD_ABOUT),
+                    g_hwnd, about_dlg_proc, 0);
 }
 
 /* ------------------------------------------------------------------ */
@@ -1364,6 +1513,21 @@ static void mouse_down(HWND hwnd, int x, int y)
     get_center_rect(hwnd, &rc);
     layout_controls(&rc);
 
+    /* clic sur la barre de progression : aller directement au moment
+     * choisi (la barre est juste au-dessus de la rangée de boutons) */
+    if (y >= rc.bottom - CTRL_H - PROGRESS_H && y < rc.bottom - CTRL_H) {
+        double dur = mp_get_duration();
+        int w = rc.right - rc.left;
+        if (dur > 0.0 && w > 0) {
+            double ratio = (double)(x - rc.left) / (double)w;
+            if (ratio < 0.0) ratio = 0.0;
+            if (ratio > 1.0) ratio = 1.0;
+            mp_seek(ratio * dur);
+            status_update();
+        }
+        return;
+    }
+
     if (x >= g_rc_play.left && x <= g_rc_play.right &&
         y >= g_rc_play.top && y <= g_rc_play.bottom) {
         mp_play_pause();
@@ -1501,13 +1665,8 @@ static void on_command(int id, HMENU bar)
         if (id >= IDM_SPEED_BASE && id < IDM_SPEED_BASE + SPEED_COUNT) {
             mp_set_speed(SPEED_VALUES[id - IDM_SPEED_BASE]);
             refresh_speed_check(GetSubMenu(GetSubMenu(GetMenu(g_hwnd), 1), 0));
-        } else if (id >= IDM_PLUGIN_CFG_BASE && id < IDM_PLUGIN_CFG_BASE + 64) {
-            int i = id - IDM_PLUGIN_CFG_BASE;
-            mp_plugin* p = mp_plugins_get(i);
-            if (p) {
-                mp_plugins_set_enabled(i, !p->enabled);
-                rebuild_menus();
-            }
+        } else if (id == IDM_PLUGIN_CFG) {
+            do_plugins_dialog();
         } else if (id >= IDM_PLUGIN_BASE && id < IDM_LANG_BASE) {
             int i = id - IDM_PLUGIN_BASE;
             mp_plugin* p = mp_plugins_get(i);
@@ -1526,6 +1685,11 @@ static void on_command(int id, HMENU bar)
                 }
                 mp_plugins_apply_skins(g_hwnd);
                 rebuild_plugins_menu(GetMenu(g_hwnd));
+                /* un service peut avoir une action au clic (ex. Lyrics) */
+                if ((t & MP_PLUGIN_SERVICE) && p->api->service) {
+                    p->api->service(p, MP_SERVICE_CLICK, NULL);
+                    mp_plugins_service(MP_SERVICE_WEB_APPLY, NULL);
+                }
             }
         } else if (id >= IDM_LANG_BASE) {
             int i = id - IDM_LANG_BASE;
@@ -1640,14 +1804,35 @@ static LRESULT CALLBACK wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         int manual = (int)wp;
         int state = (int)lp;
         if (state == 1) {
-            wchar_t msg[512];
-            swprintf(msg, 512, lang_get("upd_new"),
-                     mp_update_latest(), MP_VERSION);
-            if (MessageBoxW(hwnd, msg, lang_get("upd_title"),
-                            MB_YESNO | MB_ICONINFORMATION) == IDYES)
-                ShellExecuteW(hwnd, L"open",
-                              L"https://github.com/LostInTheBugs/MusicPlayer/releases/latest",
-                              NULL, NULL, SW_SHOWNORMAL);
+            /* avertissement : mise à jour maintenant, plus tard,
+             * ou ignorer cette version (seules les suivantes seront
+             * proposées) */
+            int r = (int)DialogBoxParamW(GetModuleHandleW(NULL),
+                                         MAKEINTRESOURCEW(IDD_UPDATE),
+                                         hwnd, upd_dlg_proc, 0);
+            if (r == 3) {
+                mp_update_skip(mp_update_latest());
+            } else if (r == 1) {
+                wchar_t zip_path[MAX_PATH];
+                GetEnvironmentVariableW(L"APPDATA", zip_path, MAX_PATH);
+                wcscat(zip_path, L"\\MusicPlayer");
+                CreateDirectoryW(zip_path, NULL);
+                wcscat(zip_path, L"\\update.zip");
+                wchar_t msg[256];
+                swprintf(msg, 256, lang_get("upd_downloading"),
+                         mp_update_latest());
+                MessageBoxW(hwnd, msg, lang_get("upd_title"),
+                            MB_OK | MB_ICONINFORMATION);
+                if (mp_update_download(mp_update_latest(), zip_path) == 0) {
+                    wchar_t exe[MAX_PATH];
+                    GetModuleFileNameW(NULL, exe, MAX_PATH);
+                    apply_update_and_restart(zip_path, exe);
+                } else {
+                    MessageBoxW(hwnd, lang_get("upd_dl_error"),
+                                lang_get("upd_title"), MB_OK | MB_ICONERROR);
+                }
+            }
+            /* r == 2 : plus tard */
         } else if (state == 0 && manual) {
             wchar_t msg[256];
             swprintf(msg, 256, lang_get("upd_uptodate"), MP_VERSION);

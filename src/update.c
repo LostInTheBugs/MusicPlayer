@@ -80,6 +80,73 @@ void mp_update_set_auto(int on)
 }
 
 /* ------------------------------------------------------------------ */
+/* Versions ignorées (skip.txt) : l'utilisateur a refusé une version,  */
+/* seules les suivantes seront proposées                               */
+/* ------------------------------------------------------------------ */
+static int is_skipped(const char* ver)
+{
+    wchar_t path[MAX_PATH];
+    appdata_path(path, MAX_PATH, L"\\skip.txt");
+    FILE* f = _wfopen(path, L"r");
+    if (!f) return 0;
+    char line[256];
+    int skip = 0;
+    while (fgets(line, sizeof(line), f)) {
+        char v[64];
+        if (sscanf(line, "%63s", v) == 1 && !strcmp(v, ver)) { skip = 1; break; }
+    }
+    fclose(f);
+    return skip;
+}
+
+void mp_update_skip(const char* ver)
+{
+    wchar_t path[MAX_PATH];
+    appdata_path(path, MAX_PATH, L"\\skip.txt");
+    FILE* f = _wfopen(path, L"a");
+    if (f) {
+        fprintf(f, "%s\n", ver);
+        fclose(f);
+    }
+}
+
+/* Télécharge le zip d'une release GitHub vers out_path. */
+int mp_update_download(const char* tag, const wchar_t* out_path)
+{
+    wchar_t url[512];
+    swprintf(url, 512,
+        L"https://github.com/LostInTheBugs/MusicPlayer/releases/download/"
+        L"%hs/MusicPlayer-%hs-win64.zip", tag, tag);
+    HINTERNET inet = InternetOpenW(L"MusicPlayer-Updater/1.0",
+                                   INTERNET_OPEN_TYPE_PRECONFIG, NULL, NULL, 0);
+    if (!inet) return -1;
+    DWORD to = 30000;
+    InternetSetOptionW(inet, INTERNET_OPTION_CONNECT_TIMEOUT, &to, sizeof(to));
+    InternetSetOptionW(inet, INTERNET_OPTION_RECEIVE_TIMEOUT, &to, sizeof(to));
+    HINTERNET url_h = InternetOpenUrlW(inet, url, NULL, 0,
+                                       INTERNET_FLAG_RELOAD |
+                                       INTERNET_FLAG_NO_CACHE_WRITE, 0);
+    int rc = -1;
+    if (url_h) {
+        HANDLE out = CreateFileW(out_path, GENERIC_WRITE, 0, NULL,
+                                 CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+        if (out != INVALID_HANDLE_VALUE) {
+            char buf[16384];
+            DWORD rd = 0;
+            rc = 0;
+            while (InternetReadFile(url_h, buf, sizeof(buf), &rd) && rd > 0) {
+                DWORD wr = 0;
+                WriteFile(out, buf, rd, &wr, NULL);
+            }
+            CloseHandle(out);
+        }
+        InternetCloseHandle(url_h);
+    }
+    InternetCloseHandle(inet);
+    return rc;
+}
+
+/* ------------------------------------------------------------------ */
 /* Thread de vérification                                              */
 /* ------------------------------------------------------------------ */
 typedef struct {
@@ -124,7 +191,8 @@ static DWORD WINAPI upd_thread(LPVOID arg)
                     if (e && e - t < (int)sizeof(g_latest)) {
                         memcpy(g_latest, t, (size_t)(e - t));
                         g_latest[e - t] = 0;
-                        state = cmp_ver(MP_VERSION, g_latest) ? 1 : 0;
+                        state = (cmp_ver(MP_VERSION, g_latest) &&
+                                 !is_skipped(g_latest)) ? 1 : 0;
                     }
                 }
             }

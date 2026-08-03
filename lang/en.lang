@@ -43,7 +43,9 @@ plugins_visual=Visual
 plugins_effects=Audio effects
 plugins_skins=Skins
 plugins_services=Services
-menu_plugins_cfg=&Plugins
+menu_plugins_cfg=&Plugins…
+plugins_dlg_title=Plugins
+plugins_dlg_lbl=Activate or deactivate plugins :
 
 # --- Settings menu ---
 fullscreen=&Fullscreen
@@ -65,7 +67,16 @@ The port may be already in use.
 
 # --- Update ---
 upd_title=Update
-upd_new=A new version is available: %hs (current: %hs).\n\nOpen the download page?
+upd_new=A new version is available : %hs
+Your version : %s
+
+Update now ?
+upd_now=Update now
+upd_later=Later
+upd_skip=Skip this version
+upd_downloading=Downloading %hs…
+The application will restart automatically.
+upd_dl_error=Update download failed. Check your connection and try again.
 upd_uptodate=You are up to date (version %hs).
 upd_error=Update check failed — network error or GitHub unreachable.
 

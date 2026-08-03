@@ -37,6 +37,10 @@ void mp_play_pause(void);
 /* Stop : arrête la lecture et ramène la position à 0 seconde. */
 void mp_stop(void);
 
+/* Déplace la lecture à `seconds` (0 = début). Fonctionne en lecture
+ * comme en pause. Sans effet si aucun fichier n'est chargé. */
+void mp_seek(double seconds);
+
 /* Volume 0.0 .. 1.0. */
 void  mp_set_volume(float v);
 float mp_get_volume(void);

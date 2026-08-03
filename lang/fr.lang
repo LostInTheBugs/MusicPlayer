@@ -41,7 +41,9 @@ plugins_visual=Visuels
 plugins_effects=Effets audio
 plugins_skins=Peaux
 plugins_services=Services
-menu_plugins_cfg=&Plugins
+menu_plugins_cfg=&Plugins…
+plugins_dlg_title=Plugins
+plugins_dlg_lbl=Activer ou désactiver les plugins :
 
 # --- Menu Paramètres ---
 fullscreen=&Plein écran
@@ -63,7 +65,16 @@ Le port est peut-être déjà utilisé.
 
 # --- Mises à jour ---
 upd_title=Mise à jour
-upd_new=Une nouvelle version est disponible : %hs (actuelle : %hs).\n\nOuvrir la page de téléchargement ?
+upd_new=Une nouvelle version est disponible : %hs
+Votre version : %s
+
+Mettre à jour maintenant ?
+upd_now=Mettre à jour
+upd_later=Plus tard
+upd_skip=Ignorer cette version
+upd_downloading=Téléchargement de %hs…
+L'application va se fermer et redémarrer automatiquement.
+upd_dl_error=Échec du téléchargement de la mise à jour. Vérifiez votre connexion.
 upd_uptodate=Vous êtes à jour (version %hs).
 upd_error=Échec de la vérification des mises à jour — erreur réseau ou GitHub inaccessible.
 

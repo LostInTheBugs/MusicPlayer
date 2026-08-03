@@ -97,9 +97,11 @@ static void api_state(SOCKET s)
     if (idx >= 0 && idx < n) json_escape(g_h->plist_name(idx), name, sizeof(name));
     else name[0] = 0;
     _snprintf(body, sizeof(body),
-        "{\"state\":\"%s\",\"idx\":%d,\"count\":%d,\"vol\":%.2f,\"speed\":%.2f,"
+        "{\"state\":\"%s\",\"pos\":%.1f,\"dur\":%.1f,\"idx\":%d,\"count\":%d,"
+        "\"vol\":%.2f,\"speed\":%.2f,"
         "\"audio\":\"%s\",\"shuffle\":%d,\"name\":\"%s\",\"items\":[%s]}",
-        st, idx, n, g_h->get_volume(), g_h->get_speed(), ao, g_h->get_shuffle(),
+        st, g_h->get_position(), g_h->get_duration(), idx, n,
+        g_h->get_volume(), g_h->get_speed(), ao, g_h->get_shuffle(),
         name, items);
     http_response(s, "200 OK", "application/json", body);
 }
