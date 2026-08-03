@@ -14,6 +14,7 @@
 static mp_plugin g_plugins[MP_MAX_PLUGINS];
 static int g_count = 0;
 static const mp_host_api* g_host = NULL;
+static wchar_t g_dir[MAX_PATH] = { 0 };   /* dossier plugins (scan) */
 
 /* convertit un nom UTF-16 en UTF-8 pour le journal */
 static void name_to_utf8(const wchar_t* in, char* out, int out_bytes)
@@ -211,6 +212,8 @@ void mp_plugins_scan(const wchar_t* dir, const wchar_t* skins_dir,
     for (int i = 0; i < g_count; i++) unload(&g_plugins[i]);
     g_count = 0;
     g_host = host;
+    wcsncpy(g_dir, dir, MAX_PATH - 1);
+    g_dir[MAX_PATH - 1] = 0;
 
     scan_dir(dir, host);                       /* plugins/ */
     if (skins_dir && skins_dir[0])
@@ -268,6 +271,138 @@ void mp_plugins_service(int event, void* data)
 const char* mp_plugins_get_title(const char* path)
 {
     return mp_plugins_get_metadata(path, "title");
+}
+
+/* ------------------------------------------------------------------ */
+/* Mises à jour des plugins : manifeste plugins.json sur GitHub.       */
+/* Chaque plugin a une version "core.NNN" (ex. 2026.08.034-c1.002) :   */
+/* seul le plugin (la DLL) est téléchargé, pas le programme.           */
+/* ------------------------------------------------------------------ */
+#include <wininet.h>
+
+#define PLUGIN_MANIFEST_URL \
+    L"https://raw.githubusercontent.com/LostInTheBugs/MusicPlayer/master/plugins.json"
+
+static int json_str(const char* json, const char* key, char* out, int max)
+{
+    char pat[64];
+    _snprintf(pat, sizeof(pat), "\"%s\"", key);
+    const char* p = strstr(json, pat);
+    if (!p) return -1;
+    p = strchr(p, ':');
+    if (!p) return -1;
+    p++;
+    while (*p == ' ' || *p == '\t' || *p == '\r' || *p == '\n') p++;
+    if (*p != '"') return -1;
+    p++;
+    int o = 0;
+    while (*p && *p != '"' && o < max - 1) out[o++] = *p++;
+    out[o] = 0;
+    return 0;
+}
+
+static int http_download(const wchar_t* url, const wchar_t* out_path)
+{
+    HINTERNET inet = InternetOpenW(L"MusicPlayer-Plugins/1.0",
+                                   INTERNET_OPEN_TYPE_PRECONFIG, NULL, NULL, 0);
+    if (!inet) return -1;
+    DWORD to = 15000;
+    InternetSetOptionW(inet, INTERNET_OPTION_CONNECT_TIMEOUT, &to, sizeof(to));
+    InternetSetOptionW(inet, INTERNET_OPTION_RECEIVE_TIMEOUT, &to, sizeof(to));
+    HINTERNET uh = InternetOpenUrlW(inet, url, NULL, 0,
+                                    INTERNET_FLAG_RELOAD |
+                                    INTERNET_FLAG_NO_CACHE_WRITE, 0);
+    int rc = -1;
+    if (uh) {
+        HANDLE out = CreateFileW(out_path, GENERIC_WRITE, 0, NULL,
+                                 CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+        if (out != INVALID_HANDLE_VALUE) {
+            char buf[16384];
+            DWORD got = 0;
+            rc = 0;
+            while (InternetReadFile(uh, buf, sizeof(buf), &got) && got > 0) {
+                DWORD wr = 0;
+                WriteFile(out, buf, got, &wr, NULL);
+            }
+            CloseHandle(out);
+        }
+        InternetCloseHandle(uh);
+    }
+    InternetCloseHandle(inet);
+    return rc;
+}
+
+int mp_plugins_check_updates(void)
+{
+    if (!g_dir[0]) return 0;
+    int updated = 0;
+    HINTERNET inet = InternetOpenW(L"MusicPlayer-Plugins/1.0",
+                                   INTERNET_OPEN_TYPE_PRECONFIG, NULL, NULL, 0);
+    if (!inet) return 0;
+    DWORD to = 15000;
+    InternetSetOptionW(inet, INTERNET_OPTION_CONNECT_TIMEOUT, &to, sizeof(to));
+    InternetSetOptionW(inet, INTERNET_OPTION_RECEIVE_TIMEOUT, &to, sizeof(to));
+    HINTERNET uh = InternetOpenUrlW(inet, PLUGIN_MANIFEST_URL, NULL, 0,
+                                    INTERNET_FLAG_RELOAD |
+                                    INTERNET_FLAG_NO_CACHE_WRITE, 0);
+    if (uh) {
+        char buf[32768];
+        int n = 0;
+        DWORD got = 0;
+        while (n < (int)sizeof(buf) - 1 &&
+               InternetReadFile(uh, buf + n,
+                                (DWORD)(sizeof(buf) - 1 - n), &got) && got > 0)
+            n += (int)got;
+        buf[n] = 0;
+        InternetCloseHandle(uh);
+        if (n > 0) {
+            const char* p = buf;
+            while ((p = strstr(p, "\"file\"")) != NULL) {
+                const char* end = strchr(p, '}');
+                if (!end) break;
+                int len = (int)(end - p + 1);
+                if (len > 2048) len = 2048;
+                char ent[2049];
+                memcpy(ent, p, (size_t)len);
+                ent[len] = 0;
+                char file[128] = "", ver[128] = "", url[768] = "";
+                json_str(ent, "file", file, sizeof(file));
+                json_str(ent, "version", ver, sizeof(ver));
+                json_str(ent, "url", url, sizeof(url));
+                if (file[0] && ver[0] && url[0]) {
+                    /* version locale du plugin (DLL chargée) */
+                    const char* local_ver = NULL;
+                    wchar_t file_w[160];
+                    MultiByteToWideChar(CP_UTF8, 0, file, -1, file_w, 160);
+                    for (int i = 0; i < g_count && !local_ver; i++) {
+                        const wchar_t* base =
+                            wcsrchr(g_plugins[i].path, L'\\');
+                        base = base ? base + 1 : g_plugins[i].path;
+                        if (!_wcsicmp(base, file_w) && g_plugins[i].api)
+                            local_ver = g_plugins[i].api->version();
+                    }
+                    if (local_ver && strcmp(local_ver, ver) != 0) {
+                        wchar_t wurl[800];
+                        MultiByteToWideChar(CP_UTF8, 0, url, -1, wurl, 800);
+                        wchar_t out_path[MAX_PATH];
+                        _snwprintf(out_path, MAX_PATH, L"%s\\%hs",
+                                   g_dir, file);
+                        if (http_download(wurl, out_path) == 0) {
+                            char msg[256];
+                            _snprintf(msg, sizeof(msg),
+                                      "Plugin updated: %s -> %s (restart to load)",
+                                      file, ver);
+                            if (g_host && g_host->log) g_host->log(msg);
+                            updated++;
+                        }
+                    }
+                }
+                p = end + 1;
+            }
+        }
+    }
+    InternetCloseHandle(inet);
+    return updated;
 }
 
 /* Métadonnée d'un fichier : premier plugin SERVICE actif. */

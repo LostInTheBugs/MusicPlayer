@@ -1,0 +1,7 @@
+{
+  "core": "2026.08.034-c1",
+  "plugins": [
+    { "file": "fractal.dll", "version": "2026.08.034-c1.002",
+      "url": "https://github.com/LostInTheBugs/MusicPlayer/releases/download/plugin-fractal-2026.08.034-c1.002/fractal.dll" }
+  ]
+}

@@ -2,6 +2,15 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.035] — 2026-08-03
+
+### Added
+- **Mises à jour indépendantes des plugins** : chaque plugin a une version **« core.NNN »** (ex. `2026.08.034-c1.002` — validé avec le core 2026.08.034-c1). Au démarrage, le client consulte le manifeste **`plugins.json`** (GitHub) et **télécharge uniquement la DLL du plugin** dont la version diffère — pas de nouvelle version du programme (redémarrage pour charger)
+- Le plugin **Fractale** passe en `2026.08.034-c1.002` (1er plugin versionné ainsi)
+
+### Fixed
+- **Fractale : zoom qui se figeait après ~10 s** — le zoom dépassait la précision du double (tous les pixels identiques) ; il est maintenant plafonné (2^30) et **reboucle à l'infini** sur la frontière
+
 ## [2026.08.034-c1] — 2026-08-03
 
 ### Fixed

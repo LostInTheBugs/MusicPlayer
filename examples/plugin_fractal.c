@@ -28,6 +28,9 @@ static const double g_cy = 0.11308;
 static const double g_jx = -0.4, g_jy = 0.6;   /* plan de Julia */
 
 #define BASE_ZOOM  200.0           /* zoom de départ (déjà sur le bord) */
+#define ZOOM_LVL_MAX (30 * 1024)   /* 2^30 : limite de précision du double ;
+                                      au-delà, tous les pixels ont la même
+                                      coordonnée (image figée) */
 static volatile LONG g_zoom_lvl = 0;   /* log2(zoom/BASE) × 1024 */
 static double g_energy = 0.0;      /* énergie RMS lissée */
 static double g_avg = 0.0;         /* niveau moyen (seuil de battement) */
@@ -57,7 +60,7 @@ static void hsv2rgb(double h, double s, double v,
 
 /* ------------------------------------------------------------------ */
 static const char* pl_name(void) { return "Fractale"; }
-static const char* pl_version(void) { return "2.0"; }
+static const char* pl_version(void) { return "2026.08.034-c1.002"; }
 static const char* pl_description(void)
 { return "Mandelbrot / Julia fractal zooming on the beat of the music"; }
 static unsigned pl_type(void) { return MP_PLUGIN_VISUAL; }
@@ -96,7 +99,13 @@ static void pl_audio(mp_plugin* self, const float* samples, unsigned frames,
     if (delta > 0.0) {
         g_beat = g_beat * 0.8 + delta * 0.2;
         LONG add = (LONG)(g_beat * 4.0 * 1024.0);
-        if (add > 0) InterlockedExchangeAdd(&g_zoom_lvl, add);
+        if (add > 0) {
+            /* au zoom maximal, la boucle recommence (zoom infini) */
+            if (g_zoom_lvl + add > ZOOM_LVL_MAX)
+                InterlockedExchange(&g_zoom_lvl, 0);
+            else
+                InterlockedExchangeAdd(&g_zoom_lvl, add);
+        }
     } else {
         g_beat *= 0.9;
     }

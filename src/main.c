@@ -645,6 +645,20 @@ static const mp_host_api g_host = {
 /* ------------------------------------------------------------------ */
 /* Status bar                                                          */
 /* ------------------------------------------------------------------ */
+static DWORD WINAPI plugins_upd_thread(LPVOID arg)
+{
+    (void)arg;
+    Sleep(4000);   /* laisser le programme démarrer tranquillement */
+    int n = mp_plugins_check_updates();
+    if (n > 0) {
+        char msg[160];
+        _snprintf(msg, sizeof(msg),
+                  "%d plugin update(s) downloaded — restart to load them", n);
+        log_line(msg);
+    }
+    return 0;
+}
+
 static void status_init(HWND hwnd)
 {
     g_status = CreateWindowExW(0, STATUSCLASSNAMEW, L"",
@@ -3590,6 +3604,13 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR lpCmdLine, int nCmdSh
         log_line(dbg);
     }
     mp_plugins_scan(g_plugins_dir, g_skins_dir, &g_host);
+
+    /* vérification des mises à jour des plugins (manifeste plugins.json)
+     * en arrière-plan : seul le plugin concerné est téléchargé */
+    if (mp_update_get_mode() != 0) {
+        HANDLE t = CreateThread(NULL, 0, plugins_upd_thread, NULL, 0, NULL);
+        if (t) CloseHandle(t);
+    }
 
     /* langue : préférence mémorisée, sinon langue du système, sinon anglais */
     lang_init(g_lang_dir, NULL);

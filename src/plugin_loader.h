@@ -23,10 +23,9 @@ void mp_plugins_set_enabled(int i, int on);
  * toujours visibles. */
 int mp_plugins_is_visible(int i);
 void mp_plugins_set_visible(int i, int on);
-
-/* Applique les peaux des plugins de type SKIN actifs (appelé par l'UI). */
+/* Applique les skins des plugins de type SKIN actifs (appelé par l'UI).
+ * Aucun skin actif → palette par défaut de l'hôte. */
 void mp_plugins_apply_skins(void* hwnd);
-
 /* Diffuse un événement aux plugins SERVICE actifs (MP_SERVICE_*). */
 void mp_plugins_service(int event, void* data);
 
@@ -43,9 +42,14 @@ void mp_plugins_audio_process(float* samples, unsigned frames,
                               unsigned channels, unsigned sample_rate);
 
 /* Diffuse un bloc PCM (lecture seule) aux plugins visuels actifs
- * (hook audio_frames). Appelé par le moteur audio après les effets. */
+ * pour analyse (spectre…). Appelé par le moteur audio. */
 void mp_plugins_audio_frames(const float* samples, unsigned frames,
                              unsigned channels, unsigned sample_rate);
+
+/* Vérifie le manifeste plugins.json (GitHub) et télécharge les DLL
+ * dont la version diffère de la version locale (version "core.NNN").
+ * Retourne le nombre de mises à jour appliquées (redémarrage requis). */
+int mp_plugins_check_updates(void);
 
 /* Y a-t-il au moins un plugin visuel actif ? (l'UI s'en sert pour
  * basculer en mode rendu + timer rapide). */
