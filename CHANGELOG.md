@@ -2,6 +2,11 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.027-c1] — 2026-08-03
+
+### Fixed
+- **Crash corrigé** : quand la barre de menus est cachée (skin Vintage radio), un clic dans le menu contextuel (vitesse, plugins…) provoquait une erreur — toutes les manipulations de menu passent désormais par la barre réelle même cachée
+
 ## [2026.08.027] — 2026-08-03
 
 ### Added

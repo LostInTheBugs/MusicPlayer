@@ -415,6 +415,12 @@ static void host_skin_set_visual_rect(int x, int y, int w, int h)
     if (g_hwnd) InvalidateRect(g_hwnd, NULL, TRUE);
 }
 
+/* Barre de menus courante (fonctionne même quand elle est cachée) */
+static HMENU menu_bar(void)
+{
+    return g_menu_bar ? g_menu_bar : GetMenu(g_hwnd);
+}
+
 /* Affiche ou cache la barre de menus selon la disposition du skin */
 static void apply_menu_visibility(void)
 {
@@ -438,7 +444,7 @@ static void host_skin_set_layout(int menu_visible, int ctrl_top)
 /* Fond de la barre de menus avec la couleur du skin */
 static void menu_bar_bg(void)
 {
-    HMENU m = GetMenu(g_hwnd);
+    HMENU m = menu_bar();
     if (!m) return;
     MENUINFO mi;
     memset(&mi, 0, sizeof(mi));
@@ -653,6 +659,8 @@ static void refresh_speed_check(HMENU menu)
  * le point radio reflète l'état actif, et un clic ne retire rien du menu. */
 static void rebuild_plugins_menu(HMENU parent)
 {
+    if (!parent) parent = menu_bar();
+    if (!parent) return;
     HMENU mVis = CreatePopupMenu();   /* visuels : radio */
     HMENU mFX = CreatePopupMenu();    /* effets audio : cases */
     HMENU mSvc = CreatePopupMenu();   /* services : cases */
@@ -772,7 +780,7 @@ static void show_context_menu(HWND hwnd)
     int r = (int)TrackPopupMenu(m, TPM_RIGHTBUTTON | TPM_RETURNCMD,
                                 pt.x, pt.y, 0, hwnd, NULL);
     DestroyMenu(m);
-    if (r) on_command(r, GetMenu(hwnd));
+    if (r) on_command(r, menu_bar());
 }
 
 /* ------------------------------------------------------------------ */
@@ -2255,13 +2263,13 @@ static void on_command(int id, HMENU bar)
     case IDM_PLUGIN_RELOAD:
         mp_plugins_scan(g_plugins_dir, g_skins_dir, &g_host);
         mp_plugins_apply_skins(g_hwnd);
-        rebuild_plugins_menu(GetMenu(g_hwnd));
+        rebuild_plugins_menu(menu_bar());
         break;
 
     default:
         if (id >= IDM_SPEED_BASE && id < IDM_SPEED_BASE + SPEED_COUNT) {
             mp_set_speed(SPEED_VALUES[id - IDM_SPEED_BASE]);
-            refresh_speed_check(GetSubMenu(GetSubMenu(GetMenu(g_hwnd), 1), 0));
+            refresh_speed_check(GetSubMenu(GetSubMenu(menu_bar(), 1), 0));
         } else if (id == IDM_PLUGIN_CFG) {
             do_plugins_dialog();
         } else if (id >= IDM_PLUGIN_BASE && id < IDM_LANG_BASE) {
@@ -2289,7 +2297,7 @@ static void on_command(int id, HMENU bar)
                     mp_plugins_set_enabled(i, !p->enabled);
                 }
                 mp_plugins_apply_skins(g_hwnd);
-                rebuild_plugins_menu(GetMenu(g_hwnd));
+                rebuild_plugins_menu(menu_bar());
                 /* un service peut avoir une action au clic (ex. Lyrics) */
                 if ((t & MP_PLUGIN_SERVICE) && p->api->service) {
                     p->api->service(p, MP_SERVICE_CLICK, NULL);
