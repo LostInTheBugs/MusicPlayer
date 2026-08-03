@@ -55,6 +55,7 @@ enum {
     IDM_WEB_SERVER = 804,
     IDM_INTERFACE = 805,    /* Settings ▸ Interface… (skin + langue) */
     IDM_UPDATE_CFG = 806,   /* Settings ▸ Update… (mode de mise à jour) */
+    IDM_DJ_MODE = 807,      /* Settings ▸ DJ Mixing (synchro web) */
     IDM_ABOUT = 901
 };
 
@@ -75,6 +76,8 @@ static int  g_fullscreen = 0;
 static RECT g_win_normal = { 0, 0, 640, 300 };
 static int  g_cd_mode = 0;        /* 1 = lecture CD audio (MCI) */
 static int  g_cd_was_playing = 0; /* détection fin de piste */
+static int  g_dj_mode = 0;        /* 1 = mode DJ Mixing (synchro web) */
+static RECT g_dj_rc_a, g_dj_rc_b; /* platines de la console DJ locale */
 static RECT g_rc_play, g_rc_stop, g_rc_next, g_rc_shuffle, g_rc_plist, g_rc_fs, g_rc_vol;
 static int  g_vol_drag = 0;   /* curseur de volume en cours de glissement */
 
@@ -299,6 +302,13 @@ static int         host_get_audio_out(void) { return mp_get_audio_out(); }
 static void        host_shuffle_toggle(void)
 { playlist_set_shuffle(!playlist_get_shuffle()); }
 static int         host_get_shuffle(void) { return playlist_get_shuffle(); }
+static int         host_get_dj_mode(void) { return g_dj_mode; }
+static void        host_dj_toggle(void)
+{
+    g_dj_mode = !g_dj_mode;
+    if (g_hwnd) InvalidateRect(g_hwnd, NULL, TRUE);
+    status_update();
+}
 static int         host_plist_count(void) { return g_plist_n; }
 static const wchar_t* host_plist_name(int i)
 {
@@ -574,6 +584,7 @@ static const mp_host_api g_host = {
     host_set_volume, host_set_speed,
     host_set_audio_out, host_get_audio_out,
     host_shuffle_toggle, host_get_shuffle,
+    host_get_dj_mode, host_dj_toggle,
     host_plist_count, host_plist_name, host_plist_index, host_plist_play,
     host_main_window,
     host_web_enabled, host_web_port, host_web_audio, host_web_ips,
@@ -755,6 +766,7 @@ static HMENU create_menus(void)
     HMENU mSettings = CreatePopupMenu();
     AppendMenuW(mSettings, MF_POPUP, (UINT_PTR)build_speed_menu(), lang_get("speed"));
     AppendMenuW(mSettings, MF_STRING, IDM_FULLSCREEN, lang_get("fullscreen"));
+    AppendMenuW(mSettings, MF_STRING, IDM_DJ_MODE, lang_get("menu_dj"));
     AppendMenuW(mSettings, MF_SEPARATOR, 0, NULL);
     AppendMenuW(mSettings, MF_STRING, IDM_INTERFACE, lang_get("menu_interface"));
     AppendMenuW(mSettings, MF_STRING, IDM_UPDATE_CFG, lang_get("menu_update_cfg"));
@@ -1935,6 +1947,65 @@ static void draw_progress_bar(HDC hdc, const RECT* rc)
     FrameRect(hdc, &bg, g_pg_border);
 }
 
+/* ------------------------------------------------------------------ */
+/* Console DJ locale (mode DJ Mixing)                                  */
+/* ------------------------------------------------------------------ */
+static void paint_dj_console(HDC hdc, const RECT* rc)
+{
+    RECT r = *rc;
+    HBRUSH bb = CreateSolidBrush(g_skin.bg);
+    FillRect(hdc, &r, bb);
+    DeleteObject(bb);
+
+    int w = r.right - r.left;
+    int h = r.bottom - r.top;
+    int dw = (w - 30) / 2;
+    if (dw < 80) dw = 80;
+    g_dj_rc_a.left = r.left + 10;
+    g_dj_rc_a.top = r.top + 10;
+    g_dj_rc_a.right = r.left + 10 + dw;
+    g_dj_rc_a.bottom = r.bottom - 10;
+    g_dj_rc_b.left = r.left + 20 + dw;
+    g_dj_rc_b.top = r.top + 10;
+    g_dj_rc_b.right = r.left + 20 + 2 * dw;
+    g_dj_rc_b.bottom = r.bottom - 10;
+
+    HBRUSH deck = CreateSolidBrush(g_skin.ctrl_bar);
+    FillRect(hdc, &g_dj_rc_a, deck);
+    FillRect(hdc, &g_dj_rc_b, deck);
+    DeleteObject(deck);
+
+    SetBkMode(hdc, TRANSPARENT);
+    HFONT f = (HFONT)GetStockObject(DEFAULT_GUI_FONT);
+    HFONT of = (HFONT)SelectObject(hdc, f);
+
+    const wchar_t* ta = (g_plist_idx >= 0 && g_plist_idx < g_plist_n)
+                            ? g_plist[g_plist_idx] : L"—";
+    const wchar_t* tb = (g_plist_idx + 1 >= 0 && g_plist_idx + 1 < g_plist_n)
+                            ? g_plist[g_plist_idx + 1] : L"—";
+
+    RECT ta_rc = g_dj_rc_a;
+    ta_rc.top += 8;
+    ta_rc.bottom = ta_rc.top + 30;
+    SetTextColor(hdc, g_skin.accent);
+    DrawTextW(hdc, L"DECK A", -1, &ta_rc, DT_CENTER | DT_SINGLELINE);
+    ta_rc.top += 26;
+    SetTextColor(hdc, g_skin.text);
+    DrawTextW(hdc, ta, -1, &ta_rc, DT_CENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
+
+    RECT tb_rc = g_dj_rc_b;
+    tb_rc.top += 8;
+    tb_rc.bottom = tb_rc.top + 30;
+    SetTextColor(hdc, g_skin.accent);
+    DrawTextW(hdc, L"DECK B", -1, &tb_rc, DT_CENTER | DT_SINGLELINE);
+    tb_rc.top += 26;
+    SetTextColor(hdc, g_skin.text);
+    DrawTextW(hdc, tb, -1, &tb_rc, DT_CENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
+
+    SelectObject(hdc, of);
+    (void)h;
+}
+
 static void paint_center(HDC hdc, RECT* rc)
 {
     RECT vis_rc, bar_rc, ctrl_rc;
@@ -1961,6 +2032,12 @@ static void paint_center(HDC hdc, RECT* rc)
         bar_rc.bottom = ctrl_rc.top;
         vis_rc = *rc;
         vis_rc.bottom = bar_rc.top - 2;
+    }
+
+    /* mode DJ : console de mixage locale (synchro avec la page web) */
+    if (g_dj_mode) {
+        paint_dj_console(hdc, &vis_rc);
+        return;
     }
 
     /* un plugin visuel actif remplace le texte par son rendu */
@@ -2170,6 +2247,19 @@ static void mouse_down(HWND hwnd, int x, int y)
     get_center_rect(hwnd, &rc);
     layout_controls(&rc);
 
+    /* mode DJ : clic sur une platine = jouer la piste du deck */
+    if (g_dj_mode) {
+        if (x >= g_dj_rc_a.left && x <= g_dj_rc_a.right &&
+            y >= g_dj_rc_a.top && y <= g_dj_rc_a.bottom) {
+            if (g_plist_idx >= 0) playlist_play_index(g_plist_idx);
+        } else if (x >= g_dj_rc_b.left && x <= g_dj_rc_b.right &&
+                   y >= g_dj_rc_b.top && y <= g_dj_rc_b.bottom) {
+            if (g_plist_idx + 1 < g_plist_n)
+                playlist_play_index(g_plist_idx + 1);
+        }
+        return;
+    }
+
     /* clic sur la barre de progression : aller directement au moment
      * choisi (la barre est juste au-dessus de la rangée de boutons) */
     if (y >= rc.bottom - CTRL_H - PROGRESS_H && y < rc.bottom - CTRL_H) {
@@ -2300,6 +2390,11 @@ static void on_command(int id, HMENU bar)
         break;
     case IDM_NEXT:      playlist_next(); break;
     case IDM_FULLSCREEN: toggle_fullscreen(g_hwnd); break;
+    case IDM_DJ_MODE:
+        g_dj_mode = !g_dj_mode;
+        InvalidateRect(g_hwnd, NULL, TRUE);
+        status_update();
+        break;
     case IDM_INTERFACE:
         do_interface_dialog();
         break;

@@ -142,10 +142,11 @@ static void api_state(SOCKET s)
     _snprintf(body, sizeof(body),
         "{\"state\":\"%s\",\"pos\":%.1f,\"dur\":%.1f,\"idx\":%d,\"count\":%d,"
         "\"vol\":%.2f,\"speed\":%.2f,"
-        "\"audio\":\"%s\",\"shuffle\":%d,\"name\":\"%s\","
+        "\"audio\":\"%s\",\"shuffle\":%d,\"dj\":%d,\"name\":\"%s\","
         "\"title\":\"%s\",\"artist\":\"%s\",\"album\":\"%s\",\"year\":\"%s\",\"items\":[%s]}",
         st, g_h->get_position(), g_h->get_duration(), idx, n,
         g_h->get_volume(), g_h->get_speed(), ao, g_h->get_shuffle(),
+        g_h->get_dj_mode ? g_h->get_dj_mode() : 0,
         name, title, artist, album, year, items);
     http_response(s, "200 OK", "application/json", body);
 }
@@ -164,6 +165,7 @@ static void api_cmd(SOCKET s, const char* cmd)
     else if (!strncmp(cmd, "playidx=", 8))
         g_h->plist_play(atoi(cmd + 8));
     else if (!strcmp(cmd, "shuffle"))   g_h->shuffle_toggle();
+    else if (!strcmp(cmd, "dj") && g_h->dj_toggle) g_h->dj_toggle();
     http_response(s, "200 OK", "text/plain", "ok");
 }
 
@@ -263,6 +265,7 @@ static const char PAGE_HTML[] =
 "function plClick(i){cmd('playidx='+i);}\n"
 "function tick(){\n"
 "  fetch('/api/state').then(function(r){return r.json()}).then(function(s){\n"
+"    if(s.dj){window.location='/dj';return;}\n"
 "    document.body.dataset.playing=s.state==='playing'?'1':'0';\n"
 "    document.body.dataset.audio=s.audio;\n"
 "    $('bPlay').innerHTML = s.state==='playing' ? ICON_PAUSE : ICON_PLAY;\n"
@@ -457,7 +460,7 @@ static const char PAGE_DJ[] =
 ".vu span{flex:1;background:#1d2632}\n"
 ".vu span.on{background:#3ddc84}\n"
 "</style></head><body>\n"
-"<div class=\"top\"><a href=\"/\">← MusicPlayer</a><h1>🎚️ DJ Mixing</h1><a href=\"/dj\">↻</a></div>\n"
+"<div class=\"top\"><a href=\"/\">← MusicPlayer</a><h1>🎚️ DJ Mixing</h1><a href=\"#\" onclick=\"fetch('/api/cmd',{method:'POST',body:'dj'});setTimeout(function(){location.href='/'},300);return false\" style=\"color:#e67e22\">Quitter</a></div>\n"
 "<div class=\"decks\">\n"
 "<div class=\"deck\">\n"
 "<h2>DECK A</h2>\n"

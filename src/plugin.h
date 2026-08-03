@@ -90,6 +90,10 @@ typedef struct mp_host_api {
     void (*shuffle_toggle)(void);
     int  (*get_shuffle)(void);
 
+    /* --- mode DJ Mixing (synchronisé avec la page web) --- */
+    int  (*get_dj_mode)(void);
+    void (*dj_toggle)(void);
+
     /* --- playlist --- */
     int  (*plist_count)(void);
     const wchar_t* (*plist_name)(int i);   /* nom de fichier seul */

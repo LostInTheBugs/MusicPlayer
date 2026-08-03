@@ -2,6 +2,14 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.028-c3] — 2026-08-03
+
+### Added
+- **Mode DJ Mixing synchronisé ordinateur ⇄ web** :
+  - **Settings ▸ DJ Mixing** (ou `/api/cmd dj`) active/désactive le mode des deux côtés
+  - Sur l'ordinateur : la fenêtre affiche la **console DJ locale** (2 platines avec les pistes, clic = jouer)
+  - Sur le web : la page principale **bascule automatiquement sur la table de mixage** quand le mode DJ est actif, et le bouton « Quitter » revient à la télécommande
+
 ## [2026.08.028-c2] — 2026-08-03
 
 ### Changed
