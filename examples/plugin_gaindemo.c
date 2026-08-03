@@ -1,52 +1,55 @@
 /*
- * Plugin de démonstration MusicPlayer — "GainDemo"
- * Type : effet audio. Atténue le signal de moitié et journalise son
- * activité via l'API hôte. Sert d'exemple de référence pour écrire
- * de nouveaux plugins (voir plugins/README.md et src/plugin.h).
+ * MusicPlayer — plugin : booster de volume sonore.
+ * Type : effet audio. Amplifie le signal (+25 %) avec écrêtage.
+ * Activation : Settings ▸ Plugins.
  */
 #include "plugin.h"
 
 static const mp_host_api* g_host = NULL;
 
-static const char* name(void)        { return "GainDemo"; }
-static const char* version(void)     { return "0.1.0"; }
-static const char* description(void) { return "Effet démo : atténue le son de moitié"; }
+static const char* pl_name(void)    { return "Volume booster"; }
+static const char* pl_version(void) { return "1.0"; }
+static const char* pl_description(void)
+{ return "Boosts the sound level (audio effect, +25 %)"; }
+static unsigned pl_type(void) { return MP_PLUGIN_AUDIO_EFFECT; }
 
-static unsigned type(void) { return MP_PLUGIN_AUDIO_EFFECT; }
-
-static int init(mp_plugin* self, const mp_host_api* host)
+static int pl_init(mp_plugin* self, const mp_host_api* host)
 {
     (void)self;
     g_host = host;
-    if (g_host && g_host->log)
-        g_host->log("GainDemo: init OK");
+    if (g_host && g_host->log) g_host->log("Volume booster: init OK");
     return 0;
 }
 
-static void destroy(mp_plugin* self)
+static void pl_destroy(mp_plugin* self)
 {
     (void)self;
-    if (g_host && g_host->log) g_host->log("GainDemo: unloaded");
+    if (g_host && g_host->log) g_host->log("Volume booster: unloaded");
     g_host = NULL;
 }
 
-static void process(mp_plugin* self, float* samples, unsigned frames,
-                    unsigned channels, unsigned sample_rate)
+static void pl_process(mp_plugin* self, float* samples, unsigned frames,
+                       unsigned channels, unsigned sample_rate)
 {
     (void)self; (void)sample_rate;
     unsigned n = frames * channels;
-    for (unsigned i = 0; i < n; i++)
-        samples[i] *= 0.5f;
+    for (unsigned i = 0; i < n; i++) {
+        float v = samples[i] * 1.25f;
+        if (v > 1.0f) v = 1.0f;
+        else if (v < -1.0f) v = -1.0f;
+        samples[i] = v;
+    }
 }
 
 static const mp_plugin_api g_api = {
     MP_PLUGIN_API_VERSION,
-    name, version, description, type,
-    init, destroy,
-    process,      /* effet audio */
-    NULL,         /* pas de flux audio (visuel) */
-    NULL,         /* pas de rendu visuel */
-    NULL          /* pas de skin */
+    pl_name, pl_version, pl_description, pl_type,
+    pl_init, pl_destroy,
+    pl_process,       /* effet audio */
+    NULL,             /* pas de flux audio (visuel) */
+    NULL,             /* pas de rendu visuel */
+    NULL,             /* pas de skin */
+    NULL, NULL        /* service, get_title */
 };
 
 const mp_plugin_api* mp_plugin_entry(void) { return &g_api; }

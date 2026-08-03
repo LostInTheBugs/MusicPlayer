@@ -37,11 +37,13 @@ vol_down=&Decrease
 vol_show=Volume: %d%%
 
 # --- Plugins menu ---
-plugins_reload=Reload plugins
-plugins_none=(no plugin)
-plugins_visual=&Visual
-plugins_effects=&Audio effects
-plugins_skins=&Skins
+plugins_reload=&Reload plugins
+plugins_none=No plugin loaded
+plugins_visual=Visual
+plugins_effects=Audio effects
+plugins_skins=Skins
+plugins_services=Services
+menu_plugins_cfg=&Plugins
 
 # --- Settings menu ---
 fullscreen=&Fullscreen

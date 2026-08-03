@@ -25,7 +25,6 @@
 #include "plugin_loader.h"
 #include "lang.h"
 #include "update.h"
-#include "server.h"
 #include "config.h"
 
 #ifndef MP_VERSION
@@ -45,6 +44,7 @@ enum {
     IDM_SPEED_BASE = 300,   /* +0 → 0.5x, +1 → 1.0x, +2 → 1.5x, +3 → 2.0x */
     IDM_VOL_UP = 401, IDM_VOL_DOWN = 402, IDM_VOL_SHOW = 403,
     IDM_PLUGIN_RELOAD = 501,
+    IDM_PLUGIN_CFG_BASE = 550,  /* Settings ▸ Plugins : activation */
     IDM_PLUGIN_BASE = 600,  /* items plugins dynamiques */
     IDM_LANG_BASE = 700,    /* items langues dynamiques */
     IDM_FULLSCREEN = 801,
@@ -216,6 +216,39 @@ static void log_line(const char* msg)
 }
 
 /* ------------------------------------------------------------------ */
+/* Serveur web : configuration globale (dialog + config.yml)           */
+/* ------------------------------------------------------------------ */
+static int g_web_enabled = 0;
+static int g_web_port = 8000;
+static int g_web_audio = 0;      /* 0 = PC, 1 = téléphone, 2 = les deux */
+static char g_web_ips_cfg[1024] = "";   /* IP écoutées ("ip1;ip2;..." ; vide = toutes) */
+
+/* Premier port libre à partir de 8000 (port par défaut du serveur web) */
+static int find_free_port(void)
+{
+    WSADATA wsa;
+    int port = 8000;
+    if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0) return 8000;
+    for (int p = 8000; p < 65535; p++) {
+        SOCKET s = socket(AF_INET, SOCK_STREAM, 0);
+        if (s == INVALID_SOCKET) break;
+        struct sockaddr_in a;
+        memset(&a, 0, sizeof(a));
+        a.sin_family = AF_INET;
+        a.sin_addr.s_addr = htonl(INADDR_ANY);
+        a.sin_port = htons((u_short)p);
+        if (bind(s, (struct sockaddr*)&a, sizeof(a)) == 0) {
+            port = p;
+            closesocket(s);
+            break;
+        }
+        closesocket(s);
+    }
+    WSACleanup();
+    return port;
+}
+
+/* ------------------------------------------------------------------ */
 /* API hôte exposée aux plugins                                        */
 /* ------------------------------------------------------------------ */
 static const char* host_file_name(void) { return mp_get_file_name(); }
@@ -224,16 +257,48 @@ static double      host_get_position(void) { return mp_get_position(); }
 static double      host_get_duration(void) { return mp_get_duration(); }
 static float       host_get_volume(void) { return mp_get_volume(); }
 static float       host_get_speed(void) { return mp_get_speed(); }
+static void        host_play_pause(void) { mp_play_pause(); }
+static void        host_stop(void) { mp_stop(); }
+static void        host_next(void) { playlist_next(); }
+static void        host_set_volume(float v) { mp_set_volume(v); }
+static void        host_set_speed(float s) { mp_set_speed(s); }
+static void        host_set_audio_out(int m) { mp_set_audio_out(m); }
+static int         host_get_audio_out(void) { return mp_get_audio_out(); }
+static void        host_shuffle_toggle(void)
+{ playlist_set_shuffle(!playlist_get_shuffle()); }
+static int         host_get_shuffle(void) { return playlist_get_shuffle(); }
+static int         host_plist_count(void) { return g_plist_n; }
+static const wchar_t* host_plist_name(int i)
+{
+    if (i < 0 || i >= g_plist_n) return L"";
+    const wchar_t* s = wcsrchr(g_plist[i], L'\\');
+    return s ? s + 1 : g_plist[i];
+}
+static int         host_plist_index(void) { return g_plist_idx; }
+static void        host_plist_play(int i) { playlist_play_index(i); }
+static void*       host_main_window(void) { return g_hwnd; }
+static int         host_web_enabled(void) { return g_web_enabled; }
+static int         host_web_port(void) { return g_web_port; }
+static int         host_web_audio(void) { return g_web_audio; }
+static const char* host_web_ips(void) { return g_web_ips_cfg; }
+static int         host_web_find_free_port(void) { return find_free_port(); }
+static uint32_t    host_web_read(float* dst, uint32_t frames)
+{ return mp_web_read(dst, frames); }
 
 static const mp_host_api g_host = {
     MP_PLUGIN_API_VERSION,
     log_line,
-    host_get_state,
-    host_get_position,
-    host_get_duration,
-    host_get_volume,
-    host_get_speed,
-    host_file_name
+    host_get_state, host_get_position, host_get_duration,
+    host_get_volume, host_get_speed, host_file_name,
+    host_play_pause, host_stop, host_next,
+    host_set_volume, host_set_speed,
+    host_set_audio_out, host_get_audio_out,
+    host_shuffle_toggle, host_get_shuffle,
+    host_plist_count, host_plist_name, host_plist_index, host_plist_play,
+    host_main_window,
+    host_web_enabled, host_web_port, host_web_audio, host_web_ips,
+    host_web_find_free_port,
+    host_web_read
 };
 
 /* ------------------------------------------------------------------ */
@@ -262,9 +327,15 @@ static void status_update(void)
     wchar_t s1[280], s2[32], s3[32], s4[48];
     const char* fn = mp_get_file_name();
     if (fn) {
-        const char* base = strrchr(fn, '\\');
-        base = base ? base + 1 : fn;
-        utf8_to_wide(base, s1, 280);
+        /* titre issu des métadonnées (plugin SERVICE) si disponible */
+        const char* title = mp_plugins_get_title(fn);
+        if (title && title[0]) {
+            utf8_to_wide(title, s1, 280);
+        } else {
+            const char* base = strrchr(fn, '\\');
+            base = base ? base + 1 : fn;
+            utf8_to_wide(base, s1, 280);
+        }
     } else {
         wcscpy(s1, lang_get("no_file"));
     }
@@ -319,18 +390,20 @@ static void refresh_speed_check(HMENU menu)
     CheckMenuRadioItem(menu, IDM_SPEED_BASE, IDM_SPEED_BASE + SPEED_COUNT - 1,
                        IDM_SPEED_BASE + idx, MF_BYCOMMAND);
 }
-/* Menu Plugins : sous-menus par type (un seul visuel actif, radio) */
+/* Menu Plugins : sous-menus par type (un seul visuel actif, radio).
+ * Les plugins désactivés (Settings ▸ Plugins) n'apparaissent pas. */
 static void rebuild_plugins_menu(HMENU parent)
 {
     HMENU mVis = CreatePopupMenu();   /* visuels : radio */
     HMENU mFX = CreatePopupMenu();    /* effets audio : cases */
     HMENU mSkin = CreatePopupMenu();  /* skins : cases */
-    HMENU mOther = CreatePopupMenu();
+    HMENU mSvc = CreatePopupMenu();   /* services : cases */
 
     int n = mp_plugins_count();
     int vis_active = -1;
     for (int i = 0; i < n; i++) {
         mp_plugin* p = mp_plugins_get(i);
+        if (!p || !p->api || !p->enabled) continue;   /* désactivé : absent */
         wchar_t label[160], name_w[128], ver_w[32];
         utf8_to_wide(p->api->name(), name_w, 128);
         utf8_to_wide(p->api->version() ? p->api->version() : "?", ver_w, 32);
@@ -341,7 +414,8 @@ static void rebuild_plugins_menu(HMENU parent)
         if (t & MP_PLUGIN_SKIN)          target = mSkin;
         else if (t & MP_PLUGIN_VISUAL)   target = mVis;
         else if (t & MP_PLUGIN_AUDIO_EFFECT) target = mFX;
-        else                             target = mOther;
+        else if (t & MP_PLUGIN_SERVICE)  target = mSvc;
+        else                             continue;
 
         AppendMenuW(target, MF_STRING, IDM_PLUGIN_BASE + i, label);
         if (t & MP_PLUGIN_VISUAL) {
@@ -362,17 +436,37 @@ static void rebuild_plugins_menu(HMENU parent)
     if (n == 0) {
         AppendMenuW(m, MF_GRAYED | MF_STRING, 0, lang_get("plugins_none"));
     } else {
-        AppendMenuW(m, MF_POPUP, (UINT_PTR)mVis, lang_get("plugins_visual"));
-        AppendMenuW(m, MF_POPUP, (UINT_PTR)mFX, lang_get("plugins_effects"));
-        AppendMenuW(m, MF_POPUP, (UINT_PTR)mSkin, lang_get("plugins_skins"));
-        if (GetMenuItemCount(mOther) > 0)
-            AppendMenuW(m, MF_POPUP, (UINT_PTR)mOther, L"Other");
-        else
-            DestroyMenu(mOther);
+        if (GetMenuItemCount(mVis) > 0)
+            AppendMenuW(m, MF_POPUP, (UINT_PTR)mVis, lang_get("plugins_visual"));
+        else DestroyMenu(mVis);
+        if (GetMenuItemCount(mFX) > 0)
+            AppendMenuW(m, MF_POPUP, (UINT_PTR)mFX, lang_get("plugins_effects"));
+        else DestroyMenu(mFX);
+        if (GetMenuItemCount(mSkin) > 0)
+            AppendMenuW(m, MF_POPUP, (UINT_PTR)mSkin, lang_get("plugins_skins"));
+        else DestroyMenu(mSkin);
+        if (GetMenuItemCount(mSvc) > 0)
+            AppendMenuW(m, MF_POPUP, (UINT_PTR)mSvc, lang_get("plugins_services"));
+        else DestroyMenu(mSvc);
     }
     RemoveMenu(parent, 2, MF_BYPOSITION);
     InsertMenuW(parent, 2, MF_BYPOSITION | MF_POPUP, (UINT_PTR)m, lang_get("menu_plugins"));
     DrawMenuBar(g_hwnd);
+}
+
+/* Settings ▸ Plugins : liste des plugins avec cases (activation) */
+static void rebuild_plugin_cfg_menu(HMENU m)
+{
+    int n = mp_plugins_count();
+    for (int i = 0; i < n; i++) {
+        mp_plugin* p = mp_plugins_get(i);
+        if (!p || !p->api || !p->api->name) continue;
+        const char* nm = p->api->name();
+        wchar_t nmw[160];
+        utf8_to_wide(nm ? nm : "?", nmw, 160);
+        AppendMenuW(m, MF_STRING | (p->enabled ? MF_CHECKED : MF_UNCHECKED),
+                    IDM_PLUGIN_CFG_BASE + i, nmw);
+    }
 }
 
 /* Sous-menu des langues disponibles (dans le menu Paramètres, position 3) */
@@ -416,6 +510,8 @@ static HMENU create_menus(void)
                  IDM_AUTO_UPDATE, lang_get("menu_auto_update"));
     AppendMenuW(mSettings, MF_SEPARATOR, 0, NULL);
     AppendMenuW(mSettings, MF_STRING, IDM_WEB_SERVER, lang_get("menu_web_server"));
+    AppendMenuW(mSettings, MF_SEPARATOR, 0, NULL);
+    AppendMenuW(mSettings, MF_POPUP, (UINT_PTR)CreatePopupMenu(), lang_get("menu_plugins_cfg"));
     AppendMenuW(bar, MF_POPUP, (UINT_PTR)mSettings, lang_get("menu_settings"));
 
     AppendMenuW(bar, MF_POPUP, (UINT_PTR)CreatePopupMenu(), lang_get("menu_plugins"));
@@ -435,7 +531,8 @@ static void rebuild_menus(void)
     SetMenu(g_hwnd, bar);
     HMENU mSettings = GetSubMenu(bar, 1);
     refresh_speed_check(GetSubMenu(mSettings, 0));
-    rebuild_lang_menu(mSettings);          /* position 2 dans Paramètres */
+    rebuild_lang_menu(mSettings);          /* position 3 dans Paramètres */
+    rebuild_plugin_cfg_menu(GetSubMenu(mSettings, GetMenuItemCount(mSettings) - 1));
     rebuild_plugins_menu(bar);             /* position 2 dans la barre */
     if (old) DestroyMenu(old);
     mp_plugins_apply_skins(g_hwnd);
@@ -531,11 +628,6 @@ static void do_open_folder_dialog(void)
 #define IDC_WEB_AUD_LBL 1002
 #define IDC_WEB_LIST_LBL 1003
 
-static int g_web_enabled = 0;
-static int g_web_port = 8000;
-static int g_web_audio = 0;      /* 0 = PC, 1 = téléphone, 2 = les deux */
-static char g_web_ips_cfg[1024] = "";   /* IP écoutées ("ip1;ip2;..." ; vide = toutes) */
-
 /* liste des interfaces réseau (pour le dialog) */
 typedef struct {
     char ip[64];
@@ -605,7 +697,7 @@ static int web_ip_checked(const char* ip)
 static void web_load_config(void)
 {
     g_web_enabled = g_cfg.web_enabled;
-    g_web_port = g_cfg.web_port > 0 ? g_cfg.web_port : server_find_free_port();
+    g_web_port = g_cfg.web_port > 0 ? g_cfg.web_port : find_free_port();
     g_web_audio = g_cfg.web_audio;
     strncpy(g_web_ips_cfg, g_cfg.web_ips, sizeof(g_web_ips_cfg) - 1);
     g_web_ips_cfg[sizeof(g_web_ips_cfg) - 1] = 0;
@@ -624,17 +716,8 @@ static void web_save_config(void)
 static void web_apply(void)
 {
     mp_set_audio_out(g_web_audio);
-    if (g_web_enabled) {
-        if (server_start(g_web_port, g_hwnd, g_web_ips_cfg) != 0) {
-            wchar_t msg[256];
-            swprintf(msg, 256, lang_get("web_err_port"), g_web_port);
-            MessageBoxW(g_hwnd, msg, APP_TITLE, MB_ICONERROR);
-            g_web_enabled = 0;
-            web_save_config();
-        }
-    } else {
-        server_stop();
-    }
+    /* le serveur web est un plugin SERVICE : reconfiguration */
+    mp_plugins_service(MP_SERVICE_WEB_APPLY, NULL);
 }
 
 static INT_PTR CALLBACK web_dlg_proc(HWND h, UINT m, WPARAM w, LPARAM l)
@@ -1418,6 +1501,13 @@ static void on_command(int id, HMENU bar)
         if (id >= IDM_SPEED_BASE && id < IDM_SPEED_BASE + SPEED_COUNT) {
             mp_set_speed(SPEED_VALUES[id - IDM_SPEED_BASE]);
             refresh_speed_check(GetSubMenu(GetSubMenu(GetMenu(g_hwnd), 1), 0));
+        } else if (id >= IDM_PLUGIN_CFG_BASE && id < IDM_PLUGIN_CFG_BASE + 64) {
+            int i = id - IDM_PLUGIN_CFG_BASE;
+            mp_plugin* p = mp_plugins_get(i);
+            if (p) {
+                mp_plugins_set_enabled(i, !p->enabled);
+                rebuild_menus();
+            }
         } else if (id >= IDM_PLUGIN_BASE && id < IDM_LANG_BASE) {
             int i = id - IDM_PLUGIN_BASE;
             mp_plugin* p = mp_plugins_get(i);
@@ -1624,7 +1714,6 @@ static LRESULT CALLBACK wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
     }
     case WM_CLOSE:
         save_state();
-        server_stop();
         mp_plugins_shutdown();
         mp_shutdown();
         DestroyWindow(hwnd);

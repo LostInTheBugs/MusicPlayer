@@ -1,15 +1,16 @@
 /*
- * MusicPlayer — serveur web de contrôle à distance.
+ * MusicPlayer — plugin : serveur web de contrôle à distance.
  *
- * HTTP minimal (Winsock) sur un thread dédié :
+ * Type SERVICE : la page web (télécommande) est servie depuis le
+ * téléphone/tablette sur le même réseau. Activation/désactivation :
+ * Settings ▸ Plugins. Configuration : Settings ▸ Web server…
+ *
+ * Endpoints :
  *   GET  /            → page télécommande (mobile friendly)
  *   GET  /api/state   → JSON (état, playlist, volume, vitesse, sortie)
- *   POST /api/cmd     → corps = play|stop|next|volup|voldown|speedup|speeddown
+ *   POST /api/cmd     → corps = play|stop|next|volup|voldown|speedup|
+ *                       speeddown|audio|shuffle|playidx=N
  *   GET  /stream      → flux audio WAV (PCM 16 bits stéréo 44,1 kHz)
- *
- * Le flux /stream est servi par un thread par connexion : il lit le ring
- * de diffusion du moteur (mp_web_read) au rythme du décodage, applique le
- * volume courant et convertit en int16.
  */
 
 #include <winsock2.h>
@@ -19,24 +20,12 @@
 #include <string.h>
 #include <stdlib.h>
 
-#include "player.h"
-#include "server.h"
+#include "plugin.h"
 
-/* interface playlist exposée par main.c */
-extern int  web_plist_count(void);
-extern const wchar_t* web_plist_name(int i);
-extern int  web_plist_index(void);
-extern void web_plist_next(void);
-extern void web_playlist_play(int i);
-extern void web_shuffle_toggle(void);
-extern int  web_plist_shuffle(void);
-extern void web_set_audio_out(int mode);
-
+static const mp_host_api* g_h = NULL;
 static volatile LONG g_running = 0;
 static SOCKET g_listens[32];
 static int    g_n_listens = 0;
-static HWND   g_hwnd = NULL;
-static int    g_port = 8000;
 
 /* ------------------------------------------------------------------ */
 /* Helpers réseau                                                      */
@@ -64,7 +53,6 @@ static void http_response(SOCKET s, const char* status, const char* type,
     send_all(s, body, (int)strlen(body));
 }
 
-/* Conversion wchar_t → UTF-8 avec échappement JSON (guillemets, \ et <0x20) */
 static void json_escape(const wchar_t* in, char* out, int out_chars)
 {
     char utf8[512];
@@ -87,58 +75,54 @@ static void api_state(SOCKET s)
 {
     char body[9000];
     char items[6500] = "";
-    int n = web_plist_count();
-    int idx = web_plist_index();
+    int n = g_h->plist_count();
+    int idx = g_h->plist_index();
     if (n > 100) n = 100;
     for (int i = 0; i < n; i++) {
         char name[600];
-        json_escape(web_plist_name(i), name, sizeof(name));
+        json_escape(g_h->plist_name(i), name, sizeof(name));
         char tmp[700];
         _snprintf(tmp, sizeof(tmp), "%s\"%s\"", i ? "," : "", name);
         if (strlen(items) + strlen(tmp) < sizeof(items) - 4) strcat(items, tmp);
     }
     const char* st = "stopped";
-    mp_state ms = mp_get_state();
-    if (ms == MP_STATE_PLAYING) st = "playing";
-    else if (ms == MP_STATE_PAUSED) st = "paused";
+    int ms = g_h->get_state();
+    if (ms == 1) st = "playing";
+    else if (ms == 2) st = "paused";
     const char* ao = "pc";
-    int a = mp_get_audio_out();
+    int a = g_h->get_audio_out();
     if (a == 1) ao = "phone";
     else if (a == 2) ao = "both";
     char name[600];
-    if (idx >= 0 && idx < n) json_escape(web_plist_name(idx), name, sizeof(name));
+    if (idx >= 0 && idx < n) json_escape(g_h->plist_name(idx), name, sizeof(name));
     else name[0] = 0;
     _snprintf(body, sizeof(body),
         "{\"state\":\"%s\",\"idx\":%d,\"count\":%d,\"vol\":%.2f,\"speed\":%.2f,"
         "\"audio\":\"%s\",\"shuffle\":%d,\"name\":\"%s\",\"items\":[%s]}",
-        st, idx, n, mp_get_volume(), mp_get_speed(), ao, web_plist_shuffle(),
+        st, idx, n, g_h->get_volume(), g_h->get_speed(), ao, g_h->get_shuffle(),
         name, items);
     http_response(s, "200 OK", "application/json", body);
 }
 
 static void api_cmd(SOCKET s, const char* cmd)
 {
-    if (!strcmp(cmd, "play"))          mp_play_pause();
-    else if (!strcmp(cmd, "stop"))     mp_stop();
-    else if (!strcmp(cmd, "next"))     web_plist_next();
-    else if (!strcmp(cmd, "volup"))    mp_set_volume(mp_get_volume() + 0.1f);
-    else if (!strcmp(cmd, "voldown"))  mp_set_volume(mp_get_volume() - 0.1f);
-    else if (!strcmp(cmd, "speedup"))  mp_set_speed(mp_get_speed() * 1.1f);
-    else if (!strcmp(cmd, "speeddown"))mp_set_speed(mp_get_speed() / 1.1f);
+    if (!strcmp(cmd, "play"))           g_h->play_pause();
+    else if (!strcmp(cmd, "stop"))      g_h->stop();
+    else if (!strcmp(cmd, "next"))      g_h->next();
+    else if (!strcmp(cmd, "volup"))     g_h->set_volume(g_h->get_volume() + 0.1f);
+    else if (!strcmp(cmd, "voldown"))   g_h->set_volume(g_h->get_volume() - 0.1f);
+    else if (!strcmp(cmd, "speedup"))   g_h->set_speed(g_h->get_speed() * 1.1f);
+    else if (!strcmp(cmd, "speeddown")) g_h->set_speed(g_h->get_speed() / 1.1f);
     else if (!strcmp(cmd, "audio"))
-        web_set_audio_out((mp_get_audio_out() + 1) % 3);   /* cycle PC→tél→les 2 */
+        g_h->set_audio_out((g_h->get_audio_out() + 1) % 3);
     else if (!strncmp(cmd, "playidx=", 8))
-        web_playlist_play(atoi(cmd + 8));                  /* clic sur un morceau */
-    else if (!strcmp(cmd, "shuffle"))
-        web_shuffle_toggle();
+        g_h->plist_play(atoi(cmd + 8));
+    else if (!strcmp(cmd, "shuffle"))   g_h->shuffle_toggle();
     http_response(s, "200 OK", "text/plain", "ok");
 }
 
 /* ------------------------------------------------------------------ */
 /* Page web (télécommande)                                             */
-/* Icônes SVG inline : rendu identique sur tous les navigateurs.       */
-/* Bouton "Son téléphone" dédié : le flux audio se lit indépendamment  */
-/* du bouton lecture (qui contrôle l'application).                     */
 /* ------------------------------------------------------------------ */
 static const char PAGE_HTML[] =
 "<!DOCTYPE html>\n"
@@ -252,7 +236,6 @@ static DWORD WINAPI stream_thread(void* arg)
         "Cache-Control: no-cache\r\nConnection: close\r\n\r\n";
     send_all(c, hdr, (int)strlen(hdr));
 
-    /* entête RIFF/WAVE : PCM 16 bits stéréo 44100 Hz (tailles "infinies") */
     uint8_t wav[44] = {
         'R','I','F','F', 0xff,0xff,0xff,0x7f, 'W','A','V','E',
         'f','m','t',' ', 16,0,0,0, 1,0, 2,0,
@@ -266,9 +249,9 @@ static DWORD WINAPI stream_thread(void* arg)
     uint32_t idle = 0;
     float vol = 1.0f;
     while (g_running) {
-        uint32_t n = mp_web_read(fbuf, 1024);
+        uint32_t n = g_h->web_read(fbuf, 1024);
         if (n == 0) {
-            if (++idle > 50) {           /* ~1 s sans données : silence */
+            if (++idle > 50) {
                 memset(obuf, 0, sizeof(obuf));
                 if (send(c, (const char*)obuf, sizeof(obuf), 0) <= 0) break;
                 idle = 0;
@@ -277,7 +260,7 @@ static DWORD WINAPI stream_thread(void* arg)
             continue;
         }
         idle = 0;
-        vol = mp_get_volume();
+        vol = g_h->get_volume();
         for (uint32_t i = 0; i < n * 2; i++) {
             float v = fbuf[i] * vol;
             if (v > 1.0f) v = 1.0f; else if (v < -1.0f) v = -1.0f;
@@ -292,7 +275,7 @@ static DWORD WINAPI stream_thread(void* arg)
 }
 
 /* ------------------------------------------------------------------ */
-/* Thread d'acceptation : une socket d'écoute par IP sélectionnée      */
+/* Dispatch + acceptation                                              */
 /* ------------------------------------------------------------------ */
 static void dispatch(SOCKET c)
 {
@@ -338,20 +321,22 @@ static DWORD WINAPI accept_thread(void* arg)
     return 0;
 }
 
-/* ------------------------------------------------------------------ */
-/* API publique                                                        */
-/* ------------------------------------------------------------------ */
-int server_start(int port, HWND hwnd, const char* ips)
+static void server_stop(void)
 {
-    if (g_running) server_stop();
-    g_hwnd = hwnd;
-    g_port = port;
+    InterlockedExchange(&g_running, 0);
+    for (int i = 0; i < g_n_listens; i++) closesocket(g_listens[i]);
+    g_n_listens = 0;
+    Sleep(120);
+}
+
+static int server_start(int port, const char* ips)
+{
+    server_stop();
     g_n_listens = 0;
     WSADATA wsa;
     if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0) return -1;
     InterlockedExchange(&g_running, 1);
 
-    /* une socket d'écoute par IP ("ip1;ip2;..." ; vide = toutes) */
     char ipbuf[64];
     const char* p = ips ? ips : "";
     int failed = 0;
@@ -392,37 +377,54 @@ int server_start(int port, HWND hwnd, const char* ips)
     return 0;
 }
 
-void server_stop(void)
+/* ------------------------------------------------------------------ */
+/* Plugin                                                              */
+/* ------------------------------------------------------------------ */
+static const char* pl_name(void)        { return "Web Server"; }
+static const char* pl_version(void)     { return "1.0"; }
+static const char* pl_description(void)
+{ return "Remote control web page (phone/tablet) + audio stream"; }
+static unsigned    pl_type(void)        { return MP_PLUGIN_SERVICE; }
+
+static int pl_init(mp_plugin* self, const mp_host_api* host)
 {
-    InterlockedExchange(&g_running, 0);
-    for (int i = 0; i < g_n_listens; i++) closesocket(g_listens[i]);
-    g_n_listens = 0;
-    Sleep(120);
+    (void)self;
+    g_h = host;
+    /* le serveur est démarré par l'événement MP_SERVICE_WEB_APPLY,
+     * envoyé par l'hôte au démarrage et après chaque changement de config */
+    return 0;
 }
 
-int server_is_running(void) { return (int)g_running; }
-
-/* Premier port libre à partir de 8000 (utilisé comme port par défaut). */
-int server_find_free_port(void)
+static void pl_destroy(mp_plugin* self)
 {
-    WSADATA wsa;
-    int port = 8000;
-    if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0) return 8000;
-    for (int p = 8000; p < 65535; p++) {
-        SOCKET s = socket(AF_INET, SOCK_STREAM, 0);
-        if (s == INVALID_SOCKET) break;
-        struct sockaddr_in a;
-        memset(&a, 0, sizeof(a));
-        a.sin_family = AF_INET;
-        a.sin_addr.s_addr = htonl(INADDR_ANY);
-        a.sin_port = htons((u_short)p);
-        if (bind(s, (struct sockaddr*)&a, sizeof(a)) == 0) {
-            port = p;
-            closesocket(s);
-            break;
+    (void)self;
+    server_stop();
+}
+
+static void pl_service(mp_plugin* self, int event, void* data)
+{
+    (void)self; (void)data;
+    if (event != MP_SERVICE_WEB_APPLY || !g_h) return;
+    if (g_h->web_enabled && g_h->web_enabled()) {
+        if (server_start(g_h->web_port(), g_h->web_ips()) == 0) {
+            char msg[256];
+            _snprintf(msg, sizeof(msg), "Web server listening on port %d",
+                      g_h->web_port());
+            if (g_h->log) g_h->log(msg);
+        } else if (g_h->log) {
+            g_h->log("Web server: cannot bind the port (in use?)");
         }
-        closesocket(s);
+    } else {
+        server_stop();
     }
-    WSACleanup();
-    return port;
 }
+
+static const mp_plugin_api g_api = {
+    MP_PLUGIN_API_VERSION,
+    pl_name, pl_version, pl_description, pl_type,
+    pl_init, pl_destroy,
+    NULL, NULL, NULL, NULL,   /* process, audio_frames, render, apply_skin */
+    pl_service, NULL          /* service, get_title */
+};
+
+const mp_plugin_api* mp_plugin_entry(void) { return &g_api; }

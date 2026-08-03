@@ -21,6 +21,79 @@ static void name_to_utf8(const wchar_t* in, char* out, int out_bytes)
     WideCharToMultiByte(CP_UTF8, 0, in, -1, out, out_bytes, NULL, NULL);
 }
 
+/* ------------------------------------------------------------------ */
+/* Activation persistée : %APPDATA%\MusicPlayer\plugins.ini            */
+/* ------------------------------------------------------------------ */
+static void cfg_path(wchar_t* out, int chars)
+{
+    GetEnvironmentVariableW(L"APPDATA", out, chars);
+    wcscat(out, L"\\MusicPlayer");
+    CreateDirectoryW(out, NULL);
+    wcscat(out, L"\\plugins.ini");
+}
+
+/* 1 si le plugin est activé (défaut : activé) */
+static int cfg_get(const char* key)
+{
+    wchar_t path[MAX_PATH];
+    cfg_path(path, MAX_PATH);
+    FILE* f = _wfopen(path, L"r");
+    if (!f) return 1;
+    char line[512];
+    int v = 1;
+    while (fgets(line, sizeof(line), f)) {
+        char k[256];
+        int val = 0;
+        if (sscanf(line, "%255[^=]=%d", k, &val) == 2 && !strcmp(k, key)) {
+            v = val ? 1 : 0;
+            break;
+        }
+    }
+    fclose(f);
+    return v;
+}
+
+static void cfg_set(const char* key, int on)
+{
+    wchar_t path[MAX_PATH];
+    cfg_path(path, MAX_PATH);
+    char lines[32][512];
+    int n = 0;
+    FILE* f = _wfopen(path, L"r");
+    if (f) {
+        while (fgets(lines[n], 512, f) && n < 31) n++;
+        fclose(f);
+    }
+    FILE* out = _wfopen(path, L"w");
+    if (!out) return;
+    int written = 0;
+    for (int i = 0; i < n; i++) {
+        char k[256];
+        int val;
+        if (sscanf(lines[i], "%255[^=]=%d", k, &val) == 2 && !strcmp(k, key)) {
+            fprintf(out, "%s=%d\n", key, on ? 1 : 0);
+            written = 1;
+        } else {
+            fputs(lines[i], out);
+        }
+    }
+    if (!written) fprintf(out, "%s=%d\n", key, on ? 1 : 0);
+    fclose(out);
+}
+
+/* clé de configuration d'un plugin : nom du fichier sans ".dll" */
+static void plugin_key(const wchar_t* dll_path, char* out, int out_bytes)
+{
+    const wchar_t* slash = wcsrchr(dll_path, L'\\');
+    const wchar_t* base = slash ? slash + 1 : dll_path;
+    char u8[256];
+    name_to_utf8(base, u8, sizeof(u8));
+    strncpy(out, u8, (size_t)out_bytes - 1);
+    out[out_bytes - 1] = 0;
+    char* dot = strrchr(out, '.');
+    if (dot && !_stricmp(dot, ".dll")) *dot = 0;
+}
+
 static void unload(mp_plugin* p)
 {
     if (p->dll) {
@@ -76,9 +149,13 @@ static int load_one(const wchar_t* dir, const wchar_t* name, const mp_host_api* 
     memset(p, 0, sizeof(*p));
     p->dll = dll;
     p->api = api;
-    p->enabled = 1;
     wcsncpy(p->path, full, MAX_PATH - 1);
     p->path[MAX_PATH - 1] = L'\0';
+    {
+        char key[256];
+        plugin_key(full, key, sizeof(key));
+        p->enabled = cfg_get(key);
+    }
 
     if (api->init && api->init(p, host) != 0) {
         char msg[512];
@@ -132,6 +209,35 @@ void mp_plugins_set_enabled(int i, int on)
     mp_plugin* p = mp_plugins_get(i);
     if (!p) return;
     p->enabled = on ? 1 : 0;
+    char key[256];
+    plugin_key(p->path, key, sizeof(key));
+    cfg_set(key, p->enabled);
+}
+
+/* Diffuse un événement aux plugins SERVICE actifs. */
+void mp_plugins_service(int event, void* data)
+{
+    for (int i = 0; i < g_count; i++) {
+        mp_plugin* p = &g_plugins[i];
+        if (!p->enabled || !p->api) continue;
+        if (!(p->api->type() & MP_PLUGIN_SERVICE)) continue;
+        if (p->api->service) p->api->service(p, event, data);
+    }
+}
+
+/* Titre (métadonnées) d'un fichier : premier plugin SERVICE actif. */
+const char* mp_plugins_get_title(const char* path)
+{
+    for (int i = 0; i < g_count; i++) {
+        mp_plugin* p = &g_plugins[i];
+        if (!p->enabled || !p->api) continue;
+        if (!(p->api->type() & MP_PLUGIN_SERVICE)) continue;
+        if (p->api->get_title) {
+            const char* t = p->api->get_title(p, path);
+            if (t && t[0]) return t;
+        }
+    }
+    return NULL;
 }
 
 /* Applique les peaux des plugins de type SKIN actifs (appelé par l'UI). */

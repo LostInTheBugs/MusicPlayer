@@ -35,11 +35,13 @@ vol_down=&Descendre
 vol_show=Volume : %d%%
 
 # --- Menu Plugins ---
-plugins_reload=Recharger les plugins
-plugins_none=(aucun plugin)
-plugins_visual=&Visuel
-plugins_effects=&Effets audio
-plugins_skins=&Skins
+plugins_reload=&Recharger les plugins
+plugins_none=Aucun plugin chargé
+plugins_visual=Visuels
+plugins_effects=Effets audio
+plugins_skins=Peaux
+plugins_services=Services
+menu_plugins_cfg=&Plugins
 
 # --- Menu Paramètres ---
 fullscreen=&Plein écran

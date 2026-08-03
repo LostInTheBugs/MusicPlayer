@@ -27,6 +27,13 @@ void mp_plugins_set_enabled(int i, int on);
 /* Applique les peaux des plugins de type SKIN actifs (appelé par l'UI). */
 void mp_plugins_apply_skins(void* hwnd);
 
+/* Diffuse un événement aux plugins SERVICE actifs (MP_SERVICE_*). */
+void mp_plugins_service(int event, void* data);
+
+/* Demande le titre (métadonnées) d'un fichier au premier plugin SERVICE
+ * actif qui en fournit un ; NULL si aucun. Buffer statique du plugin. */
+const char* mp_plugins_get_title(const char* path);
+
 /* Applique les effets audio des plugins actifs sur un bloc PCM
  * (interleavé f32 stéréo). Appelé par le moteur audio. */
 void mp_plugins_audio_process(float* samples, unsigned frames,

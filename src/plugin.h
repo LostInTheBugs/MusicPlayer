@@ -1,5 +1,5 @@
 /*
- * MusicPlayer — API plugins, version 1
+ * MusicPlayer — API plugins, version 2
  * =====================================
  * Un plugin est une DLL Windows qui exporte la fonction :
  *
@@ -11,29 +11,33 @@
  *   - MP_PLUGIN_SKIN         : personnalise l'apparence de la fenêtre
  *   - MP_PLUGIN_AUDIO_EFFECT : traite le flux audio (effets, égaliseur...)
  *   - MP_PLUGIN_VISUAL       : rendu visuel (visualiseur, spectre...)
+ *   - MP_PLUGIN_SERVICE      : fonctionnalité transverse (serveur web,
+ *                              métadonnées des fichiers...)
  *
  * Les plugins sont chargés depuis le sous-répertoire "plugins/" situé à côté
- * de l'exécutable. Voir plugins/README.md pour un exemple complet.
+ * de l'exécutable. L'activation se fait dans Settings ▸ Plugins : un plugin
+ * désactivé n'apparaît pas dans le menu Plugins.
  */
 #ifndef MP_PLUGIN_H
 #define MP_PLUGIN_H
 
 #include <stddef.h>
+#include <stdint.h>
 
-/*
- * API plugins MusicPlayer — version 2
- * v2 : ajout du hook audio_frames() (flux PCM lecture seule pour les
- *      plugins visuels). Les plugins v1 sont rejetés proprement.
- */
+/* API plugins MusicPlayer — version 2 */
 #define MP_PLUGIN_API_VERSION 2
 
 typedef enum {
     MP_PLUGIN_SKIN         = 1 << 0,
     MP_PLUGIN_AUDIO_EFFECT = 1 << 1,
-    MP_PLUGIN_VISUAL       = 1 << 2
+    MP_PLUGIN_VISUAL       = 1 << 2,
+    MP_PLUGIN_SERVICE      = 1 << 3   /* web, métadonnées… */
 } mp_plugin_type;
 
 typedef struct mp_plugin mp_plugin;
+
+/* Événements transverses (hook service) */
+#define MP_SERVICE_WEB_APPLY 1   /* reconfigurer le serveur web */
 
 /*
  * API offerte par l'hôte (MusicPlayer) aux plugins.
@@ -52,12 +56,42 @@ typedef struct mp_host_api {
     float  (*get_volume)(void);     /* 0.0 .. 1.0 */
     float  (*get_speed)(void);      /* 0.5 .. 2.0 */
     const char* (*get_file_name)(void);
+
+    /* --- contrôle de la lecture (services) --- */
+    void (*play_pause)(void);
+    void (*stop)(void);
+    void (*next)(void);
+    void (*set_volume)(float v);
+    void (*set_speed)(float s);
+    void (*set_audio_out)(int mode);   /* 0 = PC, 1 = téléphone, 2 = les deux */
+    int  (*get_audio_out)(void);
+    void (*shuffle_toggle)(void);
+    int  (*get_shuffle)(void);
+
+    /* --- playlist --- */
+    int  (*plist_count)(void);
+    const wchar_t* (*plist_name)(int i);   /* nom de fichier seul */
+    int  (*plist_index)(void);
+    void (*plist_play)(int i);
+
+    /* --- fenêtre principale --- */
+    void* (*main_window)(void);
+
+    /* --- serveur web : configuration --- */
+    int  (*web_enabled)(void);
+    int  (*web_port)(void);
+    int  (*web_audio)(void);
+    const char* (*web_ips)(void);          /* "ip1;ip2;..." ; vide = toutes */
+    int  (*web_find_free_port)(void);      /* premier port libre dès 8000 */
+
+    /* --- flux audio de diffusion (stream du serveur web) --- */
+    uint32_t (*web_read)(float* dst, uint32_t frames);
 } mp_host_api;
 
 /*
  * API d'un plugin. Toutes les fonctions sont optionnelles sauf name().
  * Les hooks sont appelés uniquement si le type correspondant est déclaré
- * par type() et si le plugin est activé dans le menu Plugins.
+ * par type() et si le plugin est activé (Settings ▸ Plugins).
  */
 typedef struct mp_plugin_api {
     int api_version;                /* doit valoir MP_PLUGIN_API_VERSION */
@@ -97,6 +131,17 @@ typedef struct mp_plugin_api {
      * hwnd = fenêtre principale. Le plugin peut modifier les couleurs,
      * la police, les contrôles... Appelé une fois après le chargement. */
     void (*apply_skin)(mp_plugin* self, void* hwnd);
+
+    /* --- hook SERVICE ---
+     * Événements transverses (MP_SERVICE_* : reconfiguration du serveur
+     * web...). data : selon l'événement (NULL pour MP_SERVICE_WEB_APPLY). */
+    void (*service)(mp_plugin* self, int event, void* data);
+
+    /* --- hook SERVICE : métadonnées ---
+     * Renvoie le titre (balises ID3…) d'un fichier audio, ou NULL si
+     * inconnu. Buffer statique du plugin (valable jusqu'au prochain
+     * appel). Utilisé par l'UI pour afficher le titre. */
+    const char* (*get_title)(mp_plugin* self, const char* path);
 } mp_plugin_api;
 
 #define MP_PLUGIN_ENTRY "mp_plugin_entry"

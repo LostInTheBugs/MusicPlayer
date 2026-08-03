@@ -2,6 +2,16 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.020] — 2026-08-03
+
+### Changed
+- **Le serveur web est maintenant un plugin** (Web Server, type Service) — visible dans Plugins ▸ Services, désactivable dans Settings ▸ Plugins
+- **Booster de volume** : le plugin d'effet audio s'appelle désormais « Volume booster » (+25 % avec écrêtage)
+
+### Added
+- **Plugin Métadonnées MP3** (type Service) : lit les balises ID3 (titre) des fichiers MP3 — l'interface affiche le titre au lieu du nom de fichier quand il est disponible
+- **Settings ▸ Plugins** : active/désactive chaque plugin (état persisté dans `plugins.ini`) ; un plugin désactivé n'apparaît plus dans le menu Plugins
+
 ## [2026.08.019] — 2026-08-03
 
 ### Added
