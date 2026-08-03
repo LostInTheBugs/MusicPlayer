@@ -45,11 +45,27 @@ static DWORD WINAPI rtp_thread(LPVOID arg)
     unsigned char ttl = 8, loop = 1;
     setsockopt(s, IPPROTO_IP, IP_MULTICAST_TTL, (const char*)&ttl, sizeof(ttl));
     setsockopt(s, IPPROTO_IP, IP_MULTICAST_LOOP, (const char*)&loop, sizeof(loop));
-
+    /* interface multicast : la première IP configurée (Network…) */
+    if (g_h && g_h->svc_ips) {
+        const char* ips = g_h->svc_ips("rtp");
+        if (ips && ips[0]) {
+            char tmp[128];
+            _snprintf(tmp, sizeof(tmp), "%s", ips);
+            char* tok = strtok(tmp, ";");
+            if (tok) {
+                struct in_addr ifa;
+                ifa.s_addr = inet_addr(tok);
+                if (ifa.s_addr != INADDR_NONE)
+                    setsockopt(s, IPPROTO_IP, IP_MULTICAST_IF,
+                               (const char*)&ifa, sizeof(ifa));
+            }
+        }
+    }
+    int port = g_h && g_h->svc_port ? g_h->svc_port("rtp") : RTP_PORT;
     struct sockaddr_in dst;
     memset(&dst, 0, sizeof(dst));
     dst.sin_family = AF_INET;
-    dst.sin_port = htons(RTP_PORT);
+    dst.sin_port = htons((unsigned short)port);
     dst.sin_addr.s_addr = inet_addr(RTP_GROUP);
 
     static float fbuf[PKT_FRAMES * 2];
@@ -57,7 +73,13 @@ static DWORD WINAPI rtp_thread(LPVOID arg)
     unsigned short seq = 0;
     unsigned int ts = 0;
 
-    log_line("RTP: multicast streaming to 239.255.0.1:5004 (L16 44.1kHz)");
+    {
+        char msg[160];
+        _snprintf(msg, sizeof(msg),
+                  "RTP: multicast streaming to %s:%d (L16 44.1kHz)",
+                  RTP_GROUP, port);
+        log_line(msg);
+    }
     while (g_running) {
         uint32_t n = g_h->web_read(fbuf, PKT_FRAMES);
         if (!n) { Sleep(20); continue; }

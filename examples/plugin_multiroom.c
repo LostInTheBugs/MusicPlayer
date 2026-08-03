@@ -89,7 +89,13 @@ static DWORD WINAPI mr_thread(LPVOID arg)
     unsigned short seq = 0;
     unsigned int ts = 0;
 
-    log_line("Multiroom: streaming to 239.255.0.2:5004 (L16 44.1kHz)");
+    {
+        char msg[160];
+        _snprintf(msg, sizeof(msg),
+                  "Multiroom: streaming to %d target(s) (L16 44.1kHz)",
+                  ntargets);
+        log_line(msg);
+    }
     while (g_running) {
         uint32_t n = g_h->web_read(fbuf, PKT_FRAMES);
         if (!n) { Sleep(20); continue; }

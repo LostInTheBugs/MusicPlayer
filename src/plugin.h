@@ -110,6 +110,12 @@ typedef struct mp_host_api {
     const char* (*web_ips)(void);          /* "ip1;ip2;..." ; vide = toutes */
     int  (*web_find_free_port)(void);      /* premier port libre dès 8000 */
 
+    /* --- services réseau : configuration (Settings ▸ Network…) ---
+     * Port et IPs d'un service ("rest", "upnp", "rtp", "multiroom").
+     * Port <= 0 → défaut du service. IPs vide = toutes les interfaces. */
+    int  (*svc_port)(const char* name);
+    const char* (*svc_ips)(const char* name);
+
     /* --- flux audio de diffusion (stream du serveur web) --- */
     uint32_t (*web_read)(float* dst, uint32_t frames);
 

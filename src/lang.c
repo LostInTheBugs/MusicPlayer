@@ -63,6 +63,7 @@ static const struct { const char* key; const wchar_t* val; } g_en[] = {
     { "menu_update_cfg", L"&Update…" },
     { "menu_dj", L"DJ &Mixing" },
     { "menu_ts", L"Broadcast to Team&Speak…" },
+    { "menu_net", L"&Network…" },
     { "ts_fail", L"Unable to start broadcast on this device" },
     { "interface_skin",   L"Skin :" },
     { "interface_lang",   L"Language :" },

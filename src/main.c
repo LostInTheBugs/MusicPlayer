@@ -57,6 +57,7 @@ enum {
     IDM_UPDATE_CFG = 806,   /* Settings ▸ Update… (mode de mise à jour) */
     IDM_DJ_MODE = 807,      /* Settings ▸ DJ Mixing (synchro web) */
     IDM_TS_CFG = 808,       /* Settings ▸ Broadcast to TeamSpeak… */
+    IDM_NETWORK = 809,      /* Settings ▸ Network… (services réseau) */
     IDM_ABOUT = 901
 };
 
@@ -73,8 +74,14 @@ static wchar_t g_plugins_dir[MAX_PATH] = { 0 };
 static wchar_t g_skins_dir[MAX_PATH] = { 0 };
 static wchar_t g_lang_dir[MAX_PATH] = { 0 };
 
-static int  g_fullscreen = 0;
+static int  g_fullscreen = 0;   /* mode plein écran (F11 / Échap) */
 static RECT g_win_normal = { 0, 0, 640, 300 };
+static int  g_fs_screens = 0;   /* nb d'écrans pour le plein écran (0 = 1) */
+static int  g_fs_mode[4] = { 0, 0, 0, 0 }; /* contenu des écrans 2..4 :
+                                            0 = visuel, 1 = playlist,
+                                            2 = lyrics, 3 = jaquette */
+static HWND g_fs_wins[4] = { NULL, NULL, NULL, NULL }; /* fenêtres annexes */
+static HWND g_fs_win = NULL;    /* fenêtre principale en plein écran multi */
 static int  g_cd_mode = 0;        /* 1 = lecture CD audio (MCI) */
 static int  g_cd_was_playing = 0; /* détection fin de piste */
 static int  g_dj_mode = 0;        /* 1 = mode DJ Mixing (synchro web) */
@@ -309,6 +316,27 @@ static int         host_get_audio_out(void) { return mp_get_audio_out(); }
 static void        host_shuffle_toggle(void)
 { playlist_set_shuffle(!playlist_get_shuffle()); }
 static int         host_get_shuffle(void) { return playlist_get_shuffle(); }
+
+/* --- services réseau (Settings ▸ Network…) --- */
+static int host_svc_port(const char* name)
+{
+    if (!name) return 0;
+    if (!strcmp(name, "rest")) return g_cfg.svc_rest_port > 0 ? g_cfg.svc_rest_port : 8080;
+    if (!strcmp(name, "upnp")) return g_cfg.svc_upnp_port > 0 ? g_cfg.svc_upnp_port : 8081;
+    if (!strcmp(name, "rtp"))  return g_cfg.svc_rtp_port  > 0 ? g_cfg.svc_rtp_port  : 5004;
+    if (!strcmp(name, "multiroom")) return g_cfg.svc_mr_port > 0 ? g_cfg.svc_mr_port : 5004;
+    return 0;
+}
+
+static const char* host_svc_ips(const char* name)
+{
+    if (!name) return "";
+    if (!strcmp(name, "rest")) return g_cfg.svc_rest_ips;
+    if (!strcmp(name, "upnp")) return g_cfg.svc_upnp_ips;
+    if (!strcmp(name, "rtp"))  return g_cfg.svc_rtp_ips;
+    if (!strcmp(name, "multiroom")) return g_cfg.svc_mr_ips;
+    return "";
+}
 static int         host_get_dj_mode(void) { return g_dj_mode; }
 static void        host_dj_toggle(void)
 {
@@ -605,6 +633,7 @@ static const mp_host_api g_host = {
     host_main_window,
     host_web_enabled, host_web_port, host_web_audio, host_web_ips,
     host_web_find_free_port,
+    host_svc_port, host_svc_ips,
     host_web_read,
     host_skin_set_colors,
     host_skin_set_bg,
@@ -784,6 +813,7 @@ static HMENU create_menus(void)
     AppendMenuW(mSettings, MF_STRING, IDM_FULLSCREEN, lang_get("fullscreen"));
     AppendMenuW(mSettings, MF_STRING, IDM_DJ_MODE, lang_get("menu_dj"));
     AppendMenuW(mSettings, MF_STRING, IDM_TS_CFG, lang_get("menu_ts"));
+    AppendMenuW(mSettings, MF_STRING, IDM_NETWORK, lang_get("menu_net"));
     AppendMenuW(mSettings, MF_SEPARATOR, 0, NULL);
     AppendMenuW(mSettings, MF_STRING, IDM_INTERFACE, lang_get("menu_interface"));
     AppendMenuW(mSettings, MF_STRING, IDM_UPDATE_CFG, lang_get("menu_update_cfg"));
@@ -1323,6 +1353,137 @@ static void do_ts_dialog(void)
 }
 
 /* ------------------------------------------------------------------ */
+/* Dialog Network services (Settings ▸ Network…) : port + IPs          */
+/* ------------------------------------------------------------------ */
+#define IDC_NET_COMBO 1051
+#define IDC_NET_PORT  1053
+#define IDC_NET_LIST  1055
+
+static const wchar_t* net_svc_names[] = {
+    L"REST API", L"DLNA/UPnP", L"RTP/AES67", L"Multiroom"
+};
+static int* net_svc_ports[] = {
+    &g_cfg.svc_rest_port, &g_cfg.svc_upnp_port,
+    &g_cfg.svc_rtp_port, &g_cfg.svc_mr_port
+};
+static char* net_svc_ipss[] = {
+    g_cfg.svc_rest_ips, g_cfg.svc_upnp_ips,
+    g_cfg.svc_rtp_ips, g_cfg.svc_mr_ips
+};
+static const int net_svc_defports[] = { 8080, 8081, 5004, 5004 };
+static int g_net_cur = 0;
+
+/* une IP est-elle dans la liste "ip1;ip2;..." ? (vide = toutes) */
+static int web_ip_in(const char* ips, const char* ip)
+{
+    if (!ips || !ips[0]) return 1;
+    char tmp[1024];
+    _snprintf(tmp, sizeof(tmp), "%s", ips);
+    char* tok = strtok(tmp, ";");
+    while (tok) {
+        if (!strcmp(tok, ip)) return 1;
+        tok = strtok(NULL, ";");
+    }
+    return 0;
+}
+
+static void net_load(int idx, HWND h)
+{
+    int port = *net_svc_ports[idx];
+    if (port <= 0) port = net_svc_defports[idx];
+    wchar_t ptxt[16];
+    wsprintfW(ptxt, L"%d", port);
+    SetDlgItemTextW(h, IDC_NET_PORT, ptxt);
+    HWND lv = GetDlgItem(h, IDC_NET_LIST);
+    for (int i = 0; i < g_web_ip_count; i++)
+        ListView_SetCheckState(lv, i,
+            web_ip_in(net_svc_ipss[idx], g_web_ip_list[i].ip));
+}
+
+static INT_PTR CALLBACK net_dlg_proc(HWND h, UINT m, WPARAM w, LPARAM l)
+{
+    (void)l;
+    switch (m) {
+    case WM_CTLCOLORDLG:
+    case WM_CTLCOLORSTATIC:
+        return dlg_skin_color(h, w, l);
+    case WM_INITDIALOG: {
+        HWND cb = GetDlgItem(h, IDC_NET_COMBO);
+        for (int i = 0; i < 4; i++)
+            SendMessageW(cb, CB_ADDSTRING, 0, (LPARAM)net_svc_names[i]);
+        SendMessageW(cb, CB_SETCURSEL, 0, 0);
+        HWND lv = GetDlgItem(h, IDC_NET_LIST);
+        ListView_SetExtendedListViewStyle(lv,
+            LVS_EX_CHECKBOXES | LVS_EX_FULLROWSELECT);
+        LVCOLUMNW c0, c1;
+        memset(&c0, 0, sizeof(c0));
+        c0.mask = LVCF_TEXT | LVCF_WIDTH;
+        c0.cx = 118; c0.pszText = L"IP";
+        ListView_InsertColumn(lv, 0, &c0);
+        memset(&c1, 0, sizeof(c1));
+        c1.mask = LVCF_TEXT | LVCF_WIDTH;
+        c1.cx = 142; c1.pszText = L"Interface";
+        ListView_InsertColumn(lv, 1, &c1);
+        web_enum_ips();
+        for (int i = 0; i < g_web_ip_count; i++) {
+            LVITEMW it;
+            memset(&it, 0, sizeof(it));
+            it.mask = LVIF_TEXT;
+            it.iItem = i;
+            wchar_t ipw[64];
+            MultiByteToWideChar(CP_UTF8, 0, g_web_ip_list[i].ip, -1, ipw, 64);
+            it.pszText = ipw;
+            ListView_InsertItem(lv, &it);
+            ListView_SetItemText(lv, i, 1, g_web_ip_list[i].name);
+        }
+        g_net_cur = 0;
+        net_load(0, h);
+        return TRUE;
+    }
+    case WM_COMMAND:
+        if (LOWORD(w) == IDC_NET_COMBO && HIWORD(w) == CBN_SELCHANGE) {
+            g_net_cur = (int)SendMessageW(GetDlgItem(h, IDC_NET_COMBO),
+                                          CB_GETCURSEL, 0, 0);
+            if (g_net_cur < 0) g_net_cur = 0;
+            net_load(g_net_cur, h);
+            return TRUE;
+        }
+        if (LOWORD(w) == IDOK) {
+            wchar_t ptxt[32];
+            GetDlgItemTextW(h, IDC_NET_PORT, ptxt, 32);
+            int port = _wtoi(ptxt);
+            char ips[1024] = "";
+            HWND lv = GetDlgItem(h, IDC_NET_LIST);
+            int n = 0;
+            for (int i = 0; i < g_web_ip_count; i++) {
+                if (ListView_GetCheckState(lv, i))
+                    n += _snprintf(ips + n, sizeof(ips) - n, "%s%s",
+                                   n ? ";" : "", g_web_ip_list[i].ip);
+            }
+            *net_svc_ports[g_net_cur] = port;
+            _snprintf(net_svc_ipss[g_net_cur], 1024, "%s", ips);
+            config_save();
+            /* reconfigurer les services réseau */
+            mp_plugins_service(MP_SERVICE_WEB_APPLY, NULL);
+            EndDialog(h, 1);
+        } else if (LOWORD(w) == IDCANCEL) {
+            EndDialog(h, 0);
+        }
+        return TRUE;
+    case WM_CLOSE:
+        EndDialog(h, 0);
+        return TRUE;
+    }
+    return FALSE;
+}
+
+static void do_net_dialog(void)
+{
+    DialogBoxW(GetModuleHandleW(NULL), MAKEINTRESOURCEW(111), g_hwnd,
+               net_dlg_proc);
+}
+
+/* ------------------------------------------------------------------ */
 /* Dialog Interface (Settings ▸ Interface…) : skin + langue            */
 /* ------------------------------------------------------------------ */
 static INT_PTR CALLBACK interface_dlg_proc(HWND h, UINT m, WPARAM w, LPARAM l)
@@ -1357,6 +1518,34 @@ static INT_PTR CALLBACK interface_dlg_proc(HWND h, UINT m, WPARAM w, LPARAM l)
             if (wcscmp(li[i].code, lang_code()) == 0) lsel = idx;
         }
         SendMessageW(cl, CB_SETCURSEL, lsel, 0);
+
+        /* plein écran multi-écrans */
+        {
+            int nmons = GetSystemMetrics(SM_CMONITORS);
+            wchar_t lbl[160];
+            wsprintfW(lbl, L"(%d screen%s detected)", nmons,
+                      nmons > 1 ? L"s" : L"");
+            SetDlgItemTextW(h, 1037, lbl);
+            HWND fsc = GetDlgItem(h, 1040);
+            static const wchar_t* fsopts[] = {
+                L"Off", L"1", L"2", L"3", L"4"
+            };
+            for (int i = 0; i < 5; i++)
+                SendMessageW(fsc, CB_ADDSTRING, 0, (LPARAM)fsopts[i]);
+            int fs = g_fs_screens;
+            if (fs < 0) fs = 0;
+            if (fs > 4) fs = 4;
+            SendMessageW(fsc, CB_SETCURSEL, fs, 0);
+            static const wchar_t* fmodes[] = {
+                L"Visual effect", L"Playlist", L"Lyrics", L"Cover"
+            };
+            for (int i = 0; i < 3; i++) {
+                HWND m = GetDlgItem(h, 1041 + i);
+                for (int j = 0; j < 4; j++)
+                    SendMessageW(m, CB_ADDSTRING, 0, (LPARAM)fmodes[j]);
+                SendMessageW(m, CB_SETCURSEL, g_fs_mode[i], 0);
+            }
+        }
         return TRUE;
     }
     case WM_COMMAND:
@@ -1390,6 +1579,17 @@ static INT_PTR CALLBACK interface_dlg_proc(HWND h, UINT m, WPARAM w, LPARAM l)
                     rebuild_menus();
                 }
             }
+            /* plein écran multi-écrans */
+            g_fs_screens = (int)SendMessageW(GetDlgItem(h, 1040),
+                                             CB_GETCURSEL, 0, 0);
+            for (int i = 0; i < 3; i++)
+                g_fs_mode[i] = (int)SendMessageW(GetDlgItem(h, 1041 + i),
+                                                 CB_GETCURSEL, 0, 0);
+            g_cfg.fs_screens = g_fs_screens;
+            g_cfg.fs_mode1 = g_fs_mode[0];
+            g_cfg.fs_mode2 = g_fs_mode[1];
+            g_cfg.fs_mode3 = g_fs_mode[2];
+            config_save();
             EndDialog(h, 1);
         } else if (LOWORD(w) == IDCANCEL) {
             EndDialog(h, 0);
@@ -2346,6 +2546,255 @@ static void paint_center(HDC hdc, RECT* rc)
 }
 
 /* ------------------------------------------------------------------ */
+/* Fenêtres plein écran par écran (visuel, playlist, lyrics, jaquette) */
+/* ------------------------------------------------------------------ */
+static BOOL CALLBACK fsview_enum(HMONITOR mon, HDC hdc, LPRECT rc, LPARAM lp);
+static void toggle_fullscreen(HWND hwnd);
+
+static void fsview_paint_cover(HDC hdc, int w, int h)
+{
+    const char* name = mp_get_file_name();
+    if (!name) return;
+    size_t len = 0;
+    const unsigned char* img = host_get_cover(name, &len);
+    if (!img || !len) return;
+    GpImage* gp = NULL;
+    IStream* st = NULL;
+    if (CreateStreamOnHGlobal(NULL, TRUE, &st) != S_OK) return;
+    ULONG written = 0;
+    st->lpVtbl->Write(st, img, (ULONG)len, &written);
+    if (GdipCreateBitmapFromStream(st, &gp) != Ok) {
+        st->lpVtbl->Release(st);
+        return;
+    }
+    st->lpVtbl->Release(st);
+    GpGraphics* g = NULL;
+    if (GdipCreateFromHDC(hdc, &g) == Ok) {
+        UINT iw = 0, ih = 0;
+        GdipGetImageWidth(gp, &iw);
+        GdipGetImageHeight(gp, &ih);
+        if (iw > 0 && ih > 0) {
+            int maxw = w - 80, maxh = h - 80;
+            int dw = (int)iw, dh = (int)ih;
+            if (dw > maxw) { dh = dh * maxw / dw; dw = maxw; }
+            if (dh > maxh) { dw = dw * maxh / dh; dh = maxh; }
+            int x = (w - dw) / 2, y = (h - dh) / 2;
+            GdipDrawImageRectI(g, gp, x, y, dw, dh);
+        }
+        GdipDeleteGraphics(g);
+    }
+    GdipDisposeImage(gp);
+}
+
+static void fsview_paint_playlist(HDC hdc, int w, int h)
+{
+    HBRUSH bg = CreateSolidBrush(RGB(16, 20, 26));
+    RECT r = { 0, 0, w, h };
+    FillRect(hdc, &r, bg);
+    DeleteObject(bg);
+    HFONT f = CreateFontW(20, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+                          DEFAULT_CHARSET, OUT_DEFAULT_PRECIS,
+                          CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
+                          DEFAULT_PITCH, L"Segoe UI");
+    HFONT old = (HFONT)SelectObject(hdc, f);
+    SetBkMode(hdc, TRANSPARENT);
+    int idx = g_plist_idx;
+    int y = 40;
+    int start = idx - 12;
+    if (start < 0) start = 0;
+    int end = start + 26;
+    if (end > g_plist_n) end = g_plist_n;
+    for (int i = start; i < end; i++) {
+        RECT lr = { 60, y, w - 40, y + 30 };
+        if (i == idx) {
+            HBRUSH sel = CreateSolidBrush(RGB(38, 48, 64));
+            RECT sr = { 40, y, w - 40, y + 30 };
+            FillRect(hdc, &sr, sel);
+            DeleteObject(sel);
+            SetTextColor(hdc, RGB(122, 162, 247));
+        } else {
+            SetTextColor(hdc, RGB(210, 216, 224));
+        }
+        wchar_t num[16];
+        wsprintfW(num, L"%d.", i + 1);
+        DrawTextW(hdc, num, -1, &lr, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+        lr.left = 100;
+        DrawTextW(hdc, g_plist[i], -1, &lr,
+                  DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
+        y += 30;
+    }
+    SelectObject(hdc, old);
+    DeleteObject(f);
+}
+
+static void fsview_paint_lyrics(HDC hdc, int w, int h)
+{
+    HBRUSH bg = CreateSolidBrush(RGB(16, 20, 26));
+    RECT r = { 0, 0, w, h };
+    FillRect(hdc, &r, bg);
+    DeleteObject(bg);
+    const char* fn = mp_get_file_name();
+    if (!fn) return;
+    char lrc[MAX_PATH];
+    _snprintf(lrc, sizeof(lrc), "%s", fn);
+    char* dot = strrchr(lrc, '.');
+    if (dot) _snprintf(dot, sizeof(lrc) - (size_t)(dot - lrc), ".lrc");
+    FILE* f = fopen(lrc, "r");
+    if (!f) return;
+    wchar_t lines[64][128];
+    int n = 0;
+    char buf[256];
+    while (n < 64 && fgets(buf, sizeof(buf), f)) {
+        /* retire le timestamp [mm:ss.xx] */
+        char* p = strchr(buf, ']');
+        char* txt = p ? p + 1 : buf;
+        while (*txt == ' ' || *txt == '\t') txt++;
+        size_t l = strlen(txt);
+        while (l > 0 && (txt[l - 1] == '\n' || txt[l - 1] == '\r'))
+            txt[--l] = 0;
+        if (!txt[0]) continue;
+        utf8_to_wide(txt, lines[n], 128);
+        n++;
+    }
+    fclose(f);
+    HFONT f2 = CreateFontW(24, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+                           DEFAULT_CHARSET, OUT_DEFAULT_PRECIS,
+                           CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
+                           DEFAULT_PITCH, L"Segoe UI");
+    HFONT old = (HFONT)SelectObject(hdc, f2);
+    SetBkMode(hdc, TRANSPARENT);
+    SetTextColor(hdc, RGB(210, 216, 224));
+    int y = (h - n * 34) / 2;
+    if (y < 30) y = 30;
+    for (int i = 0; i < n; i++) {
+        RECT lr = { 80, y, w - 80, y + 34 };
+        DrawTextW(hdc, lines[i], -1, &lr,
+                  DT_CENTER | DT_TOP | DT_SINGLELINE | DT_END_ELLIPSIS);
+        y += 34;
+    }
+    SelectObject(hdc, old);
+    DeleteObject(f2);
+}
+
+static LRESULT CALLBACK fsview_proc(HWND hw, UINT m, WPARAM wp, LPARAM lp)
+{
+    switch (m) {
+    case WM_TIMER:
+        InvalidateRect(hw, NULL, TRUE);
+        return 0;
+    case WM_PAINT: {
+        PAINTSTRUCT ps;
+        HDC hdc = BeginPaint(hw, &ps);
+        RECT rc;
+        GetClientRect(hw, &rc);
+        int mode = (int)GetWindowLongPtrW(hw, GWLP_USERDATA);
+        int w = rc.right - rc.left, h = rc.bottom - rc.top;
+        if (mode == 1) {
+            fsview_paint_playlist(hdc, w, h);
+        } else if (mode == 2) {
+            fsview_paint_lyrics(hdc, w, h);
+        } else if (mode == 3) {
+            HBRUSH bg = CreateSolidBrush(RGB(12, 14, 18));
+            FillRect(hdc, &rc, bg);
+            DeleteObject(bg);
+            fsview_paint_cover(hdc, w, h);
+        } else {
+            HBRUSH bg = CreateSolidBrush(RGB(8, 10, 14));
+            FillRect(hdc, &rc, bg);
+            DeleteObject(bg);
+            if (mp_plugins_has_visual())
+                mp_plugins_visual_render(hdc, w, h);
+        }
+        EndPaint(hw, &ps);
+        return 0;
+    }
+    case WM_KEYDOWN:
+        if (wp == VK_ESCAPE) {
+            toggle_fullscreen(g_hwnd);
+            return 0;
+        }
+        break;
+    case WM_CLOSE:
+        toggle_fullscreen(g_hwnd);
+        return 0;
+    case WM_DESTROY:
+        for (int i = 0; i < 4; i++)
+            if (g_fs_wins[i] == hw) g_fs_wins[i] = NULL;
+        return 0;
+    }
+    return DefWindowProcW(hw, m, wp, lp);
+}
+
+static void fsview_close_all(void)
+{
+    for (int i = 0; i < 4; i++) {
+        if (g_fs_wins[i]) {
+            DestroyWindow(g_fs_wins[i]);
+            g_fs_wins[i] = NULL;
+        }
+    }
+}
+
+static void fsview_open_all(int nscreens)
+{
+    /* la fenêtre principale occupe l'écran 1 ; les fenêtres annexes
+     * les écrans 2..nscreens */
+    WNDCLASSW wc;
+    if (!GetClassInfoW(GetModuleHandleW(NULL), L"MusicPlayerFsView", &wc)) {
+        memset(&wc, 0, sizeof(wc));
+        wc.lpfnWndProc = fsview_proc;
+        wc.hInstance = GetModuleHandleW(NULL);
+        wc.hCursor = LoadCursorW(NULL, IDC_ARROW);
+        wc.hbrBackground = (HBRUSH)GetStockObject(BLACK_BRUSH);
+        wc.lpszClassName = L"MusicPlayerFsView";
+        RegisterClassW(&wc);
+    }
+    EnumDisplayMonitors(NULL, NULL, fsview_enum, (LPARAM)&nscreens);
+}
+
+static BOOL CALLBACK fsview_enum(HMONITOR mon, HDC hdc, LPRECT rc, LPARAM lp)
+{
+    (void)hdc;
+    (void)rc;
+    int nscreens = *(int*)lp;
+    MONITORINFO mi;
+    mi.cbSize = sizeof(mi);
+    GetMonitorInfoW(mon, &mi);
+    /* écran 1 = celui de la fenêtre principale : les annexes sont les
+     * autres écrans, dans l'ordre d'énumération */
+    static int order = 0;
+    if (order == 0) {
+        order++;
+        return TRUE;
+    }
+    int idx = order;      /* écran 2..n */
+    order++;
+    if (idx > nscreens) {
+        order = 0;
+        return FALSE;
+    }
+    HWND w = CreateWindowExW(WS_EX_TOPMOST, L"MusicPlayerFsView", L"",
+                             WS_POPUP,
+                             mi.rcMonitor.left, mi.rcMonitor.top,
+                             mi.rcMonitor.right - mi.rcMonitor.left,
+                             mi.rcMonitor.bottom - mi.rcMonitor.top,
+                             NULL, NULL, GetModuleHandleW(NULL), NULL);
+    if (w) {
+        SetWindowLongPtrW(w, GWLP_USERDATA, (LONG_PTR)g_fs_mode[idx - 2]);
+        ShowWindow(w, SW_SHOW);
+        SetFocus(w);
+        SetTimer(w, 1, 33, NULL);
+        g_fs_wins[idx - 2] = w;
+        g_fs_win = w;
+    }
+    if (idx >= nscreens) {
+        order = 0;
+        return FALSE;
+    }
+    return TRUE;
+}
+
+/* ------------------------------------------------------------------ */
 /* Plein écran                                                         */
 /* ------------------------------------------------------------------ */
 static void toggle_fullscreen(HWND hwnd)
@@ -2355,13 +2804,24 @@ static void toggle_fullscreen(HWND hwnd)
         SetWindowLongW(hwnd, GWL_STYLE, WS_POPUP);
         SetWindowLongW(hwnd, GWL_EXSTYLE,
                        GetWindowLongW(hwnd, GWL_EXSTYLE) | WS_EX_TOPMOST);
-        int sw = GetSystemMetrics(SM_CXSCREEN);
-        int sh = GetSystemMetrics(SM_CYSCREEN);
-        SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, sw, sh,
+        /* le vrai plein écran : le moniteur sous le curseur */
+        POINT pt;
+        GetCursorPos(&pt);
+        HMONITOR mon = MonitorFromPoint(pt, MONITOR_DEFAULTTONEAREST);
+        MONITORINFO mi;
+        mi.cbSize = sizeof(mi);
+        GetMonitorInfoW(mon, &mi);
+        int sw = mi.rcMonitor.right - mi.rcMonitor.left;
+        int sh = mi.rcMonitor.bottom - mi.rcMonitor.top;
+        SetWindowPos(hwnd, HWND_TOPMOST,
+                     mi.rcMonitor.left, mi.rcMonitor.top, sw, sh,
                      SWP_FRAMECHANGED | SWP_SHOWWINDOW);
         g_fullscreen = 1;
         ShowWindow(g_status, SW_HIDE);
+        /* écrans annexes */
+        if (g_fs_screens >= 2) fsview_open_all(g_fs_screens);
     } else {
+        fsview_close_all();
         SetWindowLongW(hwnd, GWL_STYLE, WS_OVERLAPPEDWINDOW);
         SetWindowLongW(hwnd, GWL_EXSTYLE,
                        GetWindowLongW(hwnd, GWL_EXSTYLE) & ~WS_EX_TOPMOST);
@@ -2699,6 +3159,9 @@ static void on_command(int id, HMENU bar)
         break;
     case IDM_TS_CFG:
         do_ts_dialog();
+        break;
+    case IDM_NETWORK:
+        do_net_dialog();
         break;
     case IDM_WEB_SERVER:
         do_web_dialog();
@@ -3151,6 +3614,11 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR lpCmdLine, int nCmdSh
     mp_set_volume(g_cfg.volume / 100.0f);
     mp_set_speed(g_cfg.speed);
     playlist_set_shuffle(g_cfg.shuffle);
+    /* plein écran multi-écrans */
+    g_fs_screens = g_cfg.fs_screens;
+    g_fs_mode[0] = g_cfg.fs_mode1;
+    g_fs_mode[1] = g_cfg.fs_mode2;
+    g_fs_mode[2] = g_cfg.fs_mode3;
 
     resolve_plugins_dir();
     {

@@ -2,6 +2,13 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.032] — 2026-08-03
+
+### Added
+- **Vrai plein écran** : la fenêtre couvre entièrement le moniteur sous le curseur (sans barre de titre ni barre des tâches) — F11/Échap
+- **Plein écran multi-écrans** : Settings ▸ Interface… — nombre d'écrans utilisés (détection automatique affichée) et **contenu de chaque écran** : effet visuel, playlist, lyrics ou jaquette
+- **Settings ▸ Network…** : comme le dialog Web server — pour chaque service réseau (REST API, DLNA/UPnP, RTP/AES67, Multiroom) : **port modifiable** et **IPs à utiliser** (cases à cocher) ; les plugins s'y conforment au redémarrage
+
 ## [2026.08.031] — 2026-08-03
 
 ### Added

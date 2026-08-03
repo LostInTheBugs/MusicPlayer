@@ -30,6 +30,11 @@ static HANDLE g_http_thread = NULL;
 static SOCKET g_ssdp_sock = INVALID_SOCKET;
 static HANDLE g_ssdp_thread = NULL;
 
+static int net_port(void)
+{
+    return g_h && g_h->svc_port ? g_h->svc_port("upnp") : UPnP_PORT;
+}
+
 static void log_line(const char* msg)
 {
     if (g_h && g_h->log) g_h->log(msg);
@@ -192,7 +197,7 @@ static void soap_browse(SOCKET c)
             "<upnp:class>object.item.audioItem.musicTrack</upnp:class>"
             "<res protocolInfo=\"http-get:*:audio/x-wav:*\">"
             "http://%s:%d/media/%d</res>"
-            "</item>", i + 1, t, ip, UPnP_PORT, i);
+            "</item>", i + 1, t, ip, net_port(), i);
     }
     didl[off] = 0;
     char body[17000];
@@ -326,7 +331,7 @@ static void ssdp_reply(const char* st, const char* usn)
         "SERVER: MusicPlayer/1.0 UPnP/1.0 DLNADOC/1.50\r\n"
         "ST: %s\r\n"
         "USN: %s\r\n"
-        "\r\n", ip, UPnP_PORT, st, usn);
+        "\r\n", ip, net_port(), st, usn);
     struct sockaddr_in dst;
     memset(&dst, 0, sizeof(dst));
     dst.sin_family = AF_INET;
@@ -350,7 +355,7 @@ static void ssdp_notify(const char* nts)
         "NTS: %s\r\n"
         "SERVER: MusicPlayer/1.0 UPnP/1.0 DLNADOC/1.50\r\n"
         "USN: %s\r\n"
-        "\r\n", ip, UPnP_PORT,
+        "\r\n", ip, net_port(),
         "upnp:rootdevice", nts,
         UDN "::upnp:rootdevice");
     struct sockaddr_in dst;
@@ -435,8 +440,17 @@ static int upnp_start(void)
     struct sockaddr_in addr;
     memset(&addr, 0, sizeof(addr));
     addr.sin_family = AF_INET;
-    addr.sin_addr.s_addr = htonl(INADDR_ANY);
-    addr.sin_port = htons(UPnP_PORT);
+    /* IP configurée (Settings ▸ Network…) : sinon toutes les interfaces */
+    const char* ips = g_h->svc_ips ? g_h->svc_ips("upnp") : "";
+    if (ips && ips[0]) {
+        char tmp[128];
+        _snprintf(tmp, sizeof(tmp), "%s", ips);
+        char* tok = strtok(tmp, ";");
+        addr.sin_addr.s_addr = inet_addr(tok ? tok : "0.0.0.0");
+    } else {
+        addr.sin_addr.s_addr = htonl(INADDR_ANY);
+    }
+    addr.sin_port = htons((unsigned short)net_port());
     if (bind(g_listen, (struct sockaddr*)&addr, sizeof(addr)) != 0) {
         closesocket(g_listen);
         g_listen = INVALID_SOCKET;
@@ -503,10 +517,15 @@ static void pl_service(mp_plugin* self, int event, void* data)
     if (event != MP_SERVICE_WEB_APPLY && event != MP_SERVICE_CLICK) return;
     if (self->enabled) {
         if (!g_running) {
-            if (upnp_start() == 0)
-                log_line("DLNA/UPnP: server on port 8081 (MusicPlayer)");
-            else
-                log_line("DLNA/UPnP: port 8081 unavailable");
+            if (upnp_start() == 0) {
+                char msg[160];
+                _snprintf(msg, sizeof(msg),
+                          "DLNA/UPnP: server on port %d (MusicPlayer)",
+                          net_port());
+                log_line(msg);
+            } else {
+                log_line("DLNA/UPnP: port unavailable");
+            }
         }
     } else {
         upnp_stop();

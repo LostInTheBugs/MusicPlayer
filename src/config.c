@@ -32,6 +32,12 @@ void config_load(void)
     g_cfg.web_audio = 0;
     g_cfg.web_ips[0] = 0;
     g_cfg.shuffle = 0;
+    g_cfg.fs_screens = 0;
+    g_cfg.fs_mode1 = g_cfg.fs_mode2 = g_cfg.fs_mode3 = 0;
+    g_cfg.svc_rest_port = 0; g_cfg.svc_rest_ips[0] = 0;
+    g_cfg.svc_upnp_port = 0; g_cfg.svc_upnp_ips[0] = 0;
+    g_cfg.svc_rtp_port = 0;  g_cfg.svc_rtp_ips[0] = 0;
+    g_cfg.svc_mr_port = 0;   g_cfg.svc_mr_ips[0] = 0;
 
     wchar_t path[MAX_PATH];
     config_path(path, MAX_PATH);
@@ -53,6 +59,22 @@ void config_load(void)
                 else if (!strcmp(key, "web_ips"))
                     _snprintf(g_cfg.web_ips, sizeof(g_cfg.web_ips), "%s", val);
                 else if (!strcmp(key, "shuffle")) g_cfg.shuffle = atoi(val);
+                else if (!strcmp(key, "fs_screens")) g_cfg.fs_screens = atoi(val);
+                else if (!strcmp(key, "fs_mode1")) g_cfg.fs_mode1 = atoi(val);
+                else if (!strcmp(key, "fs_mode2")) g_cfg.fs_mode2 = atoi(val);
+                else if (!strcmp(key, "fs_mode3")) g_cfg.fs_mode3 = atoi(val);
+                else if (!strcmp(key, "svc_rest_port")) g_cfg.svc_rest_port = atoi(val);
+                else if (!strcmp(key, "svc_rest_ips"))
+                    _snprintf(g_cfg.svc_rest_ips, sizeof(g_cfg.svc_rest_ips), "%s", val);
+                else if (!strcmp(key, "svc_upnp_port")) g_cfg.svc_upnp_port = atoi(val);
+                else if (!strcmp(key, "svc_upnp_ips"))
+                    _snprintf(g_cfg.svc_upnp_ips, sizeof(g_cfg.svc_upnp_ips), "%s", val);
+                else if (!strcmp(key, "svc_rtp_port")) g_cfg.svc_rtp_port = atoi(val);
+                else if (!strcmp(key, "svc_rtp_ips"))
+                    _snprintf(g_cfg.svc_rtp_ips, sizeof(g_cfg.svc_rtp_ips), "%s", val);
+                else if (!strcmp(key, "svc_mr_port")) g_cfg.svc_mr_port = atoi(val);
+                else if (!strcmp(key, "svc_mr_ips"))
+                    _snprintf(g_cfg.svc_mr_ips, sizeof(g_cfg.svc_mr_ips), "%s", val);
             }
         }
         fclose(f);
@@ -108,5 +130,17 @@ void config_save(void)
     fprintf(f, "web_audio: %d\n", g_cfg.web_audio);
     fprintf(f, "web_ips: %s\n", g_cfg.web_ips);
     fprintf(f, "shuffle: %d\n", g_cfg.shuffle);
+    fprintf(f, "fs_screens: %d\n", g_cfg.fs_screens);
+    fprintf(f, "fs_mode1: %d\n", g_cfg.fs_mode1);
+    fprintf(f, "fs_mode2: %d\n", g_cfg.fs_mode2);
+    fprintf(f, "fs_mode3: %d\n", g_cfg.fs_mode3);
+    fprintf(f, "svc_rest_port: %d\n", g_cfg.svc_rest_port);
+    fprintf(f, "svc_rest_ips: %s\n", g_cfg.svc_rest_ips);
+    fprintf(f, "svc_upnp_port: %d\n", g_cfg.svc_upnp_port);
+    fprintf(f, "svc_upnp_ips: %s\n", g_cfg.svc_upnp_ips);
+    fprintf(f, "svc_rtp_port: %d\n", g_cfg.svc_rtp_port);
+    fprintf(f, "svc_rtp_ips: %s\n", g_cfg.svc_rtp_ips);
+    fprintf(f, "svc_mr_port: %d\n", g_cfg.svc_mr_port);
+    fprintf(f, "svc_mr_ips: %s\n", g_cfg.svc_mr_ips);
     fclose(f);
 }

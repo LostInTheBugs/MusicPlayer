@@ -328,8 +328,18 @@ static int server_start(void)
     struct sockaddr_in addr;
     memset(&addr, 0, sizeof(addr));
     addr.sin_family = AF_INET;
-    addr.sin_addr.s_addr = htonl(INADDR_ANY);
-    addr.sin_port = htons(REST_PORT);
+    /* IP configurée (Settings ▸ Network…) : sinon toutes les interfaces */
+    const char* ips = g_h->svc_ips ? g_h->svc_ips("rest") : "";
+    if (ips && ips[0]) {
+        char tmp[128];
+        _snprintf(tmp, sizeof(tmp), "%s", ips);
+        char* tok = strtok(tmp, ";");
+        addr.sin_addr.s_addr = inet_addr(tok ? tok : "0.0.0.0");
+    } else {
+        addr.sin_addr.s_addr = htonl(INADDR_ANY);
+    }
+    int port = g_h->svc_port ? g_h->svc_port("rest") : REST_PORT;
+    addr.sin_port = htons((unsigned short)port);
     if (bind(g_listen, (struct sockaddr*)&addr, sizeof(addr)) != 0) {
         closesocket(g_listen);
         g_listen = INVALID_SOCKET;
@@ -386,10 +396,14 @@ static void pl_service(mp_plugin* self, int event, void* data)
     if (event != MP_SERVICE_WEB_APPLY && event != MP_SERVICE_CLICK) return;
     if (self->enabled) {
         if (!g_running) {
-            if (server_start() == 0)
-                log_line("REST API listening on port 8080");
-            else
-                log_line("REST API: port 8080 unavailable");
+            if (server_start() == 0) {
+                char msg[128];
+                _snprintf(msg, sizeof(msg), "REST API listening on port %d",
+                          g_h->svc_port ? g_h->svc_port("rest") : REST_PORT);
+                log_line(msg);
+            } else {
+                log_line("REST API: port unavailable");
+            }
         }
     } else {
         server_stop();
