@@ -2728,10 +2728,10 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR lpCmdLine, int nCmdSh
     }
     log_line("Window created");
 
-    HMENU bar = create_menus();
-    SetMenu(g_hwnd, bar);
-    refresh_speed_check(GetSubMenu(GetSubMenu(bar, 1), 0));
-    rebuild_plugins_menu(bar);
+    g_menu_bar = create_menus();
+    SetMenu(g_hwnd, g_skin_menu_visible ? g_menu_bar : NULL);
+    refresh_speed_check(GetSubMenu(GetSubMenu(g_menu_bar, 1), 0));
+    rebuild_plugins_menu(g_menu_bar);
     mp_plugins_apply_skins(g_hwnd);
     log_line("Menus built");
 

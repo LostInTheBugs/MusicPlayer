@@ -2,6 +2,11 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.027-c2] — 2026-08-03
+
+### Fixed
+- **Menu qui ne revenait plus** : après le skin Vintage radio (menu caché), revenir à l'interface par défaut laissait la fenêtre sans barre de menus — la barre était créée dans une variable locale au démarrage, le rappel du menu ne pouvait pas la retrouver
+
 ## [2026.08.027-c1] — 2026-08-03
 
 ### Fixed
