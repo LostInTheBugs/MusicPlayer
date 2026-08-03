@@ -2,6 +2,11 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.036] — 2026-08-03
+
+### Added
+- **Plugin Equalizer** (Plugins ▸ Effets ▸ Equalizer) : égaliseur **10 bandes style Winamp** (60 Hz – 16 kHz, ±12 dB) + preamp — sa fenêtre est **détachée et s'attache sous la fenêtre principale** (elle la suit quand on la déplace) ; curseurs verticaux cliquables/glissables, bouton ON/OFF, bouton [✕] pour cacher (rouvrir via le menu Plugins)
+
 ## [2026.08.035] — 2026-08-03
 
 ### Added
