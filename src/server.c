@@ -27,6 +27,7 @@ extern int  web_plist_count(void);
 extern const wchar_t* web_plist_name(int i);
 extern int  web_plist_index(void);
 extern void web_plist_next(void);
+extern void web_set_audio_out(int mode);
 
 static volatile LONG g_running = 0;
 static SOCKET g_listen = INVALID_SOCKET;
@@ -119,6 +120,8 @@ static void api_cmd(SOCKET s, const char* cmd)
     else if (!strcmp(cmd, "voldown"))  mp_set_volume(mp_get_volume() - 0.1f);
     else if (!strcmp(cmd, "speedup"))  mp_set_speed(mp_get_speed() * 1.1f);
     else if (!strcmp(cmd, "speeddown"))mp_set_speed(mp_get_speed() / 1.1f);
+    else if (!strcmp(cmd, "audio"))
+        web_set_audio_out((mp_get_audio_out() + 1) % 3);   /* cycle PC→tél→les 2 */
     http_response(s, "200 OK", "text/plain", "ok");
 }
 
@@ -146,7 +149,8 @@ static const char PAGE_HTML[] =
 "#bPlay{background:#2f6fe4}\n"
 "#bStop{background:#c0392b}\n"
 "#bNext{background:#1e8449}\n"
-"#bAud{background:#5b3d9e}\n"
+"#bAud{width:120px;flex-direction:column;gap:3px;font-size:11px;font-weight:600}\n"
+"#bAud svg{width:24px;height:24px}\n"
 ".btn svg{width:30px;height:30px;fill:currentColor}\n"
 ".meta{text-align:center;color:#9fb2c6;font-size:13px;margin:6px 0 4px;word-break:break-all}\n"
 ".item{padding:9px 12px;border-radius:9px;margin:3px 0;background:#161d27;font-size:14px;display:flex;gap:8px}\n"
@@ -168,7 +172,7 @@ static const char PAGE_HTML[] =
 "  <button class=\"btn\" id=\"bSpUp\"><svg viewBox=\"0 0 24 24\"><path d=\"M5 5l7 7-7 7zM12 5l7 7-7 7z\"/></svg></button>\n"
 "  <button class=\"btn\" id=\"bSpDn\"><svg viewBox=\"0 0 24 24\"><path d=\"M19 5l-7 7 7 7zM12 5l-7 7 7 7z\"/></svg></button>\n"
 "</div>\n"
-"<div class=\"btns\"><button class=\"btn\" id=\"bAud\" title=\"Sound on this phone\"><svg viewBox=\"0 0 24 24\"><path d=\"M17 10.5a4.5 4.5 0 010 7\"/><path d=\"M3 9v6h4l5 5V4L7 9H3z\"/></svg></button></div>\n"
+"<div class=\"btns\"><button class=\"btn\" id=\"bAud\" title=\"Audio output: PC / Phone / Both\"><svg viewBox=\"0 0 24 24\"><rect x=\"2\" y=\"4\" width=\"20\" height=\"12\" rx=\"1\"/><path d=\"M8 20h8M12 16v4\"/></svg><span>PC</span></button></div>\n"
 "<div class=\"meta\" id=\"meta\">&hellip;</div>\n"
 "<audio id=\"aud\" preload=\"none\" hidden></audio>\n"
 "<div id=\"plist\"></div>\n"
@@ -176,32 +180,40 @@ static const char PAGE_HTML[] =
 "var $=function(id){return document.getElementById(id)};\n"
 "var ICON_PLAY='<svg viewBox=\"0 0 24 24\"><path d=\"M8 5v14l11-7z\"/></svg>';\n"
 "var ICON_PAUSE='<svg viewBox=\"0 0 24 24\"><path d=\"M6 5h4v14H6zM14 5h4v14h-4z\"/></svg>';\n"
-"var ICON_AUD_ON='<svg viewBox=\"0 0 24 24\"><path d=\"M17 10.5a4.5 4.5 0 010 7\"/><path d=\"M3 9v6h4l5 5V4L7 9H3z\"/></svg>';\n"
-"var ICON_AUD_OFF='<svg viewBox=\"0 0 24 24\"><path d=\"M3 9v6h4l5 5V4L7 9H3z\" opacity=\".3\"/></svg>';\n"
+"var AUD_ICONS={\n"
+"  pc:'<svg viewBox=\"0 0 24 24\"><rect x=\"2\" y=\"4\" width=\"20\" height=\"12\" rx=\"1\"/><path d=\"M8 20h8M12 16v4\"/></svg>',\n"
+"  phone:'<svg viewBox=\"0 0 24 24\"><path d=\"M8 2h8a1 1 0 011 1v18a1 1 0 01-1 1H8a1 1 0 01-1-1V3a1 1 0 011-1zM10 18h4\"/></svg>',\n"
+"  both:'<svg viewBox=\"0 0 24 24\"><rect x=\"2\" y=\"3\" width=\"13\" height=\"9\" rx=\"1\"/><path d=\"M5 15h8M9 12v3\"/><path d=\"M17 6h3a2 2 0 012 2v10a2 2 0 01-2 2h-8a2 2 0 01-2-2\"/></svg>'\n"
+"};\n"
+"var AUD_LABELS={pc:'PC',phone:'Phone',both:'Both'};\n"
 "function cmd(c){fetch('/api/cmd',{method:'POST',body:c}).catch(function(){})}\n"
-"$('bPlay').onclick=function(){cmd('play')};\n"
-"$('bStop').onclick=function(){cmd('stop')};\n"
+"var aud=$('aud');\n"
+"$('bPlay').onclick=function(){\n"
+"  var playing=document.body.dataset.playing==='1';\n"
+"  cmd('play');\n"
+"  if(document.body.dataset.audio==='pc')return;\n"
+"  if(playing){aud.pause();}\n"
+"  else{if(aud.src.indexOf('/stream')<0){aud.src='/stream';}aud.play().catch(function(){});}\n"
+"};\n"
+"$('bStop').onclick=function(){cmd('stop');if(aud.src.indexOf('/stream')>=0){aud.pause();}};\n"
 "$('bNext').onclick=function(){cmd('next')};\n"
 "$('bVolUp').onclick=function(){cmd('volup')};\n"
 "$('bVolDn').onclick=function(){cmd('voldown')};\n"
 "$('bSpUp').onclick=function(){cmd('speedup')};\n"
 "$('bSpDn').onclick=function(){cmd('speeddown')};\n"
-"var aud=$('aud');\n"
-"$('bAud').onclick=function(){\n"
-"  if(aud.src.indexOf('/stream')<0){aud.src='/stream';}\n"
-"  if(aud.paused){aud.play();}else{aud.pause();}\n"
-"};\n"
+"$('bAud').onclick=function(){cmd('audio')};\n"
 "function tick(){\n"
 "  fetch('/api/state').then(function(r){return r.json()}).then(function(s){\n"
+"    document.body.dataset.playing=s.state==='playing'?'1':'0';\n"
+"    document.body.dataset.audio=s.audio;\n"
 "    $('bPlay').innerHTML = s.state==='playing' ? ICON_PAUSE : ICON_PLAY;\n"
+"    $('bAud').innerHTML = AUD_ICONS[s.audio] + '<span>' + AUD_LABELS[s.audio] + '</span>';\n"
 "    $('meta').textContent=(s.state==='playing'?'Playing':'Paused')+' &middot; vol '+Math.round(s.vol*100)+'% &middot; &times;'+s.speed.toFixed(2)+' &mdash; '+(s.name||'no file');\n"
 "    var h='';\n"
 "    for(var i=0;i<s.items.length;i++){\n"
 "      h+='<div class=\"item'+(i===s.idx?' cur':'')+'\"><span class=\"n\">'+(i+1)+'</span><span>'+s.items[i]+'</span></div>';\n"
 "    }\n"
 "    $('plist').innerHTML=h;\n"
-"    $('bAud').style.display = s.audio==='pc' ? 'none' : 'flex';\n"
-"    $('bAud').innerHTML = aud.paused ? ICON_AUD_ON : ICON_AUD_OFF;\n"
 "  }).catch(function(){});\n"
 "}\n"
 "setInterval(tick,1000);tick();\n"

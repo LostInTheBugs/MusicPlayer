@@ -654,6 +654,16 @@ void web_plist_next(void)
     playlist_next();
 }
 
+/* Changement de sortie audio depuis le serveur web (PC / téléphone / les 2) */
+void web_set_audio_out(int mode)
+{
+    if (mode < 0) mode = 0;
+    if (mode > 2) mode = 2;
+    g_web_audio = mode;
+    mp_set_audio_out(mode);
+    web_save_config();
+}
+
 static void do_about(void)
 {
     wchar_t msg[1024];

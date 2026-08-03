@@ -2,6 +2,12 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.018-c3] — 2026-08-03
+
+### Added
+- **Télécommande web : bouton de sortie audio clair** — un bouton (icône + libellé) indique le mode son courant : 🖥️ **PC** / 📱 **Phone** / 🔀 **Both** ; un clic change le mode (cyclique) directement depuis le téléphone, la configuration est sauvegardée
+- Le bouton lecture de la page lance/arrête aussi le son sur le téléphone (modes Phone/Both) ; stop coupe le son partout
+
 ## [2026.08.018-c2] — 2026-08-03
 
 ### Fixed
