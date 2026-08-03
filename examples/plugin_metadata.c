@@ -13,10 +13,8 @@
 
 #include "plugin.h"
 
-static char g_title[512];
-static char g_artist[512];
-static char g_album[512];
-static char g_last_path[MAX_PATH * 3] = "";
+static char g_title[512], g_artist[512], g_album[512], g_year[32];
+static char g_last_path[MAX_PATH * 2] = { 0 };
 
 /* Lit une frame texte ID3v2 (après l'en-tête de 10 octets) dans dst. */
 static void read_text_frame(long pos, long fsz, FILE* f, char* dst)
@@ -34,7 +32,7 @@ static void read_text_frame(long pos, long fsz, FILE* f, char* dst)
 
 static void parse_tags(const char* path)
 {
-    g_title[0] = g_artist[0] = g_album[0] = 0;
+    g_title[0] = g_artist[0] = g_album[0] = g_year[0] = 0;
     FILE* f = fopen(path, "rb");
     if (!f) return;
 
@@ -56,6 +54,8 @@ static void parse_tags(const char* path)
                 if (fr[1] == 'I' && fr[2] == 'T' && fr[3] == '2') dst = g_title;
                 else if (fr[1] == 'P' && fr[2] == 'E' && fr[3] == '1') dst = g_artist;
                 else if (fr[1] == 'A' && fr[2] == 'L' && fr[3] == 'B') dst = g_album;
+                else if (fr[1] == 'Y' && fr[2] == 'E' && fr[3] == 'R') dst = g_year;
+                else if (fr[1] == 'D' && fr[2] == 'R' && fr[3] == 'C') dst = g_year;
                 if (dst) read_text_frame(pos, (long)fsz, f, dst);
             }
             if (fsz == 0) break;
@@ -76,6 +76,15 @@ static void parse_tags(const char* path)
                 if (n > 0) {
                     memcpy(dst, t + 3 + k * 30, (size_t)n);
                     dst[n] = 0;
+                }
+            }
+            /* ID3v1 : année = octets 93..96 */
+            {
+                int n = 4;
+                while (n > 0 && (t[93 + n - 1] == 0 || t[93 + n - 1] == ' ')) n--;
+                if (n > 0) {
+                    memcpy(g_year, t + 93, (size_t)n);
+                    g_year[n] = 0;
                 }
             }
         }
@@ -106,9 +115,10 @@ static const char* pl_get_metadata(mp_plugin* self, const char* path,
         g_last_path[sizeof(g_last_path) - 1] = 0;
         parse_tags(path);
     }
-    if (!strcmp(field, "title"))  return g_title[0]  ? g_title  : NULL;
-    if (!strcmp(field, "artist")) return g_artist[0] ? g_artist : NULL;
-    if (!strcmp(field, "album"))  return g_album[0]  ? g_album  : NULL;
+    if (strcmp(field, "title") == 0)  return g_title[0] ? g_title : NULL;
+    if (strcmp(field, "artist") == 0) return g_artist[0] ? g_artist : NULL;
+    if (strcmp(field, "album") == 0)  return g_album[0] ? g_album : NULL;
+    if (strcmp(field, "year") == 0)   return g_year[0] ? g_year : NULL;
     return NULL;
 }
 

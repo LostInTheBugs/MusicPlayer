@@ -2,6 +2,13 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.028] — 2026-08-03
+
+### Added
+- **Page web : métadonnées complètes** — sous les boutons de commande : titre, artiste, album, année (ID3 TYER/TDRC), puis la jaquette et la playliste
+- **Lecture de CD audio** — File ▸ Open CD… : les pistes du disque remplacent la playliste (play/pause/stop/next, enchaînement automatique des pistes)
+- **Mode DJ Mixing (page web `/dj`)** — table de mixage : 2 platines (une piste de la playliste par platine), crossfader A/B, chaque platine streame indépendamment
+
 ## [2026.08.027-c2] — 2026-08-03
 
 ### Fixed

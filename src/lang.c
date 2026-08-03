@@ -43,6 +43,7 @@ static const struct { const char* key; const wchar_t* val; } g_en[] = {
     { "menu_help",        L"&Help" },
     { "open",             L"&Open…" },
     { "menu_open_folder", L"Open &folder…" },
+    { "menu_open_cd", L"Open &CD…" },
     { "open_folder_title", L"Pick a file — the whole folder plays" },
     { "quit",             L"&Quit" },
     { "play_pause",       L"&Play / Pause" },

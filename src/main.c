@@ -28,6 +28,7 @@
 #include "lang.h"
 #include "update.h"
 #include "config.h"
+#include "cd.h"
 
 #ifndef MP_VERSION
 #define MP_VERSION "2026.08.014"
@@ -42,6 +43,7 @@
 /* IDs de commandes */
 enum {
     IDM_OPEN = 101, IDM_OPEN_FOLDER = 103, IDM_EXIT = 102,
+    IDM_OPEN_CD = 104,
     IDM_PLAYPAUSE = 201, IDM_STOP = 202, IDM_NEXT = 203,
     IDM_SPEED_BASE = 300,   /* +0 → 0.5x, +1 → 1.0x, +2 → 1.5x, +3 → 2.0x */
     IDM_VOL_UP = 401, IDM_VOL_DOWN = 402, IDM_VOL_SHOW = 403,
@@ -71,12 +73,15 @@ static wchar_t g_lang_dir[MAX_PATH] = { 0 };
 
 static int  g_fullscreen = 0;
 static RECT g_win_normal = { 0, 0, 640, 300 };
+static int  g_cd_mode = 0;        /* 1 = lecture CD audio (MCI) */
+static int  g_cd_was_playing = 0; /* détection fin de piste */
 static RECT g_rc_play, g_rc_stop, g_rc_next, g_rc_shuffle, g_rc_plist, g_rc_fs, g_rc_vol;
 static int  g_vol_drag = 0;   /* curseur de volume en cours de glissement */
 
 static void status_update(void);        /* définie plus bas */
 static void lang_pref_save(const wchar_t* code); /* idem */
 static void on_command(int id, HMENU bar);       /* idem */
+static void playlist_add(const wchar_t* path, int owned); /* idem */
 static INT_PTR dlg_skin_color(HWND h, WPARAM w, LPARAM l); /* idem */
 static void wide_to_utf8(const wchar_t* in, char* out, int out_chars); /* idem */
 static void log_line(const char* s);    /* idem */
@@ -94,10 +99,20 @@ static wchar_t  g_plist_dir[MAX_PATH] = { 0 };   /* dossier de la playlist */
 
 static void playlist_clear(void)
 {
+    g_cd_mode = 0;   /* la playliste fichier remplace le mode CD */
     for (int i = 0; i < g_plist_n; i++) free(g_plist[i]);
     g_plist_n = 0;
     g_plist_idx = -1;
     playlist_win_rebuild();
+}
+
+/* Ajoute une entrée à la playliste (owned = le buffer devient la propriété
+ * de la playliste, sinon il est dupliqué). */
+static void playlist_add(const wchar_t* path, int owned)
+{
+    if (g_plist_n >= PLAYLIST_MAX) return;
+    g_plist[g_plist_n] = owned ? (wchar_t*)path : _wcsdup(path);
+    if (g_plist[g_plist_n]) g_plist_n++;
 }
 
 static void playlist_scan(const wchar_t* dir)
@@ -139,6 +154,12 @@ static int playlist_play_index(int i)
 {
     if (i < 0 || i >= g_plist_n) return -1;
     g_plist_idx = i;
+    if (g_cd_mode) {
+        /* CD audio : la piste i+1 via MCI */
+        cd_play(i + 1);
+        status_update();
+        return 0;
+    }
     char utf8[MAX_PATH * 3];
     wide_to_utf8(g_plist[i], utf8, sizeof(utf8));
     int rc = mp_open(utf8);
@@ -725,6 +746,7 @@ static HMENU create_menus(void)
     HMENU mFile = CreatePopupMenu();
     AppendMenuW(mFile, MF_STRING, IDM_OPEN, lang_get("open"));
     AppendMenuW(mFile, MF_STRING, IDM_OPEN_FOLDER, lang_get("menu_open_folder"));
+    AppendMenuW(mFile, MF_STRING, IDM_OPEN_CD, lang_get("menu_open_cd"));
     AppendMenuW(mFile, MF_SEPARATOR, 0, NULL);
     AppendMenuW(mFile, MF_STRING, IDM_EXIT, lang_get("quit"));
     append_bar_item(bar, mFile, lang_get("menu_file"));
@@ -834,6 +856,35 @@ static void do_open_dialog(void)
             MessageBoxW(g_hwnd, msg, APP_TITLE, MB_ICONERROR);
         }
     }
+}
+
+/* Ouvre un CD audio : les pistes remplacent la playliste (mode CD). */
+static void do_open_cd(void)
+{
+    if (!cd_open()) {
+        log_line("CD: no CD drive available");
+        return;
+    }
+    int n = cd_track_count();
+    if (n <= 0) {
+        log_line("CD: no audio disc in the drive");
+        return;
+    }
+    playlist_clear();
+    g_cd_mode = 1;
+    for (int i = 0; i < n; i++) {
+        wchar_t name[32];
+        wsprintfW(name, L"CD Track %d", i + 1);
+        wchar_t* copy = (wchar_t*)malloc((wcslen(name) + 1) * sizeof(wchar_t));
+        if (!copy) break;
+        wcscpy(copy, name);
+        playlist_add(copy, 1);
+    }
+    g_plist_idx = 0;
+    cd_play(1);
+    playlist_win_rebuild();
+    status_update();
+    log_line("CD: audio disc opened");
 }
 
 static void do_open_folder_dialog(void)
@@ -2230,9 +2281,23 @@ static void on_command(int id, HMENU bar)
     switch (id) {
     case IDM_OPEN:      do_open_dialog(); break;
     case IDM_OPEN_FOLDER: do_open_folder_dialog(); break;
+    case IDM_OPEN_CD:   do_open_cd(); break;
     case IDM_EXIT:      SendMessageW(g_hwnd, WM_CLOSE, 0, 0); break;
-    case IDM_PLAYPAUSE: mp_play_pause(); break;
-    case IDM_STOP:      mp_stop(); break;
+    case IDM_PLAYPAUSE:
+        if (g_cd_mode) {
+            if (cd_playing()) cd_pause();
+            else if (cd_paused()) cd_resume();
+            else if (g_plist_idx >= 0) cd_play(g_plist_idx + 1);
+            status_update();
+        } else {
+            mp_play_pause();
+        }
+        break;
+    case IDM_STOP:
+        if (g_cd_mode) cd_stop();
+        else mp_stop();
+        status_update();
+        break;
     case IDM_NEXT:      playlist_next(); break;
     case IDM_FULLSCREEN: toggle_fullscreen(g_hwnd); break;
     case IDM_INTERFACE:
@@ -2383,6 +2448,12 @@ static LRESULT CALLBACK wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         return 0;
     case WM_TIMER:
         if (wp == 2) {
+            /* CD audio : fin de piste → piste suivante */
+            if (g_cd_mode) {
+                if (g_cd_was_playing && !cd_playing() && !cd_paused())
+                    playlist_next();
+                g_cd_was_playing = cd_playing();
+            }
             /* rafraîchit la zone visuelle uniquement si un plugin visuel
                est actif (sinon le timer ne fait presque rien) */
             if (mp_plugins_has_visual()) {

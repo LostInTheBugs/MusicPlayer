@@ -20,6 +20,12 @@
 #include <string.h>
 #include <stdlib.h>
 
+#include <libavformat/avformat.h>
+#include <libavcodec/avcodec.h>
+#include <libavutil/samplefmt.h>
+#include <libavutil/channel_layout.h>
+#include <libswresample/swresample.h>
+
 #include "plugin.h"
 
 static const mp_host_api* g_h = NULL;
@@ -116,7 +122,8 @@ static void api_state(SOCKET s)
     int a = g_h->get_audio_out();
     if (a == 1) ao = "phone";
     else if (a == 2) ao = "both";
-    char name[600], title[512] = "", artist[512] = "", album[512] = "";
+    char name[600], title[512] = "", artist[512] = "", album[512] = "",
+         year[32] = "";
     if (idx >= 0 && idx < n) json_escape(g_h->plist_name(idx), name, sizeof(name));
     else name[0] = 0;
     if (g_h->get_metadata) {
@@ -125,19 +132,21 @@ static void api_state(SOCKET s)
             const char* t = g_h->get_metadata(fn, "title");
             const char* ar = g_h->get_metadata(fn, "artist");
             const char* al = g_h->get_metadata(fn, "album");
+            const char* yr = g_h->get_metadata(fn, "year");
             if (t && t[0]) json_escape_u8(t, title, sizeof(title));
             if (ar && ar[0]) json_escape_u8(ar, artist, sizeof(artist));
             if (al && al[0]) json_escape_u8(al, album, sizeof(album));
+            if (yr && yr[0]) json_escape_u8(yr, year, sizeof(year));
         }
     }
     _snprintf(body, sizeof(body),
         "{\"state\":\"%s\",\"pos\":%.1f,\"dur\":%.1f,\"idx\":%d,\"count\":%d,"
         "\"vol\":%.2f,\"speed\":%.2f,"
         "\"audio\":\"%s\",\"shuffle\":%d,\"name\":\"%s\","
-        "\"title\":\"%s\",\"artist\":\"%s\",\"album\":\"%s\",\"items\":[%s]}",
+        "\"title\":\"%s\",\"artist\":\"%s\",\"album\":\"%s\",\"year\":\"%s\",\"items\":[%s]}",
         st, g_h->get_position(), g_h->get_duration(), idx, n,
         g_h->get_volume(), g_h->get_speed(), ao, g_h->get_shuffle(),
-        name, title, artist, album, items);
+        name, title, artist, album, year, items);
     http_response(s, "200 OK", "application/json", body);
 }
 
@@ -211,7 +220,12 @@ static const char PAGE_HTML[] =
 "  <button class=\"btn\" id=\"bShuf\" title=\"Shuffle\"><svg viewBox=\"0 0 24 24\"><path d=\"M10.59 9.17L5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41l-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z\"/></svg></button>\n"
 "  <button class=\"btn\" id=\"bAud\" title=\"Audio output: PC / Phone / Both\"><svg viewBox=\"0 0 24 24\"><rect x=\"2\" y=\"4\" width=\"20\" height=\"12\" rx=\"1\"/><path d=\"M8 20h8M12 16v4\"/></svg><span>PC</span></button>\n"
 "</div>\n"
-"<div class=\"meta\" id=\"meta\">&hellip;</div>\n"
+"<div class=\"meta\">\n"
+"  <div class=\"mt\" id=\"mtitle\">&hellip;</div>\n"
+"  <div class=\"ma\" id=\"martist\"></div>\n"
+"  <div class=\"ma\" id=\"malbum\"></div>\n"
+"  <div class=\"ma\" id=\"myear\"></div>\n"
+"</div>\n"
 "<img id=\"cover\" alt=\"\" hidden>\n"
 "</div>\n"
 "<audio id=\"aud\" preload=\"none\" hidden></audio>\n"
@@ -269,6 +283,195 @@ static const char PAGE_HTML[] =
 "</script>\n"
 "</body>\n"
 "</html>\n";
+
+/* ------------------------------------------------------------------ */
+/* Mode DJ Mixage : 2 platines indépendantes (décodage FFmpeg interne) */
+/* ------------------------------------------------------------------ */
+#define DJ_DECKS 2
+typedef struct {
+    AVFormatContext* fmt;
+    AVCodecContext*  dec;
+    SwrContext*      swr;
+    int              stream;
+    int              opened;
+    int              eof;
+    int              paused;
+} dj_deck;
+static dj_deck g_decks[DJ_DECKS];
+
+static void dj_close(dj_deck* d)
+{
+    if (d->swr) swr_free(&d->swr);
+    if (d->dec) avcodec_free_context(&d->dec);
+    if (d->fmt) avformat_close_input(&d->fmt);
+    d->opened = 0; d->eof = 0; d->paused = 0;
+}
+
+static int dj_open(dj_deck* d, const char* path)
+{
+    dj_close(d);
+    if (avformat_open_input(&d->fmt, path, NULL, NULL) != 0) return -1;
+    if (avformat_find_stream_info(d->fmt, NULL) < 0) return -1;
+    for (unsigned i = 0; i < d->fmt->nb_streams; i++) {
+        AVCodecParameters* p = d->fmt->streams[i]->codecpar;
+        if (p->codec_type != AVMEDIA_TYPE_AUDIO) continue;
+        const AVCodec* codec = avcodec_find_decoder(p->codec_id);
+        if (!codec) return -1;
+        d->dec = avcodec_alloc_context3(codec);
+        if (!d->dec) return -1;
+        if (avcodec_parameters_to_context(d->dec, p) < 0) return -1;
+        if (avcodec_open2(d->dec, codec, NULL) < 0) return -1;
+        AVChannelLayout out_layout = AV_CHANNEL_LAYOUT_STEREO;
+        if (swr_alloc_set_opts2(&d->swr, &out_layout, AV_SAMPLE_FMT_FLT, 44100,
+                                &d->dec->ch_layout, d->dec->sample_fmt,
+                                d->dec->sample_rate, 0, NULL) == 0 && d->swr)
+            swr_init(d->swr);
+        d->stream = (int)i;
+        break;
+    }
+    if (!d->dec) return -1;
+    d->opened = 1;
+    d->eof = 0;
+    d->paused = 0;
+    return 0;
+}
+
+/* Remplit fbuf (frames stéréo 44,1 kHz) ; retourne le nombre de frames. */
+static uint32_t dj_read(dj_deck* d, float* fbuf, uint32_t max_frames)
+{
+    if (!d->opened || d->eof || d->paused) return 0;
+    uint32_t out = 0;
+    AVPacket* pkt = av_packet_alloc();
+    AVFrame* fr = av_frame_alloc();
+    while (out < max_frames) {
+        int r = av_read_frame(d->fmt, pkt);
+        if (r < 0) { d->eof = 1; break; }
+        if (pkt->stream_index != d->stream) { av_packet_unref(pkt); continue; }
+        if (avcodec_send_packet(d->dec, pkt) == 0) {
+            while (out < max_frames &&
+                   avcodec_receive_frame(d->dec, fr) == 0) {
+                if (d->swr) {
+                    float tmp[8192 * 2];
+                    uint8_t* out_ptrs[1] = { (uint8_t*)tmp };
+                    int got = swr_convert(d->swr, out_ptrs, 8192,
+                                          (const uint8_t**)fr->extended_data,
+                                          fr->nb_samples);
+                    if (got > 0) {
+                        uint32_t n = (uint32_t)got;
+                        if (out + n > max_frames) n = max_frames - out;
+                        memcpy(fbuf + out * 2, tmp,
+                               (size_t)n * 2 * sizeof(float));
+                        out += n;
+                    }
+                }
+                av_frame_unref(fr);
+            }
+        }
+        av_packet_unref(pkt);
+        if (out >= max_frames) break;
+    }
+    av_frame_free(&fr);
+    av_packet_free(&pkt);
+    return out;
+}
+
+typedef struct { SOCKET c; int deck; } dj_req;
+
+static DWORD WINAPI dj_stream_thread(void* arg)
+{
+    dj_req* rq = (dj_req*)arg;
+    SOCKET c = rq->c;
+    dj_deck* d = &g_decks[rq->deck];
+    free(rq);
+    const char* hdr =
+        "HTTP/1.1 200 OK\r\nContent-Type: audio/wav\r\n"
+        "Cache-Control: no-cache\r\nConnection: close\r\n\r\n";
+    send_all(c, hdr, (int)strlen(hdr));
+    uint8_t wav[44] = {
+        'R','I','F','F', 0xff,0xff,0xff,0x7f, 'W','A','V','E',
+        'f','m','t',' ', 16,0,0,0, 1,0, 2,0,
+        0x44,0xac,0,0, 0x10,0xb1,0x02,0, 4,0, 16,0,
+        'd','a','t','a', 0xff,0xff,0xff,0x7f
+    };
+    send_all(c, (const char*)wav, 44);
+    static float fbuf[2048 * 2];
+    static uint8_t obuf[16384];
+    uint32_t idle = 0;
+    while (g_running) {
+        uint32_t n = dj_read(d, fbuf, 2048);
+        if (n == 0) {
+            if (d->eof) break;
+            if (++idle > 25) {
+                memset(obuf, 0, sizeof(obuf));
+                if (send(c, (const char*)obuf, sizeof(obuf), 0) <= 0) break;
+                idle = 0;
+            }
+            Sleep(20);
+            continue;
+        }
+        idle = 0;
+        for (uint32_t i = 0; i < n * 2; i++) {
+            float v = fbuf[i];
+            if (v > 1.0f) v = 1.0f; else if (v < -1.0f) v = -1.0f;
+            int16_t s16 = (int16_t)(v * 32767.0f);
+            obuf[i * 2]     = (uint8_t)(s16 & 0xff);
+            obuf[i * 2 + 1] = (uint8_t)((uint16_t)s16 >> 8);
+        }
+        if (send(c, (const char*)obuf, (int)(n * 4), 0) <= 0) break;
+        Sleep(5);    /* pacing : 46 ms de son par paquet (léger buffer) */
+    }
+    closesocket(c);
+    return 0;
+}
+
+/* Page table de mixage (2 decks + crossfader) */
+static const char PAGE_DJ[] =
+"<!DOCTYPE html><html><head><meta charset=\"utf-8\">\n"
+"<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">\n"
+"<title>DJ Mix</title>\n"
+"<style>\n"
+"body{margin:0;padding:14px;background:#101418;color:#e8eef4;font-family:system-ui,-apple-system,sans-serif;max-width:520px;margin:0 auto}\n"
+"h1{font-size:17px;text-align:center;color:#f77aa2;margin:0 0 10px}\n"
+".deck{background:#1a212b;border-radius:14px;padding:12px;margin:8px 0}\n"
+".deck h2{font-size:14px;margin:0 0 8px;color:#9fb2c6}\n"
+".deck select{width:100%;background:#232b38;color:#fff;border:1px solid #334;border-radius:8px;padding:8px;font-size:13px}\n"
+".ctl{display:flex;gap:8px;margin-top:8px;align-items:center}\n"
+"button{padding:8px 14px;border:0;border-radius:8px;background:#2f6fe4;color:#fff;cursor:pointer}\n"
+"audio{width:100%;margin-top:8px}\n"
+".xf{margin:12px 0;text-align:center}\n"
+".xf input{width:100%}\n"
+".xf span{font-size:12px;color:#9fb2c6}\n"
+"</style></head><body>\n"
+"<h1>🎚️ DJ Mixing</h1>\n"
+"<div class=\"deck\"><h2>Deck A</h2>\n"
+"<select id=\"selA\"></select>\n"
+"<div class=\"ctl\"><button id=\"bA\">▶ Play</button></div>\n"
+"<audio id=\"aA\" controls></audio></div>\n"
+"<div class=\"deck\"><h2>Deck B</h2>\n"
+"<select id=\"selB\"></select>\n"
+"<div class=\"ctl\"><button id=\"bB\">▶ Play</button></div>\n"
+"<audio id=\"aB\" controls></audio></div>\n"
+"<div class=\"xf\"><span>A</span>\n"
+"<input type=\"range\" id=\"xf\" min=\"0\" max=\"100\" value=\"50\">\n"
+"<span>B</span></div>\n"
+"<script>\n"
+"var $=function(id){return document.getElementById(id)};\n"
+"var aA=$('aA'),aB=$('aB');\n"
+"fetch('/api/state').then(function(r){return r.json()}).then(function(s){\n"
+"  var h='';\n"
+"  for(var i=0;i<s.items.length;i++){h+='<option value=\"'+i+'\">'+s.items[i]+'</option>';}\n"
+"  $('selA').innerHTML=h; $('selB').innerHTML=h;\n"
+"}).catch(function(){});\n"
+"function playDeck(a,sel){\n"
+"  if(!sel.value)return;\n"
+"  a.src='/dj/stream'+(a===aA?'A':'B')+'?idx='+sel.value;\n"
+"  a.play().catch(function(){});\n"
+"}\n"
+"$('bA').onclick=function(){playDeck(aA,$('selA'))};\n"
+"$('bB').onclick=function(){playDeck(aB,$('selB'))};\n"
+"function xf(){var x=parseInt($('xf').value,10);aA.volume=(100-x)/100;aB.volume=x/100;}\n"
+"$('xf').oninput=xf; xf();\n"
+"</script></body></html>\n";
 
 /* ------------------------------------------------------------------ */
 /* Flux audio /stream                                                  */
@@ -344,6 +547,33 @@ static void dispatch(SOCKET c)
         if (body) body += 4;
         else body = req + rn;
         api_cmd(c, body);
+        closesocket(c);
+    } else if (!strcmp(path, "/dj")) {
+        http_response(c, "200 OK", "text/html; charset=utf-8", PAGE_DJ);
+        closesocket(c);
+    } else if (!strncmp(path, "/dj/streamA", 11) ||
+               !strncmp(path, "/dj/streamB", 11)) {
+        /* table de mixage : platine A ou B (le deck est indiqué par l'URL) */
+        int deck = path[4] == 'A' ? 0 : 1;
+        const char* q = strchr(path, '=');
+        int idx = q ? atoi(q + 1) : -1;
+        if (idx >= 0 && idx < g_h->plist_count()) {
+            const wchar_t* pw = g_h->plist_path(idx);
+            char pu8[MAX_PATH * 3];
+            if (pw && WideCharToMultiByte(CP_UTF8, 0, pw, -1, pu8,
+                                          sizeof(pu8), NULL, NULL) > 0 &&
+                dj_open(&g_decks[deck], pu8) == 0) {
+                dj_req* rq = (dj_req*)malloc(sizeof(dj_req));
+                if (rq) {
+                    rq->c = c;
+                    rq->deck = deck;
+                    HANDLE h = CreateThread(NULL, 0, dj_stream_thread,
+                                            rq, 0, NULL);
+                    if (h) { CloseHandle(h); return; }
+                    free(rq);
+                }
+            }
+        }
         closesocket(c);
     } else if (!strncmp(path, "/stream", 7)) {
         HANDLE h = CreateThread(NULL, 0, stream_thread, (void*)(intptr_t)c, 0, NULL);
