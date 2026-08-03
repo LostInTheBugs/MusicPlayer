@@ -2,6 +2,11 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.028-c2] — 2026-08-03
+
+### Changed
+- **Mode DJ Mixing : vrai mixeur 2 voies** — chaque platine a son **volume**, son **pitch (±12 %)**, son **égaliseur 3 bandes** (basses/médiums/aigus), ses boutons **play/pause** et **stop**, et le **crossfader** central A/B — le tout traité en temps réel par le Web Audio API (les 2 platines jouent simultanément)
+
 ## [2026.08.028-c1] — 2026-08-03
 
 ### Fixed
