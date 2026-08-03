@@ -228,27 +228,51 @@ void mp_plugins_service(int event, void* data)
 /* Titre (métadonnées) d'un fichier : premier plugin SERVICE actif. */
 const char* mp_plugins_get_title(const char* path)
 {
+    return mp_plugins_get_metadata(path, "title");
+}
+
+/* Métadonnée d'un fichier : premier plugin SERVICE actif. */
+const char* mp_plugins_get_metadata(const char* path, const char* field)
+{
+    if (!field) return NULL;
     for (int i = 0; i < g_count; i++) {
         mp_plugin* p = &g_plugins[i];
         if (!p->enabled || !p->api) continue;
         if (!(p->api->type() & MP_PLUGIN_SERVICE)) continue;
-        if (p->api->get_title) {
-            const char* t = p->api->get_title(p, path);
-            if (t && t[0]) return t;
+        if (p->api->get_metadata) {
+            const char* v = p->api->get_metadata(p, path, field);
+            if (v && v[0]) return v;
         }
     }
     return NULL;
 }
 
-/* Applique les peaux des plugins de type SKIN actifs (appelé par l'UI). */
+/* Applique les peaux des plugins de type SKIN actifs (appelé par l'UI).
+ * Aucun skin actif → palette par défaut de l'hôte. */
 void mp_plugins_apply_skins(void* hwnd)
 {
+    int applied = 0;
     for (int i = 0; i < g_count; i++) {
         mp_plugin* p = &g_plugins[i];
         if (!p->enabled || !p->api) continue;
         if (!(p->api->type() & MP_PLUGIN_SKIN)) continue;
-        if (p->api->apply_skin)
+        if (p->api->apply_skin) {
             p->api->apply_skin(p, hwnd);
+            applied = 1;
+        }
+    }
+    if (!applied && g_host && g_host->skin_set_colors) {
+        /* palette par défaut */
+        mp_skin_colors def = {
+            RGB(255, 255, 255), RGB(30, 30, 30),
+            RGB(238, 240, 246), RGB(210, 214, 224),
+            RGB(52, 120, 246), RGB(226, 66, 56),
+            RGB(230, 126, 34), RGB(110, 118, 136),
+            RGB(205, 210, 222), RGB(120, 126, 140),
+            RGB(255, 255, 255), RGB(28, 30, 38),
+            RGB(92, 98, 116)
+        };
+        g_host->skin_set_colors(&def);
     }
 }
 

@@ -322,6 +322,95 @@ static void host_skin_set_colors(const mp_skin_colors* c)
     }
 }
 
+/* ------------------------------------------------------------------ */
+/* Métadonnées & jaquette (serveur web)                                */
+/* ------------------------------------------------------------------ */
+static const char* host_get_metadata(const char* path, const char* field)
+{
+    return mp_plugins_get_metadata(path, field);
+}
+
+static const wchar_t* host_plist_path(int i)
+{
+    if (i < 0 || i >= g_plist_n) return L"";
+    return g_plist[i];
+}
+
+/* Jaquette d'un fichier : cover.* dans le dossier, sinon APIC du MP3.
+ * Buffer statique : valable jusqu'au prochain appel. */
+static unsigned char g_cover_buf[2 * 1024 * 1024];
+
+static const unsigned char* host_get_cover(const char* path, size_t* len)
+{
+    *len = 0;
+    if (!path || !path[0]) return NULL;
+
+    /* 1) fichier d'image dans le même dossier */
+    char dir[MAX_PATH * 3];
+    strncpy(dir, path, sizeof(dir) - 1);
+    dir[sizeof(dir) - 1] = 0;
+    char* slash = strrchr(dir, '\\');
+    if (!slash) slash = strrchr(dir, '/');
+    if (slash) slash[1] = 0; else dir[0] = 0;
+    static const char* names[] = { "cover.jpg", "folder.jpg", "cover.png", "front.jpg" };
+    for (int i = 0; i < 4; i++) {
+        char p[MAX_PATH * 3];
+        _snprintf(p, sizeof(p), "%s%s", dir, names[i]);
+        FILE* f = fopen(p, "rb");
+        if (!f) continue;
+        size_t n = fread(g_cover_buf, 1, sizeof(g_cover_buf), f);
+        fclose(f);
+        if (n > 0) { *len = n; return g_cover_buf; }
+    }
+
+    /* 2) jaquette intégrée (APIC) */
+    FILE* f = fopen(path, "rb");
+    if (!f) return NULL;
+    unsigned char h[10];
+    int found = 0;
+    if (fread(h, 1, 10, f) == 10 && h[0] == 'I' && h[1] == 'D' && h[2] == '3') {
+        unsigned sz = ((h[6] & 0x7f) << 21) | ((h[7] & 0x7f) << 14) |
+                      ((h[8] & 0x7f) << 7) | (h[9] & 0x7f);
+        long pos = 10, end = 10 + (long)sz;
+        while (pos + 10 <= end) {
+            unsigned char fr[10];
+            if (fseek(f, pos, SEEK_SET) != 0) break;
+            if (fread(fr, 1, 10, f) != 10) break;
+            unsigned fsz = ((unsigned)fr[4] << 24) | ((unsigned)fr[5] << 16) |
+                           ((unsigned)fr[6] << 8) | fr[7];
+            if (fr[0] == 'A' && fr[1] == 'P' && fr[2] == 'I' && fr[3] == 'C') {
+                if (fsz > 10 && fseek(f, pos + 10, SEEK_SET) == 0) {
+                    unsigned char* buf = (unsigned char*)malloc((size_t)fsz + 1);
+                    if (buf) {
+                        if (fread(buf, 1, (size_t)fsz, f) == (size_t)fsz) {
+                            const unsigned char* p2 = buf + 1;   /* encodage */
+                            while (p2 < buf + fsz && *p2) p2++;  /* mime */
+                            p2++;
+                            if (p2 < buf + fsz) p2++;            /* type */
+                            while (p2 < buf + fsz && *p2) p2++;  /* description */
+                            p2++;
+                            if (p2 < buf + fsz) {
+                                long dl = (long)(buf + fsz - p2);
+                                if (dl > 0 && (size_t)dl <= sizeof(g_cover_buf)) {
+                                    memcpy(g_cover_buf, p2, (size_t)dl);
+                                    *len = (size_t)dl;
+                                    found = 1;
+                                }
+                            }
+                        }
+                        free(buf);
+                    }
+                }
+                break;
+            }
+            if (fsz == 0) break;
+            pos += 10 + (long)fsz;
+        }
+    }
+    fclose(f);
+    return found ? g_cover_buf : NULL;
+}
+
 static const mp_host_api g_host = {
     MP_PLUGIN_API_VERSION,
     log_line,
@@ -336,7 +425,8 @@ static const mp_host_api g_host = {
     host_web_enabled, host_web_port, host_web_audio, host_web_ips,
     host_web_find_free_port,
     host_web_read,
-    host_skin_set_colors
+    host_skin_set_colors,
+    host_get_metadata, host_get_cover, host_plist_path
 };
 
 /* ------------------------------------------------------------------ */
@@ -439,6 +529,7 @@ static void rebuild_plugins_menu(HMENU parent)
 
     int n = mp_plugins_count();
     int vis_active = -1;
+    int skin_active = -1;
     for (int i = 0; i < n; i++) {
         mp_plugin* p = mp_plugins_get(i);
         if (!p || !p->api || !p->enabled) continue;   /* désactivé : absent */
@@ -458,6 +549,8 @@ static void rebuild_plugins_menu(HMENU parent)
         AppendMenuW(target, MF_STRING, IDM_PLUGIN_BASE + i, label);
         if (t & MP_PLUGIN_VISUAL) {
             if (p->enabled) vis_active = i;
+        } else if (t & MP_PLUGIN_SKIN) {
+            if (p->enabled) skin_active = i;
         } else {
             CheckMenuItem(target, IDM_PLUGIN_BASE + i,
                           MF_BYCOMMAND | (p->enabled ? MF_CHECKED : MF_UNCHECKED));
@@ -466,6 +559,9 @@ static void rebuild_plugins_menu(HMENU parent)
     if (vis_active >= 0)
         CheckMenuRadioItem(mVis, IDM_PLUGIN_BASE, IDM_PLUGIN_BASE + n - 1,
                            IDM_PLUGIN_BASE + vis_active, MF_BYCOMMAND);
+    if (skin_active >= 0)
+        CheckMenuRadioItem(mSkin, IDM_PLUGIN_BASE, IDM_PLUGIN_BASE + n - 1,
+                           IDM_PLUGIN_BASE + skin_active, MF_BYCOMMAND);
 
     /* reconstruit le menu Plugins (position 2) */
     HMENU m = CreatePopupMenu();
@@ -1873,6 +1969,14 @@ static void on_command(int id, HMENU bar)
                     for (int j = 0; j < mp_plugins_count(); j++) {
                         mp_plugin* q = mp_plugins_get(j);
                         if (q->api->type() & MP_PLUGIN_VISUAL)
+                            mp_plugins_set_enabled(j, !was_active && j == i);
+                    }
+                } else if (t & MP_PLUGIN_SKIN) {
+                    /* radio : un seul skin actif (re-clic = palette par défaut) */
+                    int was_active = p->enabled;
+                    for (int j = 0; j < mp_plugins_count(); j++) {
+                        mp_plugin* q = mp_plugins_get(j);
+                        if (q->api->type() & MP_PLUGIN_SKIN)
                             mp_plugins_set_enabled(j, !was_active && j == i);
                     }
                 } else {

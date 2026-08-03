@@ -68,19 +68,42 @@ static void json_escape(const wchar_t* in, char* out, int out_chars)
     out[o] = 0;
 }
 
+static void json_escape_u8(const char* in, char* out, int out_chars)
+{
+    int o = 0;
+    for (int i = 0; in[i] && o < out_chars - 4; i++) {
+        unsigned char c = (unsigned char)in[i];
+        if (c == '"' || c == '\\') { out[o++] = '\\'; out[o++] = (char)c; }
+        else if (c < 0x20) { out[o++] = ' '; }
+        else out[o++] = (char)c;
+    }
+    out[o] = 0;
+}
+
 /* ------------------------------------------------------------------ */
 /* API                                                                */
 /* ------------------------------------------------------------------ */
 static void api_state(SOCKET s)
 {
-    char body[9000];
-    char items[6500] = "";
+    char body[11000];
+    char items[8000] = "";
     int n = g_h->plist_count();
     int idx = g_h->plist_index();
     if (n > 100) n = 100;
     for (int i = 0; i < n; i++) {
         char name[600];
-        json_escape(g_h->plist_name(i), name, sizeof(name));
+        /* titre (métadonnées ID3) si disponible, sinon nom du fichier */
+        const char* title = NULL;
+        if (g_h->get_metadata && g_h->plist_path) {
+            const wchar_t* pw = g_h->plist_path(i);
+            char pu8[MAX_PATH * 3];
+            if (pw &&
+                WideCharToMultiByte(CP_UTF8, 0, pw, -1, pu8, sizeof(pu8),
+                                    NULL, NULL) > 0)
+                title = g_h->get_metadata(pu8, "title");
+        }
+        if (title && title[0]) json_escape_u8(title, name, sizeof(name));
+        else json_escape(g_h->plist_name(i), name, sizeof(name));
         char tmp[700];
         _snprintf(tmp, sizeof(tmp), "%s\"%s\"", i ? "," : "", name);
         if (strlen(items) + strlen(tmp) < sizeof(items) - 4) strcat(items, tmp);
@@ -93,16 +116,28 @@ static void api_state(SOCKET s)
     int a = g_h->get_audio_out();
     if (a == 1) ao = "phone";
     else if (a == 2) ao = "both";
-    char name[600];
+    char name[600], title[512] = "", artist[512] = "", album[512] = "";
     if (idx >= 0 && idx < n) json_escape(g_h->plist_name(idx), name, sizeof(name));
     else name[0] = 0;
+    if (g_h->get_metadata) {
+        const char* fn = g_h->get_file_name();
+        if (fn && fn[0]) {
+            const char* t = g_h->get_metadata(fn, "title");
+            const char* ar = g_h->get_metadata(fn, "artist");
+            const char* al = g_h->get_metadata(fn, "album");
+            if (t && t[0]) json_escape_u8(t, title, sizeof(title));
+            if (ar && ar[0]) json_escape_u8(ar, artist, sizeof(artist));
+            if (al && al[0]) json_escape_u8(al, album, sizeof(album));
+        }
+    }
     _snprintf(body, sizeof(body),
         "{\"state\":\"%s\",\"pos\":%.1f,\"dur\":%.1f,\"idx\":%d,\"count\":%d,"
         "\"vol\":%.2f,\"speed\":%.2f,"
-        "\"audio\":\"%s\",\"shuffle\":%d,\"name\":\"%s\",\"items\":[%s]}",
+        "\"audio\":\"%s\",\"shuffle\":%d,\"name\":\"%s\","
+        "\"title\":\"%s\",\"artist\":\"%s\",\"album\":\"%s\",\"items\":[%s]}",
         st, g_h->get_position(), g_h->get_duration(), idx, n,
         g_h->get_volume(), g_h->get_speed(), ao, g_h->get_shuffle(),
-        name, items);
+        name, title, artist, album, items);
     http_response(s, "200 OK", "application/json", body);
 }
 
@@ -151,6 +186,7 @@ static const char PAGE_HTML[] =
 "#bShuf.on{background:#e67e22}\n"
 ".btn svg{width:30px;height:30px;fill:currentColor}\n"
 ".meta{text-align:center;color:#9fb2c6;font-size:13px;margin:6px 0 4px;word-break:break-all}\n"
+"#cover{display:block;margin:8px auto;max-width:220px;max-height:220px;border-radius:10px;box-shadow:0 2px 14px rgba(0,0,0,.45)}\n"
 ".item{padding:9px 12px;border-radius:9px;margin:3px 0;background:#161d27;font-size:14px;display:flex;gap:8px;cursor:pointer}\n"
 ".item .n{color:#5c6f84;min-width:26px}\n"
 ".item.cur{background:#2f6fe4;font-weight:600}\n"
@@ -176,6 +212,7 @@ static const char PAGE_HTML[] =
 "  <button class=\"btn\" id=\"bAud\" title=\"Audio output: PC / Phone / Both\"><svg viewBox=\"0 0 24 24\"><rect x=\"2\" y=\"4\" width=\"20\" height=\"12\" rx=\"1\"/><path d=\"M8 20h8M12 16v4\"/></svg><span>PC</span></button>\n"
 "</div>\n"
 "<div class=\"meta\" id=\"meta\">&hellip;</div>\n"
+"<img id=\"cover\" alt=\"\" hidden>\n"
 "</div>\n"
 "<audio id=\"aud\" preload=\"none\" hidden></audio>\n"
 "<div id=\"plist\"></div>\n"
@@ -214,7 +251,13 @@ static const char PAGE_HTML[] =
 "    $('bPlay').innerHTML = s.state==='playing' ? ICON_PAUSE : ICON_PLAY;\n"
 "    $('bAud').innerHTML = AUD_ICONS[s.audio] + '<span>' + AUD_LABELS[s.audio] + '</span>';\n"
 "    $('bShuf').className = 'btn' + (s.shuffle ? ' on' : '');\n"
-"    $('meta').textContent=(s.state==='playing'?'Playing':'Paused')+' &middot; vol '+Math.round(s.vol*100)+'% &middot; &times;'+s.speed.toFixed(2)+' &mdash; '+(s.name||'no file');\n"
+"    var metaTxt=(s.state==='playing'?'Playing':'Paused')+' &middot; vol '+Math.round(s.vol*100)+'% &middot; &times;'+s.speed.toFixed(2);\n"
+"    var trackTxt=(s.artist?s.artist+' — ':'');\n"
+"    trackTxt+=s.title||s.name||'no file';\n"
+"    $('meta').textContent=metaTxt+' — '+trackTxt;\n"
+"    var cv=$('cover');\n"
+"    if(s.name){cv.hidden=false;cv.src='/cover?t='+Date.now();}\n"
+"    else{cv.hidden=true;}\n"
 "    var h='';\n"
 "    for(var i=0;i<s.items.length;i++){\n"
 "      h+='<div class=\"item'+(i===s.idx?' cur':'')+'\" onclick=\"plClick('+i+')\"><span class=\"n\">'+(i+1)+'</span><span>'+s.items[i]+'</span></div>';\n"
@@ -306,6 +349,28 @@ static void dispatch(SOCKET c)
         HANDLE h = CreateThread(NULL, 0, stream_thread, (void*)(intptr_t)c, 0, NULL);
         if (h) CloseHandle(h);
         else closesocket(c);
+    } else if (!strcmp(path, "/cover")) {
+        /* jaquette de la musique en cours */
+        size_t clen = 0;
+        const unsigned char* cdata = NULL;
+        if (g_h->get_cover && g_h->get_file_name())
+            cdata = g_h->get_cover(g_h->get_file_name(), &clen);
+        if (cdata && clen > 0) {
+            const char* ct = "image/jpeg";
+            if (clen > 8 && cdata[0] == 0x89 && cdata[1] == 'P' &&
+                cdata[2] == 'N' && cdata[3] == 'G')
+                ct = "image/png";
+            char hdr[256];
+            int hl = _snprintf(hdr, sizeof(hdr),
+                "HTTP/1.1 200 OK\r\nContent-Type: %s\r\n"
+                "Content-Length: %d\r\nCache-Control: no-cache\r\n"
+                "Connection: close\r\n\r\n", ct, (int)clen);
+            send_all(c, hdr, hl);
+            send_all(c, (const char*)cdata, (int)clen);
+        } else {
+            http_response(c, "404 Not Found", "text/plain", "no cover");
+        }
+        closesocket(c);
     } else {
         http_response(c, "404 Not Found", "text/plain", "not found");
         closesocket(c);

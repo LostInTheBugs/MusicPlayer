@@ -2,6 +2,17 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.023] — 2026-08-03
+
+### Added
+- **Télécommande web enrichie** :
+  - **Jaquette de la musique en cours** affichée sur la page (endpoint `/cover` — jaquette intégrée au MP3 ou cover.jpg/folder.jpg à côté du morceau)
+  - **Métadonnées** dans l'état : titre, artiste, album de la musique en cours d'écoute
+  - **Titres des morceaux** (balises ID3) dans la playlist web au lieu des noms de fichiers
+
+### Changed
+- **Skins exclusifs** : un seul skin actif à la fois (sélection radio, comme les visuels) — re-clic sur le skin actif = retour à la palette par défaut
+
 ## [2026.08.022] — 2026-08-03
 
 ### Added

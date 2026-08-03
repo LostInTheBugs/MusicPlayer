@@ -14,15 +14,31 @@
 #include "plugin.h"
 
 static char g_title[512];
+static char g_artist[512];
+static char g_album[512];
+static char g_last_path[MAX_PATH * 3] = "";
 
-static const char* pl_get_title(mp_plugin* self, const char* path)
+/* Lit une frame texte ID3v2 (après l'en-tête de 10 octets) dans dst. */
+static void read_text_frame(long pos, long fsz, FILE* f, char* dst)
 {
-    (void)self;
-    g_title[0] = 0;
-    FILE* f = fopen(path, "rb");
-    if (!f) return NULL;
+    if (fsz <= 1) return;
+    if (fseek(f, pos + 11, SEEK_SET) != 0) return;  /* +10 en-tête +1 encodage */
+    unsigned n = (unsigned)fsz - 1;
+    if (n > 511) n = 511;
+    if (fread(dst, 1, n, f) == n) {
+        dst[n] = 0;
+        while (n > 0 && (dst[n - 1] == 0 || dst[n - 1] == ' ')) n--;
+        dst[n] = 0;
+    }
+}
 
-    /* ID3v2 : en-tête 10 octets "ID3" + taille syncsafe (le + gros) */
+static void parse_tags(const char* path)
+{
+    g_title[0] = g_artist[0] = g_album[0] = 0;
+    FILE* f = fopen(path, "rb");
+    if (!f) return;
+
+    /* ID3v2 : en-tête 10 octets "ID3" + taille syncsafe */
     unsigned char h[10];
     if (fread(h, 1, 10, f) == 10 && h[0] == 'I' && h[1] == 'D' && h[2] == '3') {
         unsigned sz = ((h[6] & 0x7f) << 21) | ((h[7] & 0x7f) << 14) |
@@ -35,49 +51,65 @@ static const char* pl_get_title(mp_plugin* self, const char* path)
             if (fread(fr, 1, 10, f) != 10) break;
             unsigned fsz = ((unsigned)fr[4] << 24) | ((unsigned)fr[5] << 16) |
                            ((unsigned)fr[6] << 8) | fr[7];
-            if (fr[0] == 'T' && fr[1] == 'I' && fr[2] == 'T' && fr[3] == '2') {
-                /* octet d'encodage + texte */
-                if (fsz > 1 && fseek(f, pos + 11, SEEK_SET) == 0) {
-                    unsigned n = fsz - 1;
-                    if (n > 511) n = 511;
-                    unsigned char* txt = (unsigned char*)malloc((size_t)n + 1);
-                    if (txt) {
-                        if (fread(txt, 1, (size_t)n, f) == (size_t)n) {
-                            txt[n] = 0;
-                            while (n > 0 && (txt[n - 1] == 0 || txt[n - 1] == ' '))
-                                n--;
-                            txt[n] = 0;
-                            if (n > 0) {
-                                memcpy(g_title, txt, (size_t)n);
-                                g_title[n] = 0;
-                            }
-                        }
-                        free(txt);
-                    }
-                }
-                break;
+            if (fr[0] == 'T') {
+                char* dst = NULL;
+                if (fr[1] == 'I' && fr[2] == 'T' && fr[3] == '2') dst = g_title;
+                else if (fr[1] == 'P' && fr[2] == 'E' && fr[3] == '1') dst = g_artist;
+                else if (fr[1] == 'A' && fr[2] == 'L' && fr[3] == 'B') dst = g_album;
+                if (dst) read_text_frame(pos, (long)fsz, f, dst);
             }
             if (fsz == 0) break;
             pos += 10 + (long)fsz;
         }
     }
 
-    /* ID3v1 : "TAG" + titre sur 30 octets, à la fin du fichier */
+    /* ID3v1 : "TAG" + titre(30) + artiste(30) + album(30) */
     if (!g_title[0] && fseek(f, -128, SEEK_END) == 0) {
         unsigned char t[128];
         if (fread(t, 1, 128, f) == 128 &&
             t[0] == 'T' && t[1] == 'A' && t[2] == 'G') {
-            int n = 30;
-            while (n > 0 && (t[3 + n - 1] == 0 || t[3 + n - 1] == ' ')) n--;
-            if (n > 0) {
-                memcpy(g_title, t + 3, (size_t)n);
-                g_title[n] = 0;
+            for (int k = 0; k < 3; k++) {
+                char* dst = k == 0 ? g_title : (k == 1 ? g_artist : g_album);
+                int n = 30;
+                while (n > 0 && (t[3 + k * 30 + n - 1] == 0 ||
+                                 t[3 + k * 30 + n - 1] == ' ')) n--;
+                if (n > 0) {
+                    memcpy(dst, t + 3 + k * 30, (size_t)n);
+                    dst[n] = 0;
+                }
             }
         }
     }
 
     fclose(f);
+}
+
+static const char* pl_get_title(mp_plugin* self, const char* path)
+{
+    (void)self;
+    if (!path) return NULL;
+    if (strcmp(g_last_path, path) != 0) {
+        strncpy(g_last_path, path, sizeof(g_last_path) - 1);
+        g_last_path[sizeof(g_last_path) - 1] = 0;
+        parse_tags(path);
+    }
     return g_title[0] ? g_title : NULL;
+}
+
+static const char* pl_get_metadata(mp_plugin* self, const char* path,
+                                   const char* field)
+{
+    (void)self;
+    if (!path || !field) return NULL;
+    if (strcmp(g_last_path, path) != 0) {
+        strncpy(g_last_path, path, sizeof(g_last_path) - 1);
+        g_last_path[sizeof(g_last_path) - 1] = 0;
+        parse_tags(path);
+    }
+    if (!strcmp(field, "title"))  return g_title[0]  ? g_title  : NULL;
+    if (!strcmp(field, "artist")) return g_artist[0] ? g_artist : NULL;
+    if (!strcmp(field, "album"))  return g_album[0]  ? g_album  : NULL;
+    return NULL;
 }
 
 static const char* pl_name(void)    { return "Metadata (MP3 tags)"; }
@@ -91,7 +123,7 @@ static const mp_plugin_api g_api = {
     pl_name, pl_version, pl_description, pl_type,
     NULL, NULL,           /* init, destroy */
     NULL, NULL, NULL, NULL,   /* process, audio_frames, render, apply_skin */
-    NULL, pl_get_title    /* service, get_title */
+    NULL, pl_get_title, pl_get_metadata  /* service, get_title, get_metadata */
 };
 
 const mp_plugin_api* mp_plugin_entry(void) { return &g_api; }

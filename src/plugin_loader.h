@@ -30,9 +30,12 @@ void mp_plugins_apply_skins(void* hwnd);
 /* Diffuse un événement aux plugins SERVICE actifs (MP_SERVICE_*). */
 void mp_plugins_service(int event, void* data);
 
-/* Demande le titre (métadonnées) d'un fichier au premier plugin SERVICE
- * actif qui en fournit un ; NULL si aucun. Buffer statique du plugin. */
+/* Titre (métadonnées) d'un fichier : premier plugin SERVICE actif. */
 const char* mp_plugins_get_title(const char* path);
+
+/* Métadonnée d'un fichier ("title", "artist", "album"…) : premier
+ * plugin SERVICE actif qui en fournit une ; NULL sinon. */
+const char* mp_plugins_get_metadata(const char* path, const char* field);
 
 /* Applique les effets audio des plugins actifs sur un bloc PCM
  * (interleavé f32 stéréo). Appelé par le moteur audio. */

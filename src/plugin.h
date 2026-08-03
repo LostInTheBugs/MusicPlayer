@@ -107,6 +107,11 @@ typedef struct mp_host_api {
 
     /* --- skins : palette de couleurs --- */
     void (*skin_set_colors)(const mp_skin_colors* colors);
+
+    /* --- métadonnées & jaquette des fichiers (plugins SERVICE) --- */
+    const char* (*get_metadata)(const char* path, const char* field);
+    const unsigned char* (*get_cover)(const char* path, size_t* len);
+    const wchar_t* (*plist_path)(int i);
 } mp_host_api;
 
 /*
@@ -163,6 +168,12 @@ typedef struct mp_plugin_api {
      * inconnu. Buffer statique du plugin (valable jusqu'au prochain
      * appel). Utilisé par l'UI pour afficher le titre. */
     const char* (*get_title)(mp_plugin* self, const char* path);
+
+    /* --- hook SERVICE : métadonnées ---
+     * Renvoie une métadonnée d'un fichier audio ("title", "artist",
+     * "album"...), ou NULL si inconnue. Buffer statique du plugin. */
+    const char* (*get_metadata)(mp_plugin* self, const char* path,
+                                const char* field);
 } mp_plugin_api;
 
 #define MP_PLUGIN_ENTRY "mp_plugin_entry"
