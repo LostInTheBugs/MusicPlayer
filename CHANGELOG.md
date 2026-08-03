@@ -2,6 +2,12 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.018-c2] — 2026-08-03
+
+### Fixed
+- **Page web : icônes de la télécommande remplacées par des SVG inline** — le bouton lecture (▶/⏸) et les autres s'affichaient mal sur certains navigateurs/téléphones (caractères Unicode ⏸ et emojis mal rendus)
+- **Bouton « Son téléphone » dédié** : la lecture du son sur le téléphone est maintenant indépendante du bouton lecture — en mode « les deux », le bouton lecture contrôle l'application, et un bouton haut-parleur (violet) lance/arrête le son sur le téléphone
+
 ## [2026.08.018-c1] — 2026-08-03
 
 ### Fixed
