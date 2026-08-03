@@ -9,15 +9,21 @@ cross-compiled from Linux with MinGW-w64.
 - Drag & drop files, keyboard shortcuts
 - **Play/Pause/Stop/Next buttons + volume slider** (0–100 % blue, 100–200 % orange boost) built into the window
 - **Folder playback**: File ▸ Open folder… (or drag & drop a folder, or pass it on the command line) — all MP3/MP4 are played in order, subfolders included, next track starts automatically
-- **Web server (remote control)**: Settings ▸ Web server… — open the page from your phone/tablet on the same network: control playback (play/pause, stop, next, volume, speed), see the playlist with the current track highlighted, and pick the audio output: this computer, phone, or both simultaneously (WAV stream)
+- **CD audio playback**: File ▸ Open CD… (MCI) — tracks listed as “CD Track N”, auto-advance
+- **Web server (remote control)**: Settings ▸ Web server… — open the page from your phone/tablet: control playback, see metadata (title/artist/album/year), the cover, the playlist with the current track highlighted, and pick the audio output: this computer, phone, or both (WAV stream)
+- **DJ Mixing**: 2-deck mixer on the web page (volume, pitch ±12 %, 3-band EQ, crossfader, via Web Audio API) **and** on the computer itself (console with per-deck play/pause/stop, volumes, crossfader, pitch — deck B is a real second decoder mixed into the output); the mode is synchronized both ways (Settings ▸ DJ Mixing ⇄ web)
 - **Session persistence** (`config.yml` in `%APPDATA%\MusicPlayer`): volume, speed, last folder/file and web server config are saved on exit and restored on startup — playlists are rescanned (new files added, removed files dropped) and playback resumes on the current track
-- **Fullscreen** for visual plugins (F11 or the ⛶ button)
+- **True fullscreen** (F11 or the ⛶ button): covers the monitor under the cursor; **multi-screen fullscreen** configurable in Settings ▸ Interface… — number of screens used (auto-detected) and per-screen content: visual effect, playlist, lyrics or cover
+- **Playlist window** (Ctrl+L): numbered tracks, current track highlighted, double-click to play
 - **Progress bar** with color gradient
-- **Update checker**: manual (Settings ▸ Check for updates…) and automatic at startup (compares with the latest GitHub release)
-- **Multilingual**: plain-text `lang/*.lang` files (English built-in, French provided, Settings ▸ Language menu — see [lang/README.md](lang/README.md))
-- **Plugin architecture** (skins, audio effects, visuals) — API version 2:
-  color spectrum, rotating 3D spectrum (rainbow), 3D isometric landscape,
-  LED VU meter, fireworks, fractal plasma, hypnotic tunnel — all synced to the music
+- **Skins** (Plugins ▸ Skins): 11 skins — color palettes and **full-window skins** (radio, Winamp) with background image, per-skin layout (hidden menu + right-click, controls on top) and visualizer zone; choice in Settings ▸ Interface…
+- **Update checker**: Settings ▸ Update… — automatic (at startup), manual, or disabled (compares with the latest GitHub release)
+- **Multilingual**: plain-text `lang/*.lang` files (English built-in, French provided, Settings ▸ Interface… — see [lang/README.md](lang/README.md))
+- **Plugin architecture** (skins, audio effects, visuals, services) — API version 2:
+  - **Visuals**: color spectrum, rotating 3D spectrum (rainbow), 3D isometric landscape, LED VU meter, fireworks, fractal plasma, hypnotic tunnel — all synced to the music
+  - **Effects**: Volume booster (+25 %), Sound Quality (sub-bass filter, bass boost, presence, soft limiter)
+  - **Services**: Web server (8000), REST API (8080), DLNA/UPnP media server (8081), RTP/AES67 multicast output (5004), Multiroom, TeamSpeak Broadcast, MP3 metadata (ID3 tags), cover art, lyrics (.lrc)
+  - **Network configuration**: Settings ▸ Network… — port and listening IPs per service
 
 ## Version
 
