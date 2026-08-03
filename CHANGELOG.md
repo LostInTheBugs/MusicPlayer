@@ -2,6 +2,13 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.026] — 2026-08-03
+
+### Changed
+- **Skins dans leur propre dossier `skins/`** (à côté de l'exe) — plus mélangés aux plugins dans `plugins/`
+- **Sous-menu Skins retiré du menu Plugins** — le skin se choisit uniquement dans Settings ▸ Interface…
+- **Skin Vintage radio** : le visualiseur se joue dans le **haut-parleur** de la radio (zone imposée par le skin), texture redessinée (bandeau doré « VINTAGE RADIO », cadran AM gradué, grille du haut-parleur)
+
 ## [2026.08.025] — 2026-08-03
 
 ### Added

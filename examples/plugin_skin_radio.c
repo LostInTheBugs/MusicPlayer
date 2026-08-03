@@ -39,6 +39,9 @@ static void pl_apply_skin(mp_plugin* self, void* hwnd)
         0xD4A017   /* prog_border */
     };
     if (g_h && g_h->skin_set_colors) g_h->skin_set_colors(&c);
+    /* le visualiseur se joue dans le haut-parleur de la radio */
+    if (g_h && g_h->skin_set_visual_rect)
+        g_h->skin_set_visual_rect(36, 165, 568, 80);
     /* texture de la radio (à côté de la DLL) */
     if (g_h && g_h->skin_set_bg) {
         wchar_t dir[MAX_PATH];

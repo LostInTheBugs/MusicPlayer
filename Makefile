@@ -13,7 +13,7 @@
 #   make clean
 # ======================================================================
 
-VERSION := 2026.08.025
+VERSION := 2026.08.026
 
 CROSS    := x86_64-w64-mingw32-
 CC       := $(CROSS)gcc
@@ -77,20 +77,21 @@ plugins-examples: $(BIN)
 	$(CC) -O2 -shared -o bin/plugins/metadata.dll examples/plugin_metadata.c -Isrc -static-libgcc
 	$(CC) -O2 -shared -o bin/plugins/lyrics.dll examples/plugin_lyrics.c -Isrc -static-libgcc -luser32 -lgdi32
 	$(CC) -O2 -shared -o bin/plugins/cover.dll examples/plugin_cover.c -Isrc -static-libgcc -luser32 -lgdi32 -lgdiplus -Wno-incompatible-pointer-types
-	$(CC) -O2 -shared -o bin/plugins/skin_retro60.dll examples/plugin_skin_retro60.c -Isrc -static-libgcc
-	$(CC) -O2 -shared -o bin/plugins/skin_retro70.dll examples/plugin_skin_retro70.c -Isrc -static-libgcc
-	$(CC) -O2 -shared -o bin/plugins/skin_retro80.dll examples/plugin_skin_retro80.c -Isrc -static-libgcc
-	$(CC) -O2 -shared -o bin/plugins/skin_retro90.dll examples/plugin_skin_retro90.c -Isrc -static-libgcc
-	$(CC) -O2 -shared -o bin/plugins/skin_2000s.dll examples/plugin_skin_2000s.c -Isrc -static-libgcc
-	$(CC) -O2 -shared -o bin/plugins/skin_radio.dll examples/plugin_skin_radio.c -Isrc -static-libgcc
-	$(CC) -O2 -shared -o bin/plugins/skin_winamp.dll examples/plugin_skin_winamp.c -Isrc -static-libgcc
-	$(CC) -O2 -shared -o bin/plugins/skin_clean.dll examples/plugin_skin_clean.c -Isrc -static-libgcc
-	$(CC) -O2 -shared -o bin/plugins/skin_kitsch.dll examples/plugin_skin_kitsch.c -Isrc -static-libgcc
-	$(CC) -O2 -shared -o bin/plugins/skin_cartoon.dll examples/plugin_skin_cartoon.c -Isrc -static-libgcc
-	$(CC) -O2 -shared -o bin/plugins/skin_bnw.dll examples/plugin_skin_bnw.c -Isrc -static-libgcc
-	cp -f examples/radio_bg.png bin/plugins/radio_bg.png
-	cp -f examples/winamp_bg.png bin/plugins/winamp_bg.png
-	@echo "Plugins d'exemple compilés dans bin/plugins/"
+	mkdir -p bin/skins
+	$(CC) -O2 -shared -o bin/skins/skin_retro60.dll examples/plugin_skin_retro60.c -Isrc -static-libgcc
+	$(CC) -O2 -shared -o bin/skins/skin_retro70.dll examples/plugin_skin_retro70.c -Isrc -static-libgcc
+	$(CC) -O2 -shared -o bin/skins/skin_retro80.dll examples/plugin_skin_retro80.c -Isrc -static-libgcc
+	$(CC) -O2 -shared -o bin/skins/skin_retro90.dll examples/plugin_skin_retro90.c -Isrc -static-libgcc
+	$(CC) -O2 -shared -o bin/skins/skin_2000s.dll examples/plugin_skin_2000s.c -Isrc -static-libgcc
+	$(CC) -O2 -shared -o bin/skins/skin_radio.dll examples/plugin_skin_radio.c -Isrc -static-libgcc
+	$(CC) -O2 -shared -o bin/skins/skin_winamp.dll examples/plugin_skin_winamp.c -Isrc -static-libgcc
+	$(CC) -O2 -shared -o bin/skins/skin_clean.dll examples/plugin_skin_clean.c -Isrc -static-libgcc
+	$(CC) -O2 -shared -o bin/skins/skin_kitsch.dll examples/plugin_skin_kitsch.c -Isrc -static-libgcc
+	$(CC) -O2 -shared -o bin/skins/skin_cartoon.dll examples/plugin_skin_cartoon.c -Isrc -static-libgcc
+	$(CC) -O2 -shared -o bin/skins/skin_bnw.dll examples/plugin_skin_bnw.c -Isrc -static-libgcc
+	cp -f examples/radio_bg.png bin/skins/radio_bg.png
+	cp -f examples/winamp_bg.png bin/skins/winamp_bg.png
+	@echo "Plugins d'exemple compilés dans bin/plugins/ et skins dans bin/skins/"
 
 # ----------------------------------------------------------------------
 # Tests sous Wine (lecture, vitesse, pause, stop, fin de fichier)

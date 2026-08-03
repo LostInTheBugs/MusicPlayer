@@ -5,8 +5,10 @@
 #include "plugin.h"
 
 /* Analyse le répertoire <dir> (UTF-16) et charge chaque DLL exportant
- * mp_plugin_entry. Les plugins déjà chargés sont déchargés d'abord. */
-void mp_plugins_scan(const wchar_t* dir, const mp_host_api* host);
+ * mp_plugin_entry, puis celles du dossier <skins_dir> (peut être NULL).
+ * Les plugins déjà chargés sont déchargés d'abord. */
+void mp_plugins_scan(const wchar_t* dir, const wchar_t* skins_dir,
+                     const mp_host_api* host);
 
 /* Nombre de plugins chargés. */
 int mp_plugins_count(void);

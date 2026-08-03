@@ -66,6 +66,7 @@ static const float SPEED_VALUES[SPEED_COUNT] = { 0.5f, 1.0f, 1.5f, 2.0f };
 static HWND g_hwnd = NULL;
 static HWND g_status = NULL;
 static wchar_t g_plugins_dir[MAX_PATH] = { 0 };
+static wchar_t g_skins_dir[MAX_PATH] = { 0 };
 static wchar_t g_lang_dir[MAX_PATH] = { 0 };
 
 static int  g_fullscreen = 0;
@@ -315,6 +316,7 @@ static mp_skin_colors g_skin = {
 
 static ULONG_PTR g_gdiplus_token = 0;  /* GDI+ initialisé au démarrage */
 static GpImage* g_skin_bg = NULL;      /* image de fond du skin */
+static RECT g_skin_vis = { -1, -1, -1, -1 };  /* zone du visualiseur (skin) */
 
 /* ------------------------------------------------------------------ */
 /* Barre de menus dessinée (owner-draw) avec la palette du skin        */
@@ -396,6 +398,16 @@ static void host_skin_set_bg(const char* path_utf8)
         GpStatus st = GdipLoadImageFromFile(w, &g_skin_bg);
         (void)st;
     }
+    if (g_hwnd) InvalidateRect(g_hwnd, NULL, TRUE);
+}
+
+/* Zone du visualiseur imposée par le skin (ex. haut-parleur de la radio) */
+static void host_skin_set_visual_rect(int x, int y, int w, int h)
+{
+    g_skin_vis.left = x;
+    g_skin_vis.top = y;
+    g_skin_vis.right = x + w;
+    g_skin_vis.bottom = y + h;
     if (g_hwnd) InvalidateRect(g_hwnd, NULL, TRUE);
 }
 
@@ -518,6 +530,7 @@ static const mp_host_api g_host = {
     host_web_read,
     host_skin_set_colors,
     host_skin_set_bg,
+    host_skin_set_visual_rect,
     host_get_metadata, host_get_cover, host_plist_path
 };
 
@@ -617,15 +630,14 @@ static void rebuild_plugins_menu(HMENU parent)
 {
     HMENU mVis = CreatePopupMenu();   /* visuels : radio */
     HMENU mFX = CreatePopupMenu();    /* effets audio : cases */
-    HMENU mSkin = CreatePopupMenu();  /* skins : radio */
     HMENU mSvc = CreatePopupMenu();   /* services : cases */
 
     int n = mp_plugins_count();
     int vis_active = -1;
-    int skin_active = -1;
     for (int i = 0; i < n; i++) {
         mp_plugin* p = mp_plugins_get(i);
         if (!p || !p->api || !p->visible) continue;   /* masqué : absent */
+        if (p->api->type() & MP_PLUGIN_SKIN) continue; /* skins : via Interface… */
         wchar_t label[160], name_w[128], ver_w[32];
         utf8_to_wide(p->api->name(), name_w, 128);
         utf8_to_wide(p->api->version() ? p->api->version() : "?", ver_w, 32);
@@ -633,8 +645,7 @@ static void rebuild_plugins_menu(HMENU parent)
 
         unsigned t = p->api->type();
         HMENU target;
-        if (t & MP_PLUGIN_SKIN)          target = mSkin;
-        else if (t & MP_PLUGIN_VISUAL)   target = mVis;
+        if (t & MP_PLUGIN_VISUAL)   target = mVis;
         else if (t & MP_PLUGIN_AUDIO_EFFECT) target = mFX;
         else if (t & MP_PLUGIN_SERVICE)  target = mSvc;
         else                             continue;
@@ -642,8 +653,6 @@ static void rebuild_plugins_menu(HMENU parent)
         AppendMenuW(target, MF_STRING, IDM_PLUGIN_BASE + i, label);
         if (t & MP_PLUGIN_VISUAL) {
             if (p->enabled) vis_active = i;
-        } else if (t & MP_PLUGIN_SKIN) {
-            if (p->enabled) skin_active = i;
         } else {
             CheckMenuItem(target, IDM_PLUGIN_BASE + i,
                           MF_BYCOMMAND | (p->enabled ? MF_CHECKED : MF_UNCHECKED));
@@ -652,9 +661,6 @@ static void rebuild_plugins_menu(HMENU parent)
     if (vis_active >= 0)
         CheckMenuRadioItem(mVis, IDM_PLUGIN_BASE, IDM_PLUGIN_BASE + n - 1,
                            IDM_PLUGIN_BASE + vis_active, MF_BYCOMMAND);
-    if (skin_active >= 0)
-        CheckMenuRadioItem(mSkin, IDM_PLUGIN_BASE, IDM_PLUGIN_BASE + n - 1,
-                           IDM_PLUGIN_BASE + skin_active, MF_BYCOMMAND);
 
     /* reconstruit le menu Plugins (position 2) */
     HMENU m = CreatePopupMenu();
@@ -669,9 +675,6 @@ static void rebuild_plugins_menu(HMENU parent)
         if (GetMenuItemCount(mFX) > 0)
             AppendMenuW(m, MF_POPUP, (UINT_PTR)mFX, lang_get("plugins_effects"));
         else DestroyMenu(mFX);
-        if (GetMenuItemCount(mSkin) > 0)
-            AppendMenuW(m, MF_POPUP, (UINT_PTR)mSkin, lang_get("plugins_skins"));
-        else DestroyMenu(mSkin);
         if (GetMenuItemCount(mSvc) > 0)
             AppendMenuW(m, MF_POPUP, (UINT_PTR)mSvc, lang_get("plugins_services"));
         else DestroyMenu(mSvc);
@@ -1747,6 +1750,14 @@ static void vol_from_mouse(int x)
 static void get_center_rect(HWND hwnd, RECT* rc)
 {
     GetClientRect(hwnd, rc);
+    if (g_skin_vis.left >= 0) {
+        /* zone du visualiseur imposée par le skin */
+        rc->left = g_skin_vis.left;
+        rc->top = g_skin_vis.top;
+        rc->right = g_skin_vis.right;
+        rc->bottom = g_skin_vis.bottom;
+        return;
+    }
     if (g_status) {
         RECT sr;
         GetWindowRect(g_status, &sr);
@@ -2188,7 +2199,7 @@ static void on_command(int id, HMENU bar)
         break;
     }
     case IDM_PLUGIN_RELOAD:
-        mp_plugins_scan(g_plugins_dir, &g_host);
+        mp_plugins_scan(g_plugins_dir, g_skins_dir, &g_host);
         mp_plugins_apply_skins(g_hwnd);
         rebuild_plugins_menu(GetMenu(g_hwnd));
         break;
@@ -2571,6 +2582,7 @@ static void resolve_plugins_dir(void)
     wchar_t* slash = wcsrchr(exe, L'\\');
     if (slash) *slash = L'\0';
     swprintf(g_plugins_dir, MAX_PATH, L"%ls\\plugins", exe);
+    swprintf(g_skins_dir, MAX_PATH, L"%ls\\skins", exe);
     swprintf(g_lang_dir, MAX_PATH, L"%ls\\lang", exe);
 }
 
@@ -2611,7 +2623,7 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR lpCmdLine, int nCmdSh
         _snprintf(dbg, sizeof(dbg), "Plugins directory : %s", dir_utf8);
         log_line(dbg);
     }
-    mp_plugins_scan(g_plugins_dir, &g_host);
+    mp_plugins_scan(g_plugins_dir, g_skins_dir, &g_host);
 
     /* langue : préférence mémorisée, sinon langue du système, sinon anglais */
     lang_init(g_lang_dir, NULL);

@@ -117,6 +117,11 @@ typedef struct mp_host_api {
      * principale (étirée). Chaîne vide = aucune image. */
     void (*skin_set_bg)(const char* path_utf8);
 
+    /* --- skins : zone du visualiseur ---
+     * Coordonnées (relatives à la fenêtre) de la zone du visualiseur.
+     * Sans appel, la zone par défaut est utilisée. */
+    void (*skin_set_visual_rect)(int x, int y, int w, int h);
+
     /* --- métadonnées & jaquette des fichiers (plugins SERVICE) --- */
     const char* (*get_metadata)(const char* path, const char* field);
     const unsigned char* (*get_cover)(const char* path, size_t* len);

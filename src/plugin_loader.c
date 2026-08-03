@@ -185,13 +185,10 @@ static int load_one(const wchar_t* dir, const wchar_t* name, const mp_host_api* 
     return 0;
 }
 
-void mp_plugins_scan(const wchar_t* dir, const mp_host_api* host)
+/* Analyse un répertoire <dir> (UTF-16) et charge chaque DLL exportant
+ * mp_plugin_entry. */
+static void scan_dir(const wchar_t* dir, const mp_host_api* host)
 {
-    /* décharge tout d'abord */
-    for (int i = 0; i < g_count; i++) unload(&g_plugins[i]);
-    g_count = 0;
-    g_host = host;
-
     wchar_t pattern[MAX_PATH];
     swprintf(pattern, MAX_PATH, L"%ls\\*.dll", dir);
 
@@ -205,6 +202,19 @@ void mp_plugins_scan(const wchar_t* dir, const mp_host_api* host)
         load_one(dir, fd.cFileName, host);
     } while (FindNextFileW(h, &fd));
     FindClose(h);
+}
+
+void mp_plugins_scan(const wchar_t* dir, const wchar_t* skins_dir,
+                     const mp_host_api* host)
+{
+    /* décharge tout d'abord */
+    for (int i = 0; i < g_count; i++) unload(&g_plugins[i]);
+    g_count = 0;
+    g_host = host;
+
+    scan_dir(dir, host);                       /* plugins/ */
+    if (skins_dir && skins_dir[0])
+        scan_dir(skins_dir, host);             /* skins/ (à côté de l'exe) */
 }
 
 int mp_plugins_count(void) { return g_count; }
