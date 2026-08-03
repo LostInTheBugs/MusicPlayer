@@ -23,7 +23,7 @@ menu_help=&Help
 # --- File menu ---
 open=&Open…
 menu_open_folder=Open &folder…
-open_folder_title=Select a folder (plays all MP3/MP4, subfolders included)
+open_folder_title=Pick a file — the whole folder plays
 quit=&Quit
 
 # --- Playback menu ---

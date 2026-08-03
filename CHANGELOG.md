@@ -2,6 +2,12 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.017-c1] — 2026-08-02
+
+### Fixed
+- **File ▸ Open folder… : l'application ne répondait plus / se fermait** après le dialogue de sélection (dialogues shell instables : `IFileOpenDialog` se fige, `SHBrowseForFolderW` détruit la fenêtre) — remplacé par le **dialogue d'ouverture classique** `GetOpenFileNameW` (le même que File ▸ Open…, le plus fiable) : choisissez n'importe quel MP3/MP4 du dossier → tout le dossier est lu (sous-dossiers inclus)
+- Titre du dialogue raccourci
+
 ## [2026.08.017] — 2026-08-02
 
 ### Fixed

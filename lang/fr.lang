@@ -21,7 +21,7 @@ menu_help=A&ide
 # --- Menu Fichier ---
 open=&Ouvrir…
 menu_open_folder=Ouvrir un &dossier…
-open_folder_title=Choisir un dossier (lit tous les MP3/MP4, sous-dossiers inclus)
+open_folder_title=Choisissez un fichier — tout le dossier sera lu
 quit=&Quitter
 
 # --- Menu Lecture ---

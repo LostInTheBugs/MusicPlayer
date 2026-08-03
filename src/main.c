@@ -469,35 +469,32 @@ static void do_open_dialog(void)
 
 static void do_open_folder_dialog(void)
 {
-    /* dialogue moderne (Vista+) : IFileOpenDialog en mode "choisir un
-     * dossier" — plus fiable que SHBrowseForFolderW (nécessite le COM) */
-    HRESULT hr = CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);
-    IFileOpenDialog* pfd = NULL;
-    HRESULT h = CoCreateInstance(&CLSID_FileOpenDialog, NULL, CLSCTX_INPROC_SERVER,
-                                 &IID_IFileOpenDialog, (void**)&pfd);
-    if (SUCCEEDED(h) && pfd) {
-        DWORD opts = 0;
-        pfd->lpVtbl->GetOptions(pfd, &opts);
-        pfd->lpVtbl->SetOptions(pfd, opts | FOS_PICKFOLDERS);
-        pfd->lpVtbl->SetTitle(pfd, lang_get("open_folder_title"));
-        if (SUCCEEDED(pfd->lpVtbl->Show(pfd, g_hwnd))) {
-            IShellItem* item = NULL;
-            if (SUCCEEDED(pfd->lpVtbl->GetResult(pfd, &item)) && item) {
-                wchar_t* path = NULL;
-                if (SUCCEEDED(item->lpVtbl->GetDisplayName(item, SIGDN_FILESYSPATH, &path)) && path) {
-                    if (playlist_open_folder(path) != 0) {
-                        wchar_t msg[600];
-                        swprintf(msg, 600, lang_get("err_folder"), path);
-                        MessageBoxW(g_hwnd, msg, APP_TITLE, MB_ICONERROR);
-                    }
-                    CoTaskMemFree(path);
-                }
-                item->lpVtbl->Release(item);
-            }
+    /* Dialogue d'ouverture classique (le plus stable partout) : le user
+     * choisit n'importe quel MP3/MP4 du dossier → tout le dossier est lu
+     * (sous-dossiers inclus). */
+    wchar_t path_w[MAX_PATH] = { 0 };
+    wchar_t filter[512] = { 0 };
+    build_open_filter(filter, 512);
+    OPENFILENAMEW ofn;
+    memset(&ofn, 0, sizeof(ofn));
+    ofn.lStructSize = sizeof(ofn);
+    ofn.hwndOwner = g_hwnd;
+    ofn.lpstrFilter = filter;
+    ofn.lpstrFile = path_w;
+    ofn.nMaxFile = MAX_PATH;
+    ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST;
+    ofn.lpstrTitle = lang_get("open_folder_title");
+    if (GetOpenFileNameW(&ofn)) {
+        wchar_t dir[MAX_PATH];
+        wcscpy(dir, path_w);
+        wchar_t* slash = wcsrchr(dir, L'\\');
+        if (slash) *slash = L'\0';
+        if (playlist_open_folder(dir) != 0) {
+            wchar_t msg[600];
+            swprintf(msg, 600, lang_get("err_folder"), dir);
+            MessageBoxW(g_hwnd, msg, APP_TITLE, MB_ICONERROR);
         }
-        pfd->lpVtbl->Release(pfd);
     }
-    if (hr == S_OK || hr == S_FALSE) CoUninitialize();
 }
 
 static void do_about(void)
