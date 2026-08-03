@@ -2,6 +2,11 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.028-c5] — 2026-08-03
+
+### Added
+- **Console DJ locale complète** : chaque platine a maintenant un **sélecteur de piste** (clic sur la platine = menu avec toute la playliste, façon select) et un **bouton lecture ▶** (joue la piste choisie sur cette voie) — la musique de chaque voie se choisit indépendamment, comme sur le web
+
 ## [2026.08.028-c4] — 2026-08-03
 
 ### Fixed

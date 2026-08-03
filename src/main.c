@@ -77,7 +77,10 @@ static RECT g_win_normal = { 0, 0, 640, 300 };
 static int  g_cd_mode = 0;        /* 1 = lecture CD audio (MCI) */
 static int  g_cd_was_playing = 0; /* détection fin de piste */
 static int  g_dj_mode = 0;        /* 1 = mode DJ Mixing (synchro web) */
+static int  g_dj_track_a = -1;    /* piste choisie sur la platine A */
+static int  g_dj_track_b = -1;    /* piste choisie sur la platine B */
 static RECT g_dj_rc_a, g_dj_rc_b; /* platines de la console DJ locale */
+static RECT g_dj_play_a, g_dj_play_b; /* boutons lecture des platines */
 static RECT g_rc_play, g_rc_stop, g_rc_next, g_rc_shuffle, g_rc_plist, g_rc_fs, g_rc_vol;
 static int  g_vol_drag = 0;   /* curseur de volume en cours de glissement */
 
@@ -306,6 +309,10 @@ static int         host_get_dj_mode(void) { return g_dj_mode; }
 static void        host_dj_toggle(void)
 {
     g_dj_mode = !g_dj_mode;
+    if (g_dj_mode) {
+        g_dj_track_a = g_plist_idx >= 0 ? g_plist_idx : 0;
+        g_dj_track_b = (g_plist_idx + 1 < g_plist_n) ? g_plist_idx + 1 : 0;
+    }
     if (g_hwnd) InvalidateRect(g_hwnd, NULL, TRUE);
     status_update();
 }
@@ -1993,29 +2000,90 @@ static void paint_dj_console(HDC hdc, const RECT* rc)
     HFONT f = (HFONT)GetStockObject(DEFAULT_GUI_FONT);
     HFONT of = (HFONT)SelectObject(hdc, f);
 
-    const wchar_t* ta = (g_plist_idx >= 0 && g_plist_idx < g_plist_n)
-                            ? g_plist[g_plist_idx] : L"—";
-    const wchar_t* tb = (g_plist_idx + 1 >= 0 && g_plist_idx + 1 < g_plist_n)
-                            ? g_plist[g_plist_idx + 1] : L"—";
+    const wchar_t* ta = (g_dj_track_a >= 0 && g_dj_track_a < g_plist_n)
+                            ? g_plist[g_dj_track_a] : L"Choisir une piste…";
+    const wchar_t* tb = (g_dj_track_b >= 0 && g_dj_track_b < g_plist_n)
+                            ? g_plist[g_dj_track_b] : L"Choisir une piste…";
 
     RECT ta_rc = g_dj_rc_a;
     ta_rc.top += 8;
+    ta_rc.bottom = ta_rc.top + 24;
     SetTextColor(hdc, RGB(122, 162, 247));
     DrawTextW(hdc, L"DECK A", -1, &ta_rc, DT_CENTER | DT_TOP);
-    ta_rc.top += 22;
+    ta_rc.top += 20;
+    ta_rc.bottom = ta_rc.top + 20;
     SetTextColor(hdc, RGB(232, 238, 244));
     DrawTextW(hdc, ta, -1, &ta_rc, DT_CENTER | DT_TOP | DT_END_ELLIPSIS);
 
     RECT tb_rc = g_dj_rc_b;
     tb_rc.top += 8;
+    tb_rc.bottom = tb_rc.top + 24;
     SetTextColor(hdc, RGB(122, 162, 247));
     DrawTextW(hdc, L"DECK B", -1, &tb_rc, DT_CENTER | DT_TOP);
-    tb_rc.top += 22;
+    tb_rc.top += 20;
+    tb_rc.bottom = tb_rc.top + 20;
     SetTextColor(hdc, RGB(232, 238, 244));
     DrawTextW(hdc, tb, -1, &tb_rc, DT_CENTER | DT_TOP | DT_END_ELLIPSIS);
 
+    /* boutons lecture (▶) en bas de chaque platine */
+    g_dj_play_a.left = g_dj_rc_a.left + 8;
+    g_dj_play_a.top = g_dj_rc_a.bottom - 40;
+    g_dj_play_a.right = g_dj_play_a.left + 36;
+    g_dj_play_a.bottom = g_dj_rc_a.bottom - 8;
+    g_dj_play_b.left = g_dj_rc_b.left + 8;
+    g_dj_play_b.top = g_dj_rc_b.bottom - 40;
+    g_dj_play_b.right = g_dj_play_b.left + 36;
+    g_dj_play_b.bottom = g_dj_rc_b.bottom - 8;
+    for (int d = 0; d < 2; d++) {
+        RECT pb = d == 0 ? g_dj_play_a : g_dj_play_b;
+        HBRUSH pbb = CreateSolidBrush(RGB(47, 111, 228));
+        FillRect(hdc, &pb, pbb);
+        DeleteObject(pbb);
+        POINT tri[3] = {
+            { pb.left + 10, pb.top + 6 },
+            { pb.left + 10, pb.bottom - 6 },
+            { pb.left + 27, (pb.top + pb.bottom) / 2 }
+        };
+        HBRUSH tb2 = CreateSolidBrush(RGB(255, 255, 255));
+        HPEN op2 = (HPEN)SelectObject(hdc, GetStockObject(NULL_PEN));
+        HBRUSH ob2 = (HBRUSH)SelectObject(hdc, tb2);
+        Polygon(hdc, tri, 3);
+        SelectObject(hdc, op2);
+        SelectObject(hdc, ob2);
+        DeleteObject(tb2);
+    }
+
     SelectObject(hdc, of);
     (void)h;
+}
+
+/* Sélecteur de piste d'une platine (menu popup façon "select") */
+static void dj_pick_track(HWND hwnd, int deck)
+{
+    HMENU m = CreatePopupMenu();
+    int n = g_plist_n;
+    if (n > 300) n = 300;
+    for (int i = 0; i < n; i++) {
+        const wchar_t* s = g_plist[i];
+        const wchar_t* base = wcsrchr(s, L'\\');
+        base = base ? base + 1 : s;
+        wchar_t label[64];
+        wcsncpy(label, base, 62);
+        label[62] = 0;
+        AppendMenuW(m, MF_STRING, 1000 + i, label);
+    }
+    POINT pt;
+    GetCursorPos(&pt);
+    int r = (int)TrackPopupMenu(m, TPM_RIGHTBUTTON | TPM_RETURNCMD,
+                                pt.x, pt.y, 0, hwnd, NULL);
+    DestroyMenu(m);
+    if (r >= 1000 && r < 1000 + g_plist_n) {
+        int idx = r - 1000;
+        if (deck == 0) g_dj_track_a = idx;
+        else           g_dj_track_b = idx;
+        InvalidateRect(hwnd, NULL, TRUE);
+        status_update();
+    }
 }
 
 static void paint_center(HDC hdc, RECT* rc)
@@ -2264,15 +2332,20 @@ static void mouse_down(HWND hwnd, int x, int y)
     get_center_rect(hwnd, &rc);
     layout_controls(&rc);
 
-    /* mode DJ : clic sur une platine = jouer la piste du deck */
+    /* mode DJ : clic sur les boutons lecture = jouer la piste de la
+     * platine ; clic sur une platine = choisir la piste (menu) */
     if (g_dj_mode) {
-        if (x >= g_dj_rc_a.left && x <= g_dj_rc_a.right &&
-            y >= g_dj_rc_a.top && y <= g_dj_rc_a.bottom) {
-            if (g_plist_idx >= 0) playlist_play_index(g_plist_idx);
-        } else if (x >= g_dj_rc_b.left && x <= g_dj_rc_b.right &&
-                   y >= g_dj_rc_b.top && y <= g_dj_rc_b.bottom) {
-            if (g_plist_idx + 1 < g_plist_n)
-                playlist_play_index(g_plist_idx + 1);
+        POINT pt = { x, y };
+        if (PtInRect(&g_dj_play_a, pt)) {
+            if (g_dj_track_a >= 0 && g_dj_track_a < g_plist_n)
+                playlist_play_index(g_dj_track_a);
+        } else if (PtInRect(&g_dj_play_b, pt)) {
+            if (g_dj_track_b >= 0 && g_dj_track_b < g_plist_n)
+                playlist_play_index(g_dj_track_b);
+        } else if (PtInRect(&g_dj_rc_a, pt)) {
+            dj_pick_track(hwnd, 0);
+        } else if (PtInRect(&g_dj_rc_b, pt)) {
+            dj_pick_track(hwnd, 1);
         }
         return;
     }
@@ -2409,6 +2482,10 @@ static void on_command(int id, HMENU bar)
     case IDM_FULLSCREEN: toggle_fullscreen(g_hwnd); break;
     case IDM_DJ_MODE:
         g_dj_mode = !g_dj_mode;
+        if (g_dj_mode) {
+            g_dj_track_a = g_plist_idx >= 0 ? g_plist_idx : 0;
+            g_dj_track_b = (g_plist_idx + 1 < g_plist_n) ? g_plist_idx + 1 : 0;
+        }
         InvalidateRect(g_hwnd, NULL, TRUE);
         status_update();
         break;
