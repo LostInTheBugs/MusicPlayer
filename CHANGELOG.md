@@ -2,6 +2,11 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.028-c4] — 2026-08-03
+
+### Fixed
+- **Console DJ locale réparée** : les 2 platines sont maintenant bien délimitées (couleurs fixes, bordures, titres DECK A/B et noms de pistes) et la console occupe toute la zone centrale — elle n'est plus déformée par la zone du visualiseur imposée par un skin ni par les couleurs du skin
+
 ## [2026.08.028-c3] — 2026-08-03
 
 ### Added

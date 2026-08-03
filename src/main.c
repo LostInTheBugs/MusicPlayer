@@ -1953,27 +1953,41 @@ static void draw_progress_bar(HDC hdc, const RECT* rc)
 static void paint_dj_console(HDC hdc, const RECT* rc)
 {
     RECT r = *rc;
-    HBRUSH bb = CreateSolidBrush(g_skin.bg);
+    /* fond sombre de la console */
+    HBRUSH bb = CreateSolidBrush(RGB(20, 24, 30));
     FillRect(hdc, &r, bb);
     DeleteObject(bb);
 
     int w = r.right - r.left;
     int h = r.bottom - r.top;
-    int dw = (w - 30) / 2;
-    if (dw < 80) dw = 80;
+    if (w < 220 || h < 70) return;
+    int dw = (w - 40) / 2;
+    if (dw > 320) dw = 320;
+
     g_dj_rc_a.left = r.left + 10;
     g_dj_rc_a.top = r.top + 10;
-    g_dj_rc_a.right = r.left + 10 + dw;
+    g_dj_rc_a.right = g_dj_rc_a.left + dw;
     g_dj_rc_a.bottom = r.bottom - 10;
-    g_dj_rc_b.left = r.left + 20 + dw;
+    g_dj_rc_b.left = r.right - 10 - dw;
     g_dj_rc_b.top = r.top + 10;
-    g_dj_rc_b.right = r.left + 20 + 2 * dw;
+    g_dj_rc_b.right = r.right - 10;
     g_dj_rc_b.bottom = r.bottom - 10;
 
-    HBRUSH deck = CreateSolidBrush(g_skin.ctrl_bar);
+    /* platines */
+    HBRUSH deck = CreateSolidBrush(RGB(38, 44, 54));
     FillRect(hdc, &g_dj_rc_a, deck);
     FillRect(hdc, &g_dj_rc_b, deck);
     DeleteObject(deck);
+
+    /* bordures */
+    HPEN pen = CreatePen(PS_SOLID, 2, RGB(92, 108, 128));
+    HBRUSH ob = (HBRUSH)SelectObject(hdc, GetStockObject(NULL_BRUSH));
+    HPEN op = (HPEN)SelectObject(hdc, pen);
+    Rectangle(hdc, g_dj_rc_a.left, g_dj_rc_a.top, g_dj_rc_a.right, g_dj_rc_a.bottom);
+    Rectangle(hdc, g_dj_rc_b.left, g_dj_rc_b.top, g_dj_rc_b.right, g_dj_rc_b.bottom);
+    SelectObject(hdc, op);
+    SelectObject(hdc, ob);
+    DeleteObject(pen);
 
     SetBkMode(hdc, TRANSPARENT);
     HFONT f = (HFONT)GetStockObject(DEFAULT_GUI_FONT);
@@ -1986,21 +2000,19 @@ static void paint_dj_console(HDC hdc, const RECT* rc)
 
     RECT ta_rc = g_dj_rc_a;
     ta_rc.top += 8;
-    ta_rc.bottom = ta_rc.top + 30;
-    SetTextColor(hdc, g_skin.accent);
-    DrawTextW(hdc, L"DECK A", -1, &ta_rc, DT_CENTER | DT_SINGLELINE);
-    ta_rc.top += 26;
-    SetTextColor(hdc, g_skin.text);
-    DrawTextW(hdc, ta, -1, &ta_rc, DT_CENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
+    SetTextColor(hdc, RGB(122, 162, 247));
+    DrawTextW(hdc, L"DECK A", -1, &ta_rc, DT_CENTER | DT_TOP);
+    ta_rc.top += 22;
+    SetTextColor(hdc, RGB(232, 238, 244));
+    DrawTextW(hdc, ta, -1, &ta_rc, DT_CENTER | DT_TOP | DT_END_ELLIPSIS);
 
     RECT tb_rc = g_dj_rc_b;
     tb_rc.top += 8;
-    tb_rc.bottom = tb_rc.top + 30;
-    SetTextColor(hdc, g_skin.accent);
-    DrawTextW(hdc, L"DECK B", -1, &tb_rc, DT_CENTER | DT_SINGLELINE);
-    tb_rc.top += 26;
-    SetTextColor(hdc, g_skin.text);
-    DrawTextW(hdc, tb, -1, &tb_rc, DT_CENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
+    SetTextColor(hdc, RGB(122, 162, 247));
+    DrawTextW(hdc, L"DECK B", -1, &tb_rc, DT_CENTER | DT_TOP);
+    tb_rc.top += 22;
+    SetTextColor(hdc, RGB(232, 238, 244));
+    DrawTextW(hdc, tb, -1, &tb_rc, DT_CENTER | DT_TOP | DT_END_ELLIPSIS);
 
     SelectObject(hdc, of);
     (void)h;
@@ -2034,9 +2046,14 @@ static void paint_center(HDC hdc, RECT* rc)
         vis_rc.bottom = bar_rc.top - 2;
     }
 
-    /* mode DJ : console de mixage locale (synchro avec la page web) */
+    /* mode DJ : console de mixage locale (synchro avec la page web) —
+     * la console occupe toute la zone centrale (le skin n'impose pas
+     * sa zone de visualiseur en mode DJ) */
     if (g_dj_mode) {
-        paint_dj_console(hdc, &vis_rc);
+        RECT dj_rc = *rc;
+        if (!g_skin_ctrl_top)
+            dj_rc.bottom -= (CTRL_H + PROGRESS_H);
+        paint_dj_console(hdc, &dj_rc);
         return;
     }
 
