@@ -16,8 +16,6 @@ LLM token usage for this project, tallied session by session.
 | **Total (input + output)** | **2 533 888** |
 | Cache read (reused at reduced price) | 194 324 480 |
 | **Estimated cost** | **≈ 0.99 USD** |
-| **Total (input + output)** | **1 918 584** |
-| Estimated cost | ≈ 0.907 USD |
 
 ## How to re-read the counter
 
