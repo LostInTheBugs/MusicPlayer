@@ -2,6 +2,15 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.018] — 2026-08-03
+
+### Added
+- **Serveur web de contrôle à distance** (Settings ▸ Web server…) — la page web est accessible depuis le téléphone ou la tablette sur le même réseau
+  - **Port libre détecté automatiquement à partir de 8000**, modifiable par l'utilisateur
+  - **Télécommande** : lecture/pause, stop, suivant, volume +/-, vitesse +/-
+  - **Playlist affichée** avec le morceau en cours mis en évidence (raffraîchie chaque seconde)
+  - **Sortie audio** : cet ordinateur, téléphone seul, ou les deux en simultané — le téléphone reçoit le son via un flux audio WAV diffusé par le serveur (/stream)
+
 ## [2026.08.017-c2] — 2026-08-02
 
 ### Fixed

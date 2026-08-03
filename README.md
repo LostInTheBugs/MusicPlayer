@@ -9,6 +9,7 @@ cross-compiled from Linux with MinGW-w64.
 - Drag & drop files, keyboard shortcuts
 - **Play/Pause/Stop/Next buttons + volume slider** (0–100 % blue, 100–200 % orange boost) built into the window
 - **Folder playback**: File ▸ Open folder… (or drag & drop a folder, or pass it on the command line) — all MP3/MP4 are played in order, subfolders included, next track starts automatically
+- **Web server (remote control)**: Settings ▸ Web server… — open the page from your phone/tablet on the same network: control playback (play/pause, stop, next, volume, speed), see the playlist with the current track highlighted, and pick the audio output: this computer, phone, or both simultaneously (WAV stream)
 - **Fullscreen** for visual plugins (F11 or the ⛶ button)
 - **Progress bar** with color gradient
 - **Update checker**: manual (Settings ▸ Check for updates…) and automatic at startup (compares with the latest GitHub release)
@@ -19,7 +20,7 @@ cross-compiled from Linux with MinGW-w64.
 
 ## Version
 
-`2026.08.017-c2` — see [CHANGELOG.md](CHANGELOG.md)
+`2026.08.018` — see [CHANGELOG.md](CHANGELOG.md)
 
 ## Run on Windows 11
 

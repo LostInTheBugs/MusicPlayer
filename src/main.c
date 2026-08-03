@@ -23,6 +23,7 @@
 #include "plugin_loader.h"
 #include "lang.h"
 #include "update.h"
+#include "server.h"
 
 #ifndef MP_VERSION
 #define MP_VERSION "2026.08.014"
@@ -45,6 +46,7 @@ enum {
     IDM_LANG_BASE = 700,    /* items langues dynamiques */
     IDM_FULLSCREEN = 801,
     IDM_CHECK_UPDATE = 802, IDM_AUTO_UPDATE = 803,
+    IDM_WEB_SERVER = 804,
     IDM_ABOUT = 901
 };
 
@@ -389,6 +391,8 @@ static HMENU create_menus(void)
     AppendMenuW(mSettings,
                  MF_STRING | (mp_update_auto_enabled() ? MF_CHECKED : MF_UNCHECKED),
                  IDM_AUTO_UPDATE, lang_get("menu_auto_update"));
+    AppendMenuW(mSettings, MF_SEPARATOR, 0, NULL);
+    AppendMenuW(mSettings, MF_STRING, IDM_WEB_SERVER, lang_get("menu_web_server"));
     AppendMenuW(bar, MF_POPUP, (UINT_PTR)mSettings, lang_get("menu_settings"));
 
     AppendMenuW(bar, MF_POPUP, (UINT_PTR)CreatePopupMenu(), lang_get("menu_plugins"));
@@ -490,6 +494,164 @@ static void do_open_folder_dialog(void)
         CoTaskMemFree(pidl);
     }
     if (hr == S_OK || hr == S_FALSE) CoUninitialize();
+}
+
+/* ------------------------------------------------------------------ */
+/* Serveur web : configuration (activé, port, sortie audio)            */
+/* ------------------------------------------------------------------ */
+#define IDD_WEB         104
+#define IDC_WEB_CHK     2001
+#define IDC_WEB_EDIT    2002
+#define IDC_WEB_COMBO   2003
+#define IDC_WEB_PORT_LBL 1001
+#define IDC_WEB_AUD_LBL 1002
+
+static int g_web_enabled = 0;
+static int g_web_port = 8000;
+static int g_web_audio = 0;      /* 0 = PC, 1 = téléphone, 2 = les deux */
+
+static void web_config_path(wchar_t* out, int chars)
+{
+    GetEnvironmentVariableW(L"APPDATA", out, chars);
+    wcscat(out, L"\\MusicPlayer");
+    CreateDirectoryW(out, NULL);
+    wcscat(out, L"\\web.txt");
+}
+
+static void web_load_config(void)
+{
+    wchar_t path[MAX_PATH];
+    web_config_path(path, MAX_PATH);
+    HANDLE h = CreateFileW(path, GENERIC_READ, FILE_SHARE_READ, NULL,
+                           OPEN_EXISTING, 0, NULL);
+    if (h == INVALID_HANDLE_VALUE) {
+        g_web_port = server_find_free_port();
+        return;
+    }
+    char buf[512] = { 0 };
+    DWORD rd = 0;
+    ReadFile(h, buf, sizeof(buf) - 1, &rd, NULL);
+    CloseHandle(h);
+    buf[rd] = 0;
+    int on = 0, port = 0, audio = 0;
+    if (sscanf(buf, "on=%d\nport=%d\naudio=%d", &on, &port, &audio) == 3) {
+        g_web_enabled = on;
+        g_web_port = (port >= 1 && port <= 65535) ? port : server_find_free_port();
+        g_web_audio = audio;
+    } else {
+        g_web_port = server_find_free_port();
+    }
+}
+
+static void web_save_config(void)
+{
+    wchar_t path[MAX_PATH];
+    web_config_path(path, MAX_PATH);
+    char buf[128];
+    _snprintf(buf, sizeof(buf), "on=%d\nport=%d\naudio=%d\n",
+              g_web_enabled, g_web_port, g_web_audio);
+    HANDLE h = CreateFileW(path, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, 0, NULL);
+    if (h != INVALID_HANDLE_VALUE) {
+        DWORD wr;
+        WriteFile(h, buf, (DWORD)strlen(buf), &wr, NULL);
+        CloseHandle(h);
+    }
+}
+
+static void web_apply(void)
+{
+    mp_set_audio_out(g_web_audio);
+    if (g_web_enabled) {
+        if (server_start(g_web_port, g_hwnd) != 0) {
+            wchar_t msg[256];
+            swprintf(msg, 256, lang_get("web_err_port"), g_web_port);
+            MessageBoxW(g_hwnd, msg, APP_TITLE, MB_ICONERROR);
+            g_web_enabled = 0;
+            web_save_config();
+        }
+    } else {
+        server_stop();
+    }
+}
+
+static INT_PTR CALLBACK web_dlg_proc(HWND h, UINT m, WPARAM w, LPARAM l)
+{
+    (void)l;
+    switch (m) {
+    case WM_INITDIALOG: {
+        CheckDlgButton(h, IDC_WEB_CHK, g_web_enabled ? BST_CHECKED : BST_UNCHECKED);
+        wchar_t ptxt[16];
+        swprintf(ptxt, 16, L"%d", g_web_port);
+        SetDlgItemTextW(h, IDC_WEB_EDIT, ptxt);
+        HWND cb = GetDlgItem(h, IDC_WEB_COMBO);
+        SendMessageW(cb, CB_ADDSTRING, 0, (LPARAM)lang_get("web_pc"));
+        SendMessageW(cb, CB_ADDSTRING, 0, (LPARAM)lang_get("web_phone"));
+        SendMessageW(cb, CB_ADDSTRING, 0, (LPARAM)lang_get("web_both"));
+        SendMessageW(cb, CB_SETCURSEL, g_web_audio, 0);
+        SetDlgItemTextW(h, IDC_WEB_CHK, lang_get("web_enable"));
+        SetDlgItemTextW(h, IDC_WEB_PORT_LBL, lang_get("web_port"));
+        SetDlgItemTextW(h, IDC_WEB_AUD_LBL, lang_get("web_audio_out"));
+        SetDlgItemTextW(h, IDOK, lang_get("web_ok"));
+        SetDlgItemTextW(h, IDCANCEL, lang_get("web_cancel"));
+        SetWindowTextW(h, lang_get("web_dlg_title"));
+        return TRUE;
+    }
+    case WM_COMMAND:
+        if (LOWORD(w) == IDOK) {
+            int on = IsDlgButtonChecked(h, IDC_WEB_CHK) == BST_CHECKED;
+            wchar_t ptxt[32];
+            GetDlgItemTextW(h, IDC_WEB_EDIT, ptxt, 32);
+            int port = _wtoi(ptxt);
+            int audio = (int)SendMessageW(GetDlgItem(h, IDC_WEB_COMBO),
+                                          CB_GETCURSEL, 0, 0);
+            if (audio < 0) audio = 0;
+            g_web_enabled = on;
+            g_web_port = (port >= 1 && port <= 65535) ? port : 8000;
+            g_web_audio = audio;
+            web_save_config();
+            web_apply();
+            EndDialog(h, 1);
+        } else if (LOWORD(w) == IDCANCEL) {
+            EndDialog(h, 0);
+        }
+        return TRUE;
+    case WM_CLOSE:
+        EndDialog(h, 0);
+        return TRUE;
+    }
+    return FALSE;
+}
+
+static void do_web_dialog(void)
+{
+    DialogBoxParamW(GetModuleHandleW(NULL), MAKEINTRESOURCEW(IDD_WEB),
+                    g_hwnd, web_dlg_proc, 0);
+}
+
+/* ------------------------------------------------------------------ */
+/* Interface playlist pour le serveur web (server.c)                   */
+/* ------------------------------------------------------------------ */
+int web_plist_count(void)
+{
+    return g_plist_n;
+}
+
+const wchar_t* web_plist_name(int i)
+{
+    if (i < 0 || i >= g_plist_n) return L"";
+    const wchar_t* p = g_plist[i];
+    const wchar_t* s = wcsrchr(p, L'\\');
+    return s ? s + 1 : p;
+}
+
+int web_plist_index(void)
+{
+    return g_plist_idx;
+}
+
+void web_plist_next(void)
+{
+    playlist_next();
 }
 
 static void do_about(void)
@@ -1012,6 +1174,9 @@ static void on_command(int id, HMENU bar)
         CheckMenuItem(GetSubMenu(GetMenu(g_hwnd), 1), IDM_AUTO_UPDATE,
                       MF_BYCOMMAND | (on ? MF_CHECKED : MF_UNCHECKED));
         break;
+    case IDM_WEB_SERVER:
+        do_web_dialog();
+        break;
     }
     case IDM_ABOUT:     do_about(); break;
 
@@ -1244,6 +1409,7 @@ static LRESULT CALLBACK wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         return 0;
     }
     case WM_CLOSE:
+        server_stop();
         mp_plugins_shutdown();
         mp_shutdown();
         DestroyWindow(hwnd);
@@ -1421,6 +1587,15 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR lpCmdLine, int nCmdSh
     ShowWindow(g_hwnd, SW_SHOW);
     UpdateWindow(g_hwnd);
     log_line("Window shown");
+
+    /* serveur web : config persistée + démarrage si activé */
+    web_load_config();
+    web_apply();
+    if (g_web_enabled) {
+        char dbg[256];
+        _snprintf(dbg, sizeof(dbg), "Web server enabled on port %d", g_web_port);
+        log_line(dbg);
+    }
 
     /* fichier ou dossier passé en ligne de commande :
        "MusicPlayer.exe chemin.mp3" ou "MusicPlayer.exe C:\Musique" */

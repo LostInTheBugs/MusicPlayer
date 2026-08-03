@@ -1,6 +1,8 @@
 #ifndef MP_PLAYER_H
 #define MP_PLAYER_H
 
+#include <stdint.h>
+
 /*
  * Moteur de lecture MusicPlayer.
  * Décodage MP3/MP4 via FFmpeg (libavformat/libavcodec/libswresample),
@@ -54,5 +56,17 @@ double mp_get_duration(void);
 
 /* Chemin du fichier en cours (NULL si aucun). */
 const char* mp_get_file_name(void);
+
+/* ------------------------------------------------------------------ */
+/* Diffusion web (serveur de contrôle à distance)                      */
+/* ------------------------------------------------------------------ */
+
+/* Lit jusqu'à `frames` frames (float stéréo) du flux de diffusion
+ * destiné au téléphone. Consomme les données. 0 si rien de disponible. */
+uint32_t mp_web_read(float* dst, uint32_t frames);
+
+/* Sortie audio : 0 = cet ordinateur, 1 = téléphone seul, 2 = les deux. */
+void mp_set_audio_out(int mode);
+int  mp_get_audio_out(void);
 
 #endif /* MP_PLAYER_H */

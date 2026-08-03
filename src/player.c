@@ -124,6 +124,63 @@ static volatile LONG  g_decoding = 0;         /* le thread est dans la boucle */
 static volatile LONG  g_volume_pct = 80;      /* 0..100 */
 static volatile float g_speed = 1.0f;
 static volatile LONG64 g_samples_decoded = 0; /* frames poussées dans le ring */
+static volatile LONG  g_audio_out = 0;        /* 0 = PC, 1 = téléphone, 2 = les deux */
+
+/* ------------------------------------------------------------------ */
+/* Ring de diffusion web (téléphone) — best effort                     */
+/* ------------------------------------------------------------------ */
+#define WEB_RING_FRAMES (1 << 15)   /* 32768 frames ≈ 0,74 s */
+#define WEB_RING_MASK   (WEB_RING_FRAMES - 1)
+static float          g_web_ring[WEB_RING_FRAMES * 2];
+static volatile LONG  g_web_head = 0;
+static volatile LONG  g_web_tail = 0;
+
+/* Écrit les frames décodées (float stéréo, déjà à la vitesse choisie).
+ * Non bloquant : si le ring est plein, les données les plus anciennes
+ * sont jetées (personne n'écoute → on ne ralentit pas la lecture). */
+static void web_ring_write(const float* data, uint32_t frames)
+{
+    LONG h = g_web_head, t = g_web_tail;
+    uint32_t used = (uint32_t)(t - h) & WEB_RING_MASK;
+    if (used + frames > WEB_RING_FRAMES) {
+        uint32_t drop = used + frames - WEB_RING_FRAMES;
+        g_web_head = (LONG)((uint32_t)h + drop);
+    }
+    uint32_t wpos = (uint32_t)t & WEB_RING_MASK;
+    uint32_t n1 = frames;
+    if (n1 > WEB_RING_FRAMES - wpos) n1 = WEB_RING_FRAMES - wpos;
+    memcpy(g_web_ring + (size_t)wpos * 2, data, (size_t)n1 * 2 * sizeof(float));
+    if (n1 < frames)
+        memcpy(g_web_ring, data + (size_t)n1 * 2,
+               (size_t)(frames - n1) * 2 * sizeof(float));
+    InterlockedExchange(&g_web_tail, (LONG)((uint32_t)t + frames));
+}
+
+uint32_t mp_web_read(float* dst, uint32_t frames)
+{
+    LONG h = g_web_head, t = g_web_tail;
+    uint32_t used = (uint32_t)(t - h) & WEB_RING_MASK;
+    if (used == 0) return 0;
+    if (frames > used) frames = used;
+    uint32_t rpos = (uint32_t)h & WEB_RING_MASK;
+    uint32_t n1 = frames;
+    if (n1 > WEB_RING_FRAMES - rpos) n1 = WEB_RING_FRAMES - rpos;
+    memcpy(dst, g_web_ring + (size_t)rpos * 2, (size_t)n1 * 2 * sizeof(float));
+    if (n1 < frames)
+        memcpy(dst + (size_t)n1 * 2, g_web_ring,
+               (size_t)(frames - n1) * 2 * sizeof(float));
+    InterlockedExchange(&g_web_head, (LONG)((uint32_t)h + frames));
+    return frames;
+}
+
+void mp_set_audio_out(int mode)
+{
+    if (mode < 0) mode = 0;
+    if (mode > 2) mode = 2;
+    g_audio_out = mode;
+}
+
+int mp_get_audio_out(void) { return (int)g_audio_out; }
 
 static HANDLE g_thread = NULL;
 
@@ -220,6 +277,7 @@ static DWORD WINAPI decode_thread(LPVOID unused)
                                !g_interrupt && !g_shutdown) {
                             uint32_t w = ring_write(&g_ring, out_buf + (size_t)pushed * 2,
                                                     (uint32_t)got - pushed);
+                            web_ring_write(out_buf + (size_t)pushed * 2, w);
                             pushed += w;
                             g_samples_decoded += w;
                             if (pushed < (uint32_t)got) Sleep(5);
@@ -259,6 +317,9 @@ static void data_cb(ma_device* dev, void* out, const void* in, ma_uint32 frames)
         mp_plugins_audio_process(dst, frames, 2, g_device_rate);
         /* flux lecture seule pour les plugins visuels */
         mp_plugins_audio_frames(dst, frames, 2, g_device_rate);
+        /* sortie "téléphone seul" : le haut-parleur local reste muet */
+        if (g_audio_out == 1)
+            memset(dst, 0, (size_t)frames * 2 * sizeof(float));
     } else {
         memset(dst, 0, (size_t)frames * 2 * sizeof(float));
     }

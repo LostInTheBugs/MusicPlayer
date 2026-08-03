@@ -47,6 +47,18 @@ plugins_skins=&Skins
 fullscreen=&Fullscreen
 menu_check_updates=Check for &updates…
 menu_auto_update=Check for updates at &startup
+menu_web_server=&Web server…
+web_dlg_title=Web server
+web_enable=Enable web server (remote control)
+web_port=Port:
+web_audio_out=Audio output:
+web_pc=This computer
+web_phone=Phone
+web_both=Both
+web_ok=OK
+web_cancel=Cancel
+web_err_port=Cannot start the web server on port %d.
+The port may be already in use.
 
 # --- Update ---
 upd_title=Update

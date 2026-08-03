@@ -45,6 +45,18 @@ plugins_skins=&Skins
 fullscreen=&Plein écran
 menu_check_updates=Vérifier les mises à &jour…
 menu_auto_update=Vérifier les mises à jour au &démarrage
+menu_web_server=Serveur &web…
+web_dlg_title=Serveur web
+web_enable=Activer le serveur web (télécommande)
+web_port=Port :
+web_audio_out=Sortie audio :
+web_pc=Cet ordinateur
+web_phone=Téléphone
+web_both=Les deux
+web_ok=OK
+web_cancel=Annuler
+web_err_port=Impossible de démarrer le serveur web sur le port %d.
+Le port est peut-être déjà utilisé.
 
 # --- Mises à jour ---
 upd_title=Mise à jour
