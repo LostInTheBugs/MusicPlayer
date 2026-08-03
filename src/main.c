@@ -64,7 +64,7 @@ static wchar_t g_lang_dir[MAX_PATH] = { 0 };
 
 static int  g_fullscreen = 0;
 static RECT g_win_normal = { 0, 0, 640, 300 };
-static RECT g_rc_play, g_rc_stop, g_rc_next, g_rc_fs, g_rc_vol;
+static RECT g_rc_play, g_rc_stop, g_rc_next, g_rc_shuffle, g_rc_fs, g_rc_vol;
 static int  g_vol_drag = 0;   /* curseur de volume en cours de glissement */
 
 static void status_update(void);        /* définie plus bas */
@@ -141,10 +141,28 @@ static int playlist_open_folder(const wchar_t* dir)
     return playlist_play_index(0);
 }
 
-/* Passe au morceau suivant ; à la fin de la playlist : stop */
+/* Passe au morceau suivant ; en mode aléatoire : index au hasard ;
+ * à la fin de la playlist : stop */
+static int g_shuffle = 0;
+
+void playlist_set_shuffle(int on)
+{
+    g_shuffle = on ? 1 : 0;
+}
+
+int playlist_get_shuffle(void)
+{
+    return g_shuffle;
+}
+
 static void playlist_next(void)
 {
     if (g_plist_n == 0) return;
+    if (g_shuffle && g_plist_n > 1) {
+        int ni;
+        do { ni = rand() % g_plist_n; } while (ni == g_plist_idx);
+        if (playlist_play_index(ni) == 0) return;
+    }
     if (g_plist_idx + 1 >= g_plist_n) {
         g_plist_idx = g_plist_n;       /* marque la fin de la playlist */
         mp_stop();
@@ -654,6 +672,23 @@ void web_plist_next(void)
     playlist_next();
 }
 
+/* Joue directement le morceau n° i (clic sur la playlist web) */
+void web_playlist_play(int i)
+{
+    playlist_play_index(i);
+}
+
+/* Bascule le mode aléatoire */
+void web_shuffle_toggle(void)
+{
+    playlist_set_shuffle(!playlist_get_shuffle());
+}
+
+int web_plist_shuffle(void)
+{
+    return g_shuffle;
+}
+
 /* Changement de sortie audio depuis le serveur web (PC / téléphone / les 2) */
 void web_set_audio_out(int mode)
 {
@@ -689,6 +724,10 @@ static void layout_controls(const RECT* rc)
     /* bouton suivant */
     g_rc_next.left = x; g_rc_next.top = y + 4;
     g_rc_next.right = x + bs; g_rc_next.bottom = y + 4 + bs;
+    x += bs + 6;
+    /* bouton aléatoire (shuffle) */
+    g_rc_shuffle.left = x; g_rc_shuffle.top = y + 4;
+    g_rc_shuffle.right = x + bs; g_rc_shuffle.bottom = y + 4 + bs;
     x += bs + 6;
     /* curseur de volume */
     g_rc_vol.left = x;
@@ -758,6 +797,22 @@ static void draw_glyph_next(HDC hdc, RECT* r)
     Polygon(hdc, t2, 3);
     SelectObject(hdc, oldb);
     SelectObject(hdc, oldp);
+    DeleteObject(pen);
+}
+
+static void draw_glyph_shuffle(HDC hdc, RECT* r)
+{
+    /* deux flèches horizontales croisées */
+    HPEN pen = CreatePen(PS_SOLID, 2, RGB(255, 255, 255));
+    HPEN old = (HPEN)SelectObject(hdc, pen);
+    int x0 = r->left + 1, x1 = r->right - 1;
+    int cy = (r->top + r->bottom) / 2;
+    MoveToEx(hdc, x0, cy - 4, NULL); LineTo(hdc, x1, cy - 4);
+    MoveToEx(hdc, x0, cy + 4, NULL); LineTo(hdc, x1, cy + 4);
+    /* pointes : flèche haute → droite, flèche basse → gauche */
+    MoveToEx(hdc, x1 - 4, cy - 7, NULL); LineTo(hdc, x1, cy - 4); LineTo(hdc, x1 - 4, cy - 1);
+    MoveToEx(hdc, x0 + 4, cy + 1, NULL); LineTo(hdc, x0, cy + 4); LineTo(hdc, x0 + 4, cy + 7);
+    SelectObject(hdc, old);
     DeleteObject(pen);
 }
 
@@ -834,6 +889,17 @@ static void paint_controls(HDC hdc, const RECT* rc)
     RECT gn = g_rc_next;
     gn.left += 3; gn.right -= 3; gn.top += 3; gn.bottom -= 3;
     draw_glyph_next(hdc, &gn);
+
+    /* bouton aléatoire (shuffle) : orange si actif */
+    HBRUSH bsh = CreateSolidBrush(g_shuffle ? RGB(230, 126, 34) : RGB(110, 118, 136));
+    oldb = (HBRUSH)SelectObject(hdc, bsh);
+    RoundRect(hdc, g_rc_shuffle.left, g_rc_shuffle.top,
+              g_rc_shuffle.right, g_rc_shuffle.bottom, 8, 8);
+    SelectObject(hdc, oldb);
+    DeleteObject(bsh);
+    RECT gsh = g_rc_shuffle;
+    gsh.left += 2; gsh.right -= 2; gsh.top += 2; gsh.bottom -= 2;
+    draw_glyph_shuffle(hdc, &gsh);
 
     /* bouton plein écran */
     HBRUSH bfs = CreateSolidBrush(RGB(110, 118, 136));
@@ -1092,6 +1158,10 @@ static void mouse_down(HWND hwnd, int x, int y)
     } else if (x >= g_rc_next.left && x <= g_rc_next.right &&
                y >= g_rc_next.top && y <= g_rc_next.bottom) {
         playlist_next();
+    } else if (x >= g_rc_shuffle.left && x <= g_rc_shuffle.right &&
+               y >= g_rc_shuffle.top && y <= g_rc_shuffle.bottom) {
+        playlist_set_shuffle(!playlist_get_shuffle());
+        InvalidateRect(hwnd, NULL, TRUE);
     } else if (x >= g_rc_fs.left && x <= g_rc_fs.right &&
                y >= g_rc_fs.top && y <= g_rc_fs.bottom) {
         toggle_fullscreen(hwnd);
@@ -1527,6 +1597,7 @@ static void resolve_plugins_dir(void)
 int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR lpCmdLine, int nCmdShow)
 {
     (void)hPrev; (void)nCmdShow;
+    srand((unsigned)GetTickCount());   /* mode aléatoire de la playlist */
 
     /* mode test : MusicPlayer.exe --selftest fichier1 fichier2 ... */
     if (lpCmdLine && strstr(lpCmdLine, "--selftest")) {

@@ -27,6 +27,9 @@ extern int  web_plist_count(void);
 extern const wchar_t* web_plist_name(int i);
 extern int  web_plist_index(void);
 extern void web_plist_next(void);
+extern void web_playlist_play(int i);
+extern void web_shuffle_toggle(void);
+extern int  web_plist_shuffle(void);
 extern void web_set_audio_out(int mode);
 
 static volatile LONG g_running = 0;
@@ -106,8 +109,9 @@ static void api_state(SOCKET s)
     else name[0] = 0;
     _snprintf(body, sizeof(body),
         "{\"state\":\"%s\",\"idx\":%d,\"count\":%d,\"vol\":%.2f,\"speed\":%.2f,"
-        "\"audio\":\"%s\",\"name\":\"%s\",\"items\":[%s]}",
-        st, idx, n, mp_get_volume(), mp_get_speed(), ao, name, items);
+        "\"audio\":\"%s\",\"shuffle\":%d,\"name\":\"%s\",\"items\":[%s]}",
+        st, idx, n, mp_get_volume(), mp_get_speed(), ao, web_plist_shuffle(),
+        name, items);
     http_response(s, "200 OK", "application/json", body);
 }
 
@@ -122,6 +126,10 @@ static void api_cmd(SOCKET s, const char* cmd)
     else if (!strcmp(cmd, "speeddown"))mp_set_speed(mp_get_speed() / 1.1f);
     else if (!strcmp(cmd, "audio"))
         web_set_audio_out((mp_get_audio_out() + 1) % 3);   /* cycle PC→tél→les 2 */
+    else if (!strncmp(cmd, "playidx=", 8))
+        web_playlist_play(atoi(cmd + 8));                  /* clic sur un morceau */
+    else if (!strcmp(cmd, "shuffle"))
+        web_shuffle_toggle();
     http_response(s, "200 OK", "text/plain", "ok");
 }
 
@@ -141,6 +149,7 @@ static const char PAGE_HTML[] =
 "<style>\n"
 "*{box-sizing:border-box}\n"
 "body{margin:0;padding:14px;background:#0e1116;color:#e8eef4;font-family:system-ui,-apple-system,sans-serif;max-width:520px;margin:0 auto}\n"
+".top{position:sticky;top:0;background:#0e1116;z-index:5;padding-bottom:2px}\n"
 "h1{font-size:17px;margin:0 0 10px;text-align:center;color:#7aa2f7}\n"
 ".btns{display:flex;flex-wrap:wrap;justify-content:center;gap:8px;margin:8px 0}\n"
 ".btn{width:70px;height:62px;border:0;border-radius:14px;background:#232b38;color:#fff;cursor:pointer;user-select:none;-webkit-user-select:none;display:flex;align-items:center;justify-content:center}\n"
@@ -151,15 +160,18 @@ static const char PAGE_HTML[] =
 "#bNext{background:#1e8449}\n"
 "#bAud{width:120px;flex-direction:column;gap:3px;font-size:11px;font-weight:600}\n"
 "#bAud svg{width:24px;height:24px}\n"
+"#bShuf{background:#232b38}\n"
+"#bShuf.on{background:#e67e22}\n"
 ".btn svg{width:30px;height:30px;fill:currentColor}\n"
 ".meta{text-align:center;color:#9fb2c6;font-size:13px;margin:6px 0 4px;word-break:break-all}\n"
-".item{padding:9px 12px;border-radius:9px;margin:3px 0;background:#161d27;font-size:14px;display:flex;gap:8px}\n"
+".item{padding:9px 12px;border-radius:9px;margin:3px 0;background:#161d27;font-size:14px;display:flex;gap:8px;cursor:pointer}\n"
 ".item .n{color:#5c6f84;min-width:26px}\n"
 ".item.cur{background:#2f6fe4;font-weight:600}\n"
 ".item.cur .n{color:#cfe0ff}\n"
 "</style>\n"
 "</head>\n"
 "<body>\n"
+"<div class=\"top\">\n"
 "<h1>MusicPlayer</h1>\n"
 "<div class=\"btns\">\n"
 "  <button class=\"btn big\" id=\"bPlay\"><svg viewBox=\"0 0 24 24\"><path d=\"M8 5v14l11-7z\"/></svg></button>\n"
@@ -172,8 +184,12 @@ static const char PAGE_HTML[] =
 "  <button class=\"btn\" id=\"bSpUp\"><svg viewBox=\"0 0 24 24\"><path d=\"M5 5l7 7-7 7zM12 5l7 7-7 7z\"/></svg></button>\n"
 "  <button class=\"btn\" id=\"bSpDn\"><svg viewBox=\"0 0 24 24\"><path d=\"M19 5l-7 7 7 7zM12 5l-7 7 7 7z\"/></svg></button>\n"
 "</div>\n"
-"<div class=\"btns\"><button class=\"btn\" id=\"bAud\" title=\"Audio output: PC / Phone / Both\"><svg viewBox=\"0 0 24 24\"><rect x=\"2\" y=\"4\" width=\"20\" height=\"12\" rx=\"1\"/><path d=\"M8 20h8M12 16v4\"/></svg><span>PC</span></button></div>\n"
+"<div class=\"btns\">\n"
+"  <button class=\"btn\" id=\"bShuf\" title=\"Shuffle\"><svg viewBox=\"0 0 24 24\"><path d=\"M10.59 9.17L5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41l-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z\"/></svg></button>\n"
+"  <button class=\"btn\" id=\"bAud\" title=\"Audio output: PC / Phone / Both\"><svg viewBox=\"0 0 24 24\"><rect x=\"2\" y=\"4\" width=\"20\" height=\"12\" rx=\"1\"/><path d=\"M8 20h8M12 16v4\"/></svg><span>PC</span></button>\n"
+"</div>\n"
 "<div class=\"meta\" id=\"meta\">&hellip;</div>\n"
+"</div>\n"
 "<audio id=\"aud\" preload=\"none\" hidden></audio>\n"
 "<div id=\"plist\"></div>\n"
 "<script>\n"
@@ -202,16 +218,19 @@ static const char PAGE_HTML[] =
 "$('bSpUp').onclick=function(){cmd('speedup')};\n"
 "$('bSpDn').onclick=function(){cmd('speeddown')};\n"
 "$('bAud').onclick=function(){cmd('audio')};\n"
+"$('bShuf').onclick=function(){cmd('shuffle')};\n"
+"function plClick(i){cmd('playidx='+i);}\n"
 "function tick(){\n"
 "  fetch('/api/state').then(function(r){return r.json()}).then(function(s){\n"
 "    document.body.dataset.playing=s.state==='playing'?'1':'0';\n"
 "    document.body.dataset.audio=s.audio;\n"
 "    $('bPlay').innerHTML = s.state==='playing' ? ICON_PAUSE : ICON_PLAY;\n"
 "    $('bAud').innerHTML = AUD_ICONS[s.audio] + '<span>' + AUD_LABELS[s.audio] + '</span>';\n"
+"    $('bShuf').className = 'btn' + (s.shuffle ? ' on' : '');\n"
 "    $('meta').textContent=(s.state==='playing'?'Playing':'Paused')+' &middot; vol '+Math.round(s.vol*100)+'% &middot; &times;'+s.speed.toFixed(2)+' &mdash; '+(s.name||'no file');\n"
 "    var h='';\n"
 "    for(var i=0;i<s.items.length;i++){\n"
-"      h+='<div class=\"item'+(i===s.idx?' cur':'')+'\"><span class=\"n\">'+(i+1)+'</span><span>'+s.items[i]+'</span></div>';\n"
+"      h+='<div class=\"item'+(i===s.idx?' cur':'')+'\" onclick=\"plClick('+i+')\"><span class=\"n\">'+(i+1)+'</span><span>'+s.items[i]+'</span></div>';\n"
 "    }\n"
 "    $('plist').innerHTML=h;\n"
 "  }).catch(function(){});\n"

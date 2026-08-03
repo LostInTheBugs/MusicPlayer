@@ -2,6 +2,13 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.018-c4] — 2026-08-03
+
+### Added
+- **Télécommande web : télécommande fixe (sticky)** — les boutons et le titre restent visibles en haut de l'écran quand on fait défiler la playlist
+- **Clic sur un morceau** de la playlist web pour y passer directement
+- **Mode aléatoire (shuffle)** : bouton 🔀 dans l'application (barre de contrôles, orange quand actif) et sur la télécommande web — le morceau suivant est choisi au hasard
+
 ## [2026.08.018-c3] — 2026-08-03
 
 ### Added
