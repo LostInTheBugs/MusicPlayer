@@ -2,6 +2,11 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.018-c1] — 2026-08-03
+
+### Fixed
+- **Settings ▸ Web server… ne faisait rien** : l'identifiant du template de dialogue dans la ressource était symbolique (`IDD_WEB`) au lieu du numéro attendu (104) — le dialogue ne pouvait pas être chargé. Corrigé (ID numérique 104).
+
 ## [2026.08.018] — 2026-08-03
 
 ### Added

@@ -1174,10 +1174,10 @@ static void on_command(int id, HMENU bar)
         CheckMenuItem(GetSubMenu(GetMenu(g_hwnd), 1), IDM_AUTO_UPDATE,
                       MF_BYCOMMAND | (on ? MF_CHECKED : MF_UNCHECKED));
         break;
+    }
     case IDM_WEB_SERVER:
         do_web_dialog();
         break;
-    }
     case IDM_ABOUT:     do_about(); break;
 
     case IDM_VOL_UP: {

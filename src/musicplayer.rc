@@ -1,8 +1,9 @@
 #include <windows.h>
 IDI_MUSICPLAYER ICON "musicplayer.ico"
 
-/* Dialog "Serveur web" (Settings ▸ Web server…) */
-IDD_WEB DIALOG 0, 0, 300, 158
+/* Dialog "Serveur web" (Settings ▸ Web server…) — ID numérique 104
+   (doit correspondre à IDD_WEB dans main.c) */
+104 DIALOG 0, 0, 300, 158
 STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "Web server"
 FONT 8, "MS Shell Dlg"
