@@ -132,12 +132,12 @@ This project was built entirely through AI-assisted sessions (Hermes Agent, deep
 
 | Metric | Value |
 |---|---|
-| Input tokens | 1 520 067 |
-| Output tokens | 1 153 499 |
-| **Total (input + output)** | **2 673 566** |
-| Cache read (reused at reduced price) | 202 965 120 |
-| API calls | 753 |
-| **Estimated cost** | **≈ 1.04 USD** |
+| Input tokens | 1 576 570 |
+| Output tokens | 1 187 775 |
+| **Total (input + output)** | **2 764 345** |
+| Cache read (reused at reduced price) | 213 343 616 |
+| API calls | 785 |
+| **Estimated cost** | **≈ 1.09 USD** |
 
 Full breakdown: [TOKENS.md](TOKENS.md).
 
