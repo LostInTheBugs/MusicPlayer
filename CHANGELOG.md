@@ -2,6 +2,14 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.034-c1] — 2026-08-03
+
+### Fixed
+- **Fractale v2.1** :
+  - le zoom démarre **sur la frontière de l'ensemble** (seahorse valley −0.74529+0.11308i, point de bord vérifié) — le principe du zoom à l'infini sur le bord est respecté
+  - **plus de scintillement** : zoom transmis par valeur atomique (thread audio → thread UI), lissage d'itérations sans NaN, teinte stable par position avec dérive très lente (testé : 0–1 pixel changeant entre deux frames)
+  - itérations **dynamiques** avec le zoom (jusqu'à 400) pour continuer à résoudre la frontière en profondeur
+
 ## [2026.08.034] — 2026-08-03
 
 ### Changed

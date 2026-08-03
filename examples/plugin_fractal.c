@@ -20,13 +20,15 @@
 
 static const mp_host_api* g_h = NULL;
 
-/* point focal du zoom : la Sea Horse Valley */
-static const double g_cx = -0.743643887037151;
-static const double g_cy = 0.131825904205330;
+/* point focal du zoom : la "seahorse valley" classique (-0.74529+0.11308i),
+ * un point de la FRONTIÈRE de l'ensemble : le zoom infini y déroule les
+ * spirales de chevaux marins */
+static const double g_cx = -0.74529;
+static const double g_cy = 0.11308;
 static const double g_jx = -0.4, g_jy = 0.6;   /* plan de Julia */
 
-static double g_zoom = 1.0;        /* facteur de zoom courant */
-static double g_zoom_target = 1.0; /* visé par les battements */
+#define BASE_ZOOM  200.0           /* zoom de départ (déjà sur le bord) */
+static volatile LONG g_zoom_lvl = 0;   /* log2(zoom/BASE) × 1024 */
 static double g_energy = 0.0;      /* énergie RMS lissée */
 static double g_avg = 0.0;         /* niveau moyen (seuil de battement) */
 static double g_beat = 0.0;        /* amplitude du battement courant */
@@ -64,8 +66,7 @@ static int pl_init(mp_plugin* self, const mp_host_api* host)
 {
     (void)self;
     g_h = host;
-    g_zoom = 1.0;
-    g_zoom_target = 1.0;
+    g_zoom_lvl = 0;
     g_energy = 0.0;
     g_avg = 0.0;
     g_beat = 0.0;
@@ -94,10 +95,17 @@ static void pl_audio(mp_plugin* self, const float* samples, unsigned frames,
     double delta = g_energy - g_avg * 1.25;
     if (delta > 0.0) {
         g_beat = g_beat * 0.8 + delta * 0.2;
-        g_zoom_target *= 1.0 + g_beat * 6.0;
-        if (g_zoom_target > 1.0e11) g_zoom_target = 1.0e11;
+        LONG add = (LONG)(g_beat * 4.0 * 1024.0);
+        if (add > 0) InterlockedExchangeAdd(&g_zoom_lvl, add);
     } else {
         g_beat *= 0.9;
+    }
+    /* décroissance lente du zoom entre les battements */
+    LONG lvl = g_zoom_lvl;
+    if (lvl > 0) {
+        lvl -= (LONG)(0.5 * 1024.0 / 43.0);   /* ~0.5 log2 par seconde */
+        if (lvl < 0) lvl = 0;
+        InterlockedExchange(&g_zoom_lvl, lvl);
     }
 }
 
@@ -107,12 +115,10 @@ static void pl_render(mp_plugin* self, void* hdc, int width, int height)
     if (width < 40 || height < 30) return;
     HDC dc = (HDC)hdc;
 
-    /* zoom : glisse vers la cible, décroissance lente entre les beats */
+    /* zoom : log2 lissé (atomique, aucun saut) */
     g_time += 1.0 / 30.0;
-    g_zoom += (g_zoom_target - g_zoom) * 0.08;
-    g_zoom_target *= 0.9995;
-    if (g_zoom_target < 1.0) g_zoom_target = 1.0;
-    if (g_zoom < 1.0) g_zoom = 1.0;
+    LONG lvl = g_zoom_lvl;
+    double zoom = BASE_ZOOM * pow(2.0, (double)lvl / 1024.0);
     int mode = ((int)(g_time / 15.0)) % 2;   /* Mandelbrot ↔ Julia */
 
     /* rendu en demi-résolution, agrandi ensuite */
@@ -129,13 +135,15 @@ static void pl_render(mp_plugin* self, void* hdc, int width, int height)
     }
     if (!buf) return;
 
-    double span = 3.5 / g_zoom;
+    double span = 3.5 / zoom;
     double aspect = (double)RW / (double)RH;
     double x0 = g_cx - span * aspect / 2.0;
     double y0 = g_cy - span / 2.0;
     double dx = span * aspect / (double)RW;
     double dy = span / (double)RH;
-    const int MAXIT = 56;
+    /* plus on zoome, plus il faut d'itérations pour résoudre la frontière */
+    int MAXIT = 64 + (int)(log2(zoom) * 9.0);
+    if (MAXIT > 400) MAXIT = 400;
 
     for (int y = 0; y < RH; y++) {
         double cy = y0 + (double)y * dy;
@@ -168,11 +176,19 @@ static void pl_render(mp_plugin* self, void* hdc, int width, int height)
             if (it >= MAXIT) {
                 p[0] = p[1] = p[2] = 0;
             } else {
-                /* lissage + variation de teinte lente avec le zoom */
-                double t = (double)it + 1.0
-                           - log2(log2(sqrt(zx2 + zy2) + 1e-30));
-                double hue = fmod(t * 0.12 + g_zoom * 0.0008, 1.0);
-                double val = 0.35 + 0.65 * (t / (double)MAXIT);
+                /* lissage sûr (pas de NaN quand |z| → 0) */
+                double r2 = zx2 + zy2;
+                double t;
+                if (r2 < 1e-12)
+                    t = (double)it;
+                else
+                    t = (double)it + 1.0 - log2(log2(r2));
+                /* teinte stable par position + dérive très lente :
+                 * les couleurs ne scintillent pas d'une frame à l'autre */
+                double hue = fmod(t * 0.09 +
+                                  (double)x / (double)RW * 0.08 +
+                                  g_time * 0.008, 1.0);
+                double val = 0.3 + 0.7 * (t / (double)MAXIT);
                 if (val > 1.0) val = 1.0;
                 hsv2rgb(hue, 0.85, val, &p[2], &p[1], &p[0]);
             }
