@@ -2,6 +2,13 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.022] — 2026-08-03
+
+### Added
+- **Skins** : 11 skins proposés dans Plugins ▸ Skins — rétro 60s, 70s, 80s (néon), 90s, années 2000, radio vintage (bois & or), Winamp, épuré, kitsch, cartoon, noir & blanc. Chaque skin applique une palette de couleurs complète (fond, texte, boutons, volume, progression) instantanément
+- **Fenêtre Playlist** : bouton playlist (touche L) — liste des morceaux avec le morceau courant en surbrillance ; double-clic ou Entrée pour jouer la musique choisie
+- **Plugin Jaquette** (Cover art) : affiche l'image de la chanson en cours — jaquette intégrée au MP3 (frame APIC) ou cover.jpg / folder.jpg / cover.png / front.jpg placé à côté du morceau
+
 ## [2026.08.021] — 2026-08-03
 
 ### Added

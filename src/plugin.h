@@ -36,6 +36,23 @@ typedef enum {
 
 typedef struct mp_plugin mp_plugin;
 
+/* Palette de couleurs d'un skin (format COLORREF : 0x00BBGGRR) */
+typedef struct mp_skin_colors {
+    unsigned long bg;          /* fond de la fenêtre */
+    unsigned long text;        /* texte principal */
+    unsigned long ctrl_bar;    /* fond de la barre de contrôles */
+    unsigned long ctrl_sep;    /* séparateur de la barre */
+    unsigned long accent;      /* boutons lecture/suivant + volume 0-100 % */
+    unsigned long accent2;     /* bouton stop */
+    unsigned long accent3;     /* shuffle actif + volume 100-200 % */
+    unsigned long neutral;     /* boutons neutres (plein écran, shuffle off) */
+    unsigned long track;       /* fond du curseur de volume */
+    unsigned long mark;        /* marque des 100 % */
+    unsigned long knob;        /* curseur de volume */
+    unsigned long prog_bg;     /* fond de la barre de progression */
+    unsigned long prog_border; /* bordure de la progression */
+} mp_skin_colors;
+
 /* Événements transverses (hook service) */
 #define MP_SERVICE_WEB_APPLY 1   /* reconfigurer le serveur web */
 #define MP_SERVICE_CLICK    2    /* clic sur le plugin dans le menu Plugins */
@@ -87,6 +104,9 @@ typedef struct mp_host_api {
 
     /* --- flux audio de diffusion (stream du serveur web) --- */
     uint32_t (*web_read)(float* dst, uint32_t frames);
+
+    /* --- skins : palette de couleurs --- */
+    void (*skin_set_colors)(const mp_skin_colors* colors);
 } mp_host_api;
 
 /*

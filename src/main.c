@@ -67,12 +67,14 @@ static wchar_t g_lang_dir[MAX_PATH] = { 0 };
 
 static int  g_fullscreen = 0;
 static RECT g_win_normal = { 0, 0, 640, 300 };
-static RECT g_rc_play, g_rc_stop, g_rc_next, g_rc_shuffle, g_rc_fs, g_rc_vol;
+static RECT g_rc_play, g_rc_stop, g_rc_next, g_rc_shuffle, g_rc_plist, g_rc_fs, g_rc_vol;
 static int  g_vol_drag = 0;   /* curseur de volume en cours de glissement */
 
 static void status_update(void);        /* définie plus bas */
 static void wide_to_utf8(const wchar_t* in, char* out, int out_chars); /* idem */
 static void log_line(const char* s);    /* idem */
+static void playlist_win_rebuild(void); /* fenêtre playlist */
+static void playlist_win_highlight(void);
 
 /* ------------------------------------------------------------------ */
 /* Playlist : lecture d'un dossier (avec ses sous-dossiers)            */
@@ -88,6 +90,7 @@ static void playlist_clear(void)
     for (int i = 0; i < g_plist_n; i++) free(g_plist[i]);
     g_plist_n = 0;
     g_plist_idx = -1;
+    playlist_win_rebuild();
 }
 
 static void playlist_scan(const wchar_t* dir)
@@ -132,6 +135,7 @@ static int playlist_play_index(int i)
     char utf8[MAX_PATH * 3];
     wide_to_utf8(g_plist[i], utf8, sizeof(utf8));
     int rc = mp_open(utf8);
+    playlist_win_highlight();
     return rc;
 }
 
@@ -285,6 +289,39 @@ static int         host_web_find_free_port(void) { return find_free_port(); }
 static uint32_t    host_web_read(float* dst, uint32_t frames)
 { return mp_web_read(dst, frames); }
 
+/* ------------------------------------------------------------------ */
+/* Skins : palette de couleurs (modifiée par les plugins SKIN)         */
+/* ------------------------------------------------------------------ */
+static mp_skin_colors g_skin = {
+    RGB(255, 255, 255),  /* bg */
+    RGB(30, 30, 30),     /* text */
+    RGB(238, 240, 246),  /* ctrl_bar */
+    RGB(210, 214, 224),  /* ctrl_sep */
+    RGB(52, 120, 246),   /* accent */
+    RGB(226, 66, 56),    /* accent2 */
+    RGB(230, 126, 34),   /* accent3 */
+    RGB(110, 118, 136),  /* neutral */
+    RGB(205, 210, 222),  /* track */
+    RGB(120, 126, 140),  /* mark */
+    RGB(255, 255, 255),  /* knob */
+    RGB(28, 30, 38),     /* prog_bg */
+    RGB(92, 98, 116),    /* prog_border */
+};
+
+/* recrée les pinceaux de la progression (couleurs figées) */
+static void skin_reset_brushes(void);
+
+static void host_skin_set_colors(const mp_skin_colors* c)
+{
+    if (!c) return;
+    g_skin = *c;
+    skin_reset_brushes();
+    if (g_hwnd) {
+        InvalidateRect(g_hwnd, NULL, TRUE);
+        status_update();
+    }
+}
+
 static const mp_host_api g_host = {
     MP_PLUGIN_API_VERSION,
     log_line,
@@ -298,7 +335,8 @@ static const mp_host_api g_host = {
     host_main_window,
     host_web_enabled, host_web_port, host_web_audio, host_web_ips,
     host_web_find_free_port,
-    host_web_read
+    host_web_read,
+    host_skin_set_colors
 };
 
 /* ------------------------------------------------------------------ */
@@ -1095,6 +1133,10 @@ static void layout_controls(const RECT* rc)
     g_rc_shuffle.left = x; g_rc_shuffle.top = y + 4;
     g_rc_shuffle.right = x + bs; g_rc_shuffle.bottom = y + 4 + bs;
     x += bs + 6;
+    /* bouton playlist */
+    g_rc_plist.left = x; g_rc_plist.top = y + 4;
+    g_rc_plist.right = x + bs; g_rc_plist.bottom = y + 4 + bs;
+    x += bs + 6;
     /* curseur de volume */
     g_rc_vol.left = x;
     g_rc_vol.top = y + (CTRL_H - 16) / 2;
@@ -1182,6 +1224,25 @@ static void draw_glyph_shuffle(HDC hdc, RECT* r)
     DeleteObject(pen);
 }
 
+static void draw_glyph_playlist(HDC hdc, RECT* r)
+{
+    /* liste : trois lignes avec une puce carrée à gauche */
+    HPEN pen = CreatePen(PS_SOLID, 2, RGB(255, 255, 255));
+    HPEN old = (HPEN)SelectObject(hdc, pen);
+    HBRUSH wh = (HBRUSH)GetStockObject(WHITE_BRUSH);
+    int x0 = r->left + 2, x1 = r->right - 2;
+    int cy = (r->top + r->bottom) / 2;
+    for (int i = -1; i <= 1; i++) {
+        int yy = cy + i * 4;
+        HBRUSH oldb = (HBRUSH)SelectObject(hdc, wh);
+        Rectangle(hdc, x0, yy - 2, x0 + 4, yy + 2);
+        SelectObject(hdc, oldb);
+        MoveToEx(hdc, x0 + 7, yy, NULL); LineTo(hdc, x1, yy);
+    }
+    SelectObject(hdc, old);
+    DeleteObject(pen);
+}
+
 static void draw_glyph_fullscreen(HDC hdc, RECT* r)
 {
     HPEN pen = CreatePen(PS_SOLID, 2, RGB(255, 255, 255));
@@ -1216,10 +1277,10 @@ static void paint_controls(HDC hdc, const RECT* rc)
 
     /* fond de la barre */
     RECT bg = { rc->left, rc->bottom - CTRL_H, rc->right, rc->bottom };
-    HBRUSH bbg = CreateSolidBrush(RGB(238, 240, 246));
+    HBRUSH bbg = CreateSolidBrush(g_skin.ctrl_bar);
     FillRect(hdc, &bg, bbg);
     DeleteObject(bbg);
-    HPEN sep = CreatePen(PS_SOLID, 1, RGB(210, 214, 224));
+    HPEN sep = CreatePen(PS_SOLID, 1, g_skin.ctrl_sep);
     HPEN oldp = (HPEN)SelectObject(hdc, sep);
     MoveToEx(hdc, bg.left, bg.top, NULL);
     LineTo(hdc, bg.right, bg.top);
@@ -1227,7 +1288,7 @@ static void paint_controls(HDC hdc, const RECT* rc)
     DeleteObject(sep);
 
     /* bouton lecture / pause */
-    HBRUSH bplay = CreateSolidBrush(RGB(52, 120, 246));
+    HBRUSH bplay = CreateSolidBrush(g_skin.accent);
     HBRUSH oldb = (HBRUSH)SelectObject(hdc, bplay);
     RoundRect(hdc, g_rc_play.left, g_rc_play.top, g_rc_play.right, g_rc_play.bottom, 8, 8);
     SelectObject(hdc, oldb);
@@ -1237,7 +1298,7 @@ static void paint_controls(HDC hdc, const RECT* rc)
     draw_glyph_play(hdc, &gp, mp_get_state() == MP_STATE_PLAYING);
 
     /* bouton stop */
-    HBRUSH bstop = CreateSolidBrush(RGB(226, 66, 56));
+    HBRUSH bstop = CreateSolidBrush(g_skin.accent2);
     oldb = (HBRUSH)SelectObject(hdc, bstop);
     RoundRect(hdc, g_rc_stop.left, g_rc_stop.top, g_rc_stop.right, g_rc_stop.bottom, 8, 8);
     SelectObject(hdc, oldb);
@@ -1247,7 +1308,7 @@ static void paint_controls(HDC hdc, const RECT* rc)
     draw_glyph_stop(hdc, &gs);
 
     /* bouton suivant */
-    HBRUSH bnext = CreateSolidBrush(RGB(52, 120, 246));
+    HBRUSH bnext = CreateSolidBrush(g_skin.accent);
     oldb = (HBRUSH)SelectObject(hdc, bnext);
     RoundRect(hdc, g_rc_next.left, g_rc_next.top, g_rc_next.right, g_rc_next.bottom, 8, 8);
     SelectObject(hdc, oldb);
@@ -1256,8 +1317,8 @@ static void paint_controls(HDC hdc, const RECT* rc)
     gn.left += 3; gn.right -= 3; gn.top += 3; gn.bottom -= 3;
     draw_glyph_next(hdc, &gn);
 
-    /* bouton aléatoire (shuffle) : orange si actif */
-    HBRUSH bsh = CreateSolidBrush(g_shuffle ? RGB(230, 126, 34) : RGB(110, 118, 136));
+    /* bouton aléatoire (shuffle) : accent3 si actif */
+    HBRUSH bsh = CreateSolidBrush(g_shuffle ? g_skin.accent3 : g_skin.neutral);
     oldb = (HBRUSH)SelectObject(hdc, bsh);
     RoundRect(hdc, g_rc_shuffle.left, g_rc_shuffle.top,
               g_rc_shuffle.right, g_rc_shuffle.bottom, 8, 8);
@@ -1267,8 +1328,19 @@ static void paint_controls(HDC hdc, const RECT* rc)
     gsh.left += 2; gsh.right -= 2; gsh.top += 2; gsh.bottom -= 2;
     draw_glyph_shuffle(hdc, &gsh);
 
+    /* bouton playlist */
+    HBRUSH bpl = CreateSolidBrush(g_skin.neutral);
+    oldb = (HBRUSH)SelectObject(hdc, bpl);
+    RoundRect(hdc, g_rc_plist.left, g_rc_plist.top,
+              g_rc_plist.right, g_rc_plist.bottom, 8, 8);
+    SelectObject(hdc, oldb);
+    DeleteObject(bpl);
+    RECT gp2 = g_rc_plist;
+    gp2.left += 2; gp2.right -= 2; gp2.top += 2; gp2.bottom -= 2;
+    draw_glyph_playlist(hdc, &gp2);
+
     /* bouton plein écran */
-    HBRUSH bfs = CreateSolidBrush(RGB(110, 118, 136));
+    HBRUSH bfs = CreateSolidBrush(g_skin.neutral);
     oldb = (HBRUSH)SelectObject(hdc, bfs);
     RoundRect(hdc, g_rc_fs.left, g_rc_fs.top, g_rc_fs.right, g_rc_fs.bottom, 8, 8);
     SelectObject(hdc, oldb);
@@ -1283,34 +1355,34 @@ static void paint_controls(HDC hdc, const RECT* rc)
     float vol = mp_get_volume();
     int fill = (int)(vol * 0.5f * vw);          /* position du curseur */
     int mid = vw / 2;                            /* marque 100 % */
-    HBRUSH track = CreateSolidBrush(RGB(205, 210, 222));
+    HBRUSH track = CreateSolidBrush(g_skin.track);
     RECT tr = { g_rc_vol.left, g_rc_vol.top + 6, g_rc_vol.right, g_rc_vol.top + 10 };
     FillRect(hdc, &tr, track);
     DeleteObject(track);
-    /* 0..100 % : bleu */
+    /* 0..100 % : accent */
     if (fill > 0) {
         int fw = fill < mid ? fill : mid;
         if (fw > 0) {
-            HBRUSH bfill = CreateSolidBrush(RGB(52, 120, 246));
+            HBRUSH bfill = CreateSolidBrush(g_skin.accent);
             RECT fr = { g_rc_vol.left, g_rc_vol.top + 6, g_rc_vol.left + fw, g_rc_vol.top + 10 };
             FillRect(hdc, &fr, bfill);
             DeleteObject(bfill);
         }
     }
-    /* 100..200 % : orange (booster) */
+    /* 100..200 % : accent3 (booster) */
     if (fill > mid) {
-        HBRUSH bboost = CreateSolidBrush(RGB(240, 140, 40));
+        HBRUSH bboost = CreateSolidBrush(g_skin.accent3);
         RECT fr = { g_rc_vol.left + mid, g_rc_vol.top + 6, g_rc_vol.left + fill, g_rc_vol.top + 10 };
         FillRect(hdc, &fr, bboost);
         DeleteObject(bboost);
     }
     /* marque des 100 % */
-    HBRUSH bmark = CreateSolidBrush(RGB(120, 126, 140));
+    HBRUSH bmark = CreateSolidBrush(g_skin.mark);
     RECT mk = { g_rc_vol.left + mid - 1, g_rc_vol.top + 5, g_rc_vol.left + mid + 1, g_rc_vol.top + 11 };
     FillRect(hdc, &mk, bmark);
     DeleteObject(bmark);
     int knob = g_rc_vol.left + fill;
-    HBRUSH bknob = CreateSolidBrush(RGB(255, 255, 255));
+    HBRUSH bknob = CreateSolidBrush(g_skin.knob);
     oldb = (HBRUSH)SelectObject(hdc, bknob);
     Ellipse(hdc, knob - 6, g_rc_vol.top, knob + 6, g_rc_vol.bottom);
     SelectObject(hdc, oldb);
@@ -1343,37 +1415,37 @@ static void get_center_rect(HWND hwnd, RECT* rc)
 
 #define PROGRESS_H 16   /* hauteur de la barre de progression */
 
-static void hsv_to_rgb_ui(float h, float s, float v, BYTE* r, BYTE* g, BYTE* b)
+/* mélange deux couleurs (t 0..1) */
+static COLORREF blend_color(COLORREF a, COLORREF b, float t)
 {
-    float c = v * s;
-    float x = c * (1.0f - fabsf(fmodf(h / 60.0f, 2.0f) - 1.0f));
-    float m = v - c;
-    float rr = 0, gg = 0, bb = 0;
-    if (h < 60)       { rr = c; gg = x; }
-    else if (h < 120) { rr = x; gg = c; }
-    else if (h < 180) { gg = c; bb = x; }
-    else if (h < 240) { gg = x; bb = c; }
-    else if (h < 300) { rr = x; bb = c; }
-    else              { rr = c; bb = x; }
-    *r = (BYTE)((rr + m) * 255.0f);
-    *g = (BYTE)((gg + m) * 255.0f);
-    *b = (BYTE)((bb + m) * 255.0f);
+    return RGB((BYTE)(GetRValue(a) * (1.0f - t) + GetRValue(b) * t),
+               (BYTE)(GetGValue(a) * (1.0f - t) + GetGValue(b) * t),
+               (BYTE)(GetBValue(a) * (1.0f - t) + GetBValue(b) * t));
 }
 
-/* Barre de progression (dégradé bleu -> cyan -> vert -> jaune) */
+/* Barre de progression (dégradé accent -> accent2) */
+static HBRUSH g_pg_fill[40] = { 0 };
+static HBRUSH g_pg_bg = NULL;
+static HBRUSH g_pg_border = NULL;
+
+static void skin_reset_brushes(void)
+{
+    for (int i = 0; i < 40; i++) {
+        if (g_pg_fill[i]) { DeleteObject(g_pg_fill[i]); g_pg_fill[i] = NULL; }
+    }
+    if (g_pg_bg) { DeleteObject(g_pg_bg); g_pg_bg = NULL; }
+    if (g_pg_border) { DeleteObject(g_pg_border); g_pg_border = NULL; }
+}
+
 static void draw_progress_bar(HDC hdc, const RECT* rc)
 {
-    static HBRUSH g_pg_fill[40] = { 0 };
-    static HBRUSH g_pg_bg = NULL;
-    static HBRUSH g_pg_border = NULL;
     if (!g_pg_bg) {
         for (int i = 0; i < 40; i++) {
-            BYTE r, g, b;
-            hsv_to_rgb_ui(205.0f - 205.0f * (float)i / 39.0f, 0.85f, 0.75f, &r, &g, &b);
-            g_pg_fill[i] = CreateSolidBrush(RGB(r, g, b));
+            g_pg_fill[i] = CreateSolidBrush(
+                blend_color(g_skin.accent, g_skin.accent2, (float)i / 39.0f));
         }
-        g_pg_bg = CreateSolidBrush(RGB(28, 30, 38));
-        g_pg_border = CreateSolidBrush(RGB(92, 98, 116));
+        g_pg_bg = CreateSolidBrush(g_skin.prog_bg);
+        g_pg_border = CreateSolidBrush(g_skin.prog_border);
     }
 
     int w = rc->right - rc->left;
@@ -1448,14 +1520,14 @@ static void paint_center(HDC hdc, RECT* rc)
             wchar_t base_w[280];
             utf8_to_wide(base, base_w, 280);
             HFONT old = (HFONT)SelectObject(hdc, big);
-            SetTextColor(hdc, RGB(30, 30, 30));
+            SetTextColor(hdc, g_skin.text);
             RECT r = vis_rc;
             DrawTextW(hdc, base_w, -1, &r, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
             SelectObject(hdc, old);
         }
         {
             HFONT old = (HFONT)SelectObject(hdc, small);
-            SetTextColor(hdc, RGB(90, 90, 90));
+            SetTextColor(hdc, g_skin.text);
             RECT r = vis_rc;
             r.top = vis_rc.top + 38;
             DrawTextW(hdc, st, -1, &r, DT_CENTER | DT_TOP | DT_SINGLELINE);
@@ -1504,6 +1576,126 @@ static void toggle_fullscreen(HWND hwnd)
 }
 
 /* ------------------------------------------------------------------ */
+/* Fenêtre Playlist : liste des morceaux + sélection au clic           */
+/* ------------------------------------------------------------------ */
+static HWND g_plist_win = NULL;
+static HWND g_plist_lv = NULL;
+
+static LRESULT CALLBACK plist_wnd_proc(HWND hw, UINT m, WPARAM wp, LPARAM lp)
+{
+    switch (m) {
+    case WM_DESTROY:
+        g_plist_win = NULL;
+        g_plist_lv = NULL;
+        return 0;
+    case WM_CLOSE:
+        DestroyWindow(hw);
+        return 0;
+    case WM_COMMAND:
+        if (LOWORD(wp) == 1) {   /* bouton Fermer */
+            DestroyWindow(hw);
+            return 0;
+        }
+        break;
+    case WM_SIZE: {
+        int w = LOWORD(lp), h = HIWORD(lp);
+        if (g_plist_lv)
+            SetWindowPos(g_plist_lv, NULL, 6, 6, w - 12, h - 44, SWP_NOZORDER);
+        HWND b = GetDlgItem(hw, 1);
+        if (b) SetWindowPos(b, NULL, 6, h - 34, 90, 26, SWP_NOZORDER);
+        return 0;
+    }
+    case WM_NOTIFY: {
+        NMHDR* nm = (NMHDR*)lp;
+        if (nm->hwndFrom == g_plist_lv && nm->code == NM_DBLCLK) {
+            int i = ListView_GetNextItem(g_plist_lv, -1, LVNI_SELECTED);
+            if (i >= 0 && i < g_plist_n) playlist_play_index(i);
+            return 0;
+        }
+        break;
+    }
+    case WM_KEYDOWN:
+        if (wp == VK_RETURN) {
+            int i = ListView_GetNextItem(g_plist_lv, -1, LVNI_SELECTED);
+            if (i >= 0 && i < g_plist_n) playlist_play_index(i);
+            return 0;
+        }
+        if (wp == VK_ESCAPE) { DestroyWindow(hw); return 0; }
+        break;
+    }
+    return DefWindowProcW(hw, m, wp, lp);
+}
+
+static void playlist_win_rebuild(void)
+{
+    if (!g_plist_win || !g_plist_lv) return;
+    ListView_DeleteAllItems(g_plist_lv);
+    for (int i = 0; i < g_plist_n; i++) {
+        wchar_t num[16];
+        swprintf(num, 16, L"%d", i + 1);
+        LVITEMW it;
+        memset(&it, 0, sizeof(it));
+        it.mask = LVIF_TEXT;
+        it.iItem = i;
+        it.pszText = num;
+        ListView_InsertItem(g_plist_lv, &it);
+        ListView_SetItemText(g_plist_lv, i, 1, (wchar_t*)host_plist_name(i));
+    }
+    playlist_win_highlight();
+}
+
+static void playlist_win_highlight(void)
+{
+    if (!g_plist_win || !g_plist_lv) return;
+    if (g_plist_idx >= 0 && g_plist_idx < g_plist_n) {
+        ListView_SetItemState(g_plist_lv, g_plist_idx,
+                              LVIS_SELECTED | LVIS_FOCUSED,
+                              LVIS_SELECTED | LVIS_FOCUSED);
+        ListView_EnsureVisible(g_plist_lv, g_plist_idx, FALSE);
+    }
+}
+
+static void toggle_playlist_win(void)
+{
+    if (g_plist_win) { DestroyWindow(g_plist_win); return; }
+    HINSTANCE inst = GetModuleHandleW(NULL);
+    static int reg = 0;
+    if (!reg) {
+        WNDCLASSW wc;
+        memset(&wc, 0, sizeof(wc));
+        wc.lpfnWndProc = plist_wnd_proc;
+        wc.hInstance = inst;
+        wc.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
+        wc.lpszClassName = L"MPPlaylist";
+        RegisterClassW(&wc);
+        reg = 1;
+    }
+    g_plist_win = CreateWindowExW(0, L"MPPlaylist", L"Playlist",
+                                  WS_OVERLAPPEDWINDOW, 700, 120, 320, 420,
+                                  NULL, NULL, inst, NULL);
+    if (!g_plist_win) return;
+    g_plist_lv = CreateWindowExW(WS_EX_CLIENTEDGE, WC_LISTVIEWW, L"",
+                                 WS_CHILD | WS_VISIBLE | WS_TABSTOP |
+                                 LVS_REPORT | LVS_SINGLESEL | LVS_SHOWSELALWAYS,
+                                 6, 6, 300, 370, g_plist_win, NULL, inst, NULL);
+    ListView_SetExtendedListViewStyle(g_plist_lv,
+        LVS_EX_FULLROWSELECT | LVS_EX_GRIDLINES);
+    LVCOLUMNW c0, c1;
+    memset(&c0, 0, sizeof(c0));
+    c0.mask = LVCF_TEXT | LVCF_WIDTH;
+    c0.cx = 34; c0.pszText = L"#";
+    ListView_InsertColumn(g_plist_lv, 0, &c0);
+    memset(&c1, 0, sizeof(c1));
+    c1.mask = LVCF_TEXT | LVCF_WIDTH;
+    c1.cx = 240; c1.pszText = L"Title";
+    ListView_InsertColumn(g_plist_lv, 1, &c1);
+    CreateWindowW(L"BUTTON", L"Close", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+                  6, 380, 90, 26, g_plist_win, (HMENU)1, inst, NULL);
+    playlist_win_rebuild();
+    ShowWindow(g_plist_win, SW_SHOW);
+}
+
+/* ------------------------------------------------------------------ */
 /* Gestion souris : boutons + curseur de volume                        */
 /* ------------------------------------------------------------------ */
 static void mouse_down(HWND hwnd, int x, int y)
@@ -1543,6 +1735,9 @@ static void mouse_down(HWND hwnd, int x, int y)
                y >= g_rc_shuffle.top && y <= g_rc_shuffle.bottom) {
         playlist_set_shuffle(!playlist_get_shuffle());
         InvalidateRect(hwnd, NULL, TRUE);
+    } else if (x >= g_rc_plist.left && x <= g_rc_plist.right &&
+               y >= g_rc_plist.top && y <= g_rc_plist.bottom) {
+        toggle_playlist_win();
     } else if (x >= g_rc_fs.left && x <= g_rc_fs.right &&
                y >= g_rc_fs.top && y <= g_rc_fs.bottom) {
         toggle_fullscreen(hwnd);
@@ -1764,6 +1959,9 @@ static LRESULT CALLBACK wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         case 'O':
             if (GetKeyState(VK_CONTROL) & 0x8000) do_open_dialog();
             break;
+        case 'L':
+            toggle_playlist_win();
+            break;
         }
         status_update();
         return 0;
@@ -1859,7 +2057,9 @@ static LRESULT CALLBACK wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
             HBITMAP bmp = CreateCompatibleBitmap(hdc, w, h);
             HBITMAP oldbmp = (HBITMAP)SelectObject(mem, bmp);
             RECT all = { 0, 0, w, h };
-            FillRect(mem, &all, GetSysColorBrush(COLOR_WINDOW));
+            HBRUSH wb = CreateSolidBrush(g_skin.bg);
+            FillRect(mem, &all, wb);
+            DeleteObject(wb);
             RECT rc2 = { 0, 0, w, h };
             paint_center(mem, &rc2);
             BitBlt(hdc, rc.left, rc.top, w, h, mem, 0, 0, SRCCOPY);
@@ -1871,12 +2071,14 @@ static LRESULT CALLBACK wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         return 0;
     }
     case WM_ERASEBKGND: {
-        /* efface le fond en blanc (nécessaire au redimensionnement :
+        /* efface le fond (nécessaire au redimensionnement :
          * les zones qui s'agrandissent doivent être repeintes) */
         HDC hdc = (HDC)wp;
         RECT rc;
         GetClientRect(hwnd, &rc);
-        FillRect(hdc, &rc, GetSysColorBrush(COLOR_WINDOW));
+        HBRUSH wb = CreateSolidBrush(g_skin.bg);
+        FillRect(hdc, &rc, wb);
+        DeleteObject(wb);
         return 1;
     }
     case WM_GETMINMAXINFO: {
