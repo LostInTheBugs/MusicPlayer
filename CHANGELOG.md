@@ -2,6 +2,16 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.031] — 2026-08-03
+
+### Added
+- **5 nouveaux plugins** (Plugins ▸ Services / Effets) :
+  - **REST API** : serveur HTTP JSON sur le port 8080 (`/api/state`, `/api/playlist`, `/api/cover`, `/api/cmd`, `/api/stream`, CORS)
+  - **RTP/AES67 Output** : diffusion du flux en RTP L16 multicast (239.255.0.1:5004) + annonce SAP (réception VLC/AES67)
+  - **DLNA/UPnP Media Server** : serveur UPnP AV (SSDP + ContentDirectory) exposant la playliste aux appareils DLNA (TV, téléphone…)
+  - **Multiroom** : diffusion multi-pièces (RTP multicast 239.255.0.2:5004 + cibles du fichier `multiroom.txt`)
+  - **Sound Quality** : effet audio (filtre infra-basses, basse boost, présence, limiteur doux)
+
 ## [2026.08.030] — 2026-08-03
 
 ### Added

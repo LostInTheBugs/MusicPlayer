@@ -1,0 +1,3 @@
+# Multiroom targets (une adresse par ligne, format ip:port)
+# Le multicast 239.255.0.2:5004 est déjà inclus par défaut.
+# Exemple : 192.168.10.50:5004

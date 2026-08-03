@@ -13,7 +13,7 @@
 #   make clean
 # ======================================================================
 
-VERSION := 2026.08.030
+VERSION := 2026.08.031
 
 CROSS    := x86_64-w64-mingw32-
 CC       := $(CROSS)gcc
@@ -73,7 +73,13 @@ plugins-examples: $(BIN)
 	$(CC) -O2 -shared -o bin/plugins/3diso.dll examples/plugin_3diso.c -Isrc -static-libgcc -lgdi32 -lm
 	$(CC) -O2 -shared -o bin/plugins/fractal.dll examples/plugin_fractal.c -Isrc -static-libgcc -lgdi32 -lm
 	$(CC) -O2 -shared -o bin/plugins/hypnotic.dll examples/plugin_hypnotic.c -Isrc -static-libgcc -lgdi32 -lm
-	$(CC) -O2 -shared -o bin/plugins/webserver.dll examples/plugin_webserver.c -Isrc -Ivendor/ffmpeg/include -static-libgcc -lws2_32 -Lvendor/ffmpeg/lib -lavformat -lavcodec -lavutil -lswresample
+	$(CC) -O2 -shared -o bin/plugins/webserver.dll examples/plugin_webserver.c -Isrc -Ivendor/ffmpeg/include -Lvendor/ffmpeg/lib -lavformat -lavcodec -lavutil -lswresample -lws2_32 -static-libgcc -static
+	$(CC) -O2 -shared -o bin/plugins/restapi.dll examples/plugin_restapi.c -Isrc -lws2_32 -static-libgcc
+	$(CC) -O2 -shared -o bin/plugins/rtp.dll examples/plugin_rtp.c -Isrc -lws2_32 -static-libgcc
+	$(CC) -O2 -shared -o bin/plugins/upnp.dll examples/plugin_upnp.c -Isrc -lws2_32 -static-libgcc
+	$(CC) -O2 -shared -o bin/plugins/multiroom.dll examples/plugin_multiroom.c -Isrc -lws2_32 -static-libgcc
+	$(CC) -O2 -shared -o bin/plugins/soundquality.dll examples/plugin_soundquality.c -Isrc -static-libgcc -lm
+	cp -f examples/multiroom.txt bin/plugins/multiroom.txt
 	$(CC) -O2 -shared -o bin/plugins/metadata.dll examples/plugin_metadata.c -Isrc -static-libgcc
 	$(CC) -O2 -shared -o bin/plugins/lyrics.dll examples/plugin_lyrics.c -Isrc -static-libgcc -luser32 -lgdi32
 	$(CC) -O2 -shared -o bin/plugins/cover.dll examples/plugin_cover.c -Isrc -static-libgcc -luser32 -lgdi32 -lgdiplus -Wno-incompatible-pointer-types
