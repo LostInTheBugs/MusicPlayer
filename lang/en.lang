@@ -52,6 +52,7 @@ web_dlg_title=Web server
 web_enable=Enable web server (remote control)
 web_port=Port:
 web_audio_out=Audio output:
+web_listen=Listen on:
 web_pc=This computer
 web_phone=Phone
 web_both=Both

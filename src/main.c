@@ -5,6 +5,7 @@
  * Conventions : toute l'UI est en UTF-16 (W). Les chemins de fichiers sont
  * convertis en UTF-8 pour le moteur (FFmpeg gère l'UTF-8 sur Windows).
  */
+#include <winsock2.h>
 #include <windows.h>
 #include <windowsx.h>
 #include <shlobj.h>
@@ -12,6 +13,7 @@
 #include <commctrl.h>
 #include <commdlg.h>
 #include <shellapi.h>
+#include <iphlpapi.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -521,12 +523,81 @@ static void do_open_folder_dialog(void)
 #define IDC_WEB_CHK     2001
 #define IDC_WEB_EDIT    2002
 #define IDC_WEB_COMBO   2003
+#define IDC_WEB_LIST    2004
 #define IDC_WEB_PORT_LBL 1001
 #define IDC_WEB_AUD_LBL 1002
+#define IDC_WEB_LIST_LBL 1003
 
 static int g_web_enabled = 0;
 static int g_web_port = 8000;
 static int g_web_audio = 0;      /* 0 = PC, 1 = téléphone, 2 = les deux */
+static char g_web_ips_cfg[1024] = "";   /* IP écoutées ("ip1;ip2;..." ; vide = toutes) */
+
+/* liste des interfaces réseau (pour le dialog) */
+typedef struct {
+    char ip[64];
+    wchar_t name[128];
+} web_ip_t;
+static web_ip_t g_web_ip_list[32];
+static int g_web_ip_count = 0;
+
+/* Énumère les adresses IPv4 de la machine (+ loopback) */
+static void web_enum_ips(void)
+{
+    g_web_ip_count = 0;
+    ULONG buflen = 0;
+    if (GetAdaptersAddresses(AF_INET, 0, NULL, NULL, &buflen) != ERROR_BUFFER_OVERFLOW || buflen == 0)
+        buflen = 16384;
+    IP_ADAPTER_ADDRESSES* aa = (IP_ADAPTER_ADDRESSES*)malloc(buflen);
+    if (!aa) return;
+    if (GetAdaptersAddresses(AF_INET, 0, NULL, aa, &buflen) == NO_ERROR) {
+        for (IP_ADAPTER_ADDRESSES* a = aa; a && g_web_ip_count < 31; a = a->Next) {
+            for (IP_ADAPTER_UNICAST_ADDRESS* u = a->FirstUnicastAddress;
+                 u && g_web_ip_count < 31; u = u->Next) {
+                if (u->Address.lpSockaddr->sa_family != AF_INET) continue;
+                struct sockaddr_in* si = (struct sockaddr_in*)u->Address.lpSockaddr;
+                unsigned long v = ntohl(si->sin_addr.s_addr);
+                char ip[64];
+                _snprintf(ip, sizeof(ip), "%lu.%lu.%lu.%lu",
+                          (v >> 24) & 0xff, (v >> 16) & 0xff,
+                          (v >> 8) & 0xff, v & 0xff);
+                int dup = 0;
+                for (int i = 0; i < g_web_ip_count; i++)
+                    if (!strcmp(g_web_ip_list[i].ip, ip)) { dup = 1; break; }
+                if (dup) continue;
+                _snprintf(g_web_ip_list[g_web_ip_count].ip, 64, "%s", ip);
+                if (a->FriendlyName)
+                    wcsncpy(g_web_ip_list[g_web_ip_count].name, a->FriendlyName, 127);
+                else
+                    g_web_ip_list[g_web_ip_count].name[0] = 0;
+                g_web_ip_list[g_web_ip_count].name[127] = 0;
+                g_web_ip_count++;
+            }
+        }
+    }
+    free(aa);
+    /* boucle locale */
+    if (g_web_ip_count < 32) {
+        strcpy(g_web_ip_list[g_web_ip_count].ip, "127.0.0.1");
+        wcscpy(g_web_ip_list[g_web_ip_count].name, L"Loopback");
+        g_web_ip_count++;
+    }
+}
+
+/* Une IP de la config est-elle cochée ? (défaut : tout coché) */
+static int web_ip_checked(const char* ip)
+{
+    if (g_web_ips_cfg[0] == 0) return 1;
+    char tmp[1024];
+    strncpy(tmp, g_web_ips_cfg, sizeof(tmp) - 1);
+    tmp[sizeof(tmp) - 1] = 0;
+    char* tok = strtok(tmp, ";");
+    while (tok) {
+        if (!strcmp(tok, ip)) return 1;
+        tok = strtok(NULL, ";");
+    }
+    return 0;
+}
 
 static void web_config_path(wchar_t* out, int chars)
 {
@@ -552,10 +623,24 @@ static void web_load_config(void)
     CloseHandle(h);
     buf[rd] = 0;
     int on = 0, port = 0, audio = 0;
-    if (sscanf(buf, "on=%d\nport=%d\naudio=%d", &on, &port, &audio) == 3) {
+    int n = sscanf(buf, "on=%d\nport=%d\naudio=%d", &on, &port, &audio);
+    char ips[1024] = "";
+    char* ipsp = strstr(buf, "ips=");
+    if (ipsp) {
+        ipsp += 4;
+        char* e = strchr(ipsp, '\n');
+        if (!e) e = ipsp + strlen(ipsp);
+        int l = (int)(e - ipsp);
+        if (l > 1023) l = 1023;
+        memcpy(ips, ipsp, (size_t)l);
+        ips[l] = 0;
+    }
+    if (n == 3) {
         g_web_enabled = on;
         g_web_port = (port >= 1 && port <= 65535) ? port : server_find_free_port();
         g_web_audio = audio;
+        strncpy(g_web_ips_cfg, ips, sizeof(g_web_ips_cfg) - 1);
+        g_web_ips_cfg[sizeof(g_web_ips_cfg) - 1] = 0;
     } else {
         g_web_port = server_find_free_port();
     }
@@ -565,9 +650,9 @@ static void web_save_config(void)
 {
     wchar_t path[MAX_PATH];
     web_config_path(path, MAX_PATH);
-    char buf[128];
-    _snprintf(buf, sizeof(buf), "on=%d\nport=%d\naudio=%d\n",
-              g_web_enabled, g_web_port, g_web_audio);
+    char buf[1024];
+    _snprintf(buf, sizeof(buf), "on=%d\nport=%d\naudio=%d\nips=%s\n",
+              g_web_enabled, g_web_port, g_web_audio, g_web_ips_cfg);
     HANDLE h = CreateFileW(path, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, 0, NULL);
     if (h != INVALID_HANDLE_VALUE) {
         DWORD wr;
@@ -580,7 +665,7 @@ static void web_apply(void)
 {
     mp_set_audio_out(g_web_audio);
     if (g_web_enabled) {
-        if (server_start(g_web_port, g_hwnd) != 0) {
+        if (server_start(g_web_port, g_hwnd, g_web_ips_cfg) != 0) {
             wchar_t msg[256];
             swprintf(msg, 256, lang_get("web_err_port"), g_web_port);
             MessageBoxW(g_hwnd, msg, APP_TITLE, MB_ICONERROR);
@@ -606,9 +691,35 @@ static INT_PTR CALLBACK web_dlg_proc(HWND h, UINT m, WPARAM w, LPARAM l)
         SendMessageW(cb, CB_ADDSTRING, 0, (LPARAM)lang_get("web_phone"));
         SendMessageW(cb, CB_ADDSTRING, 0, (LPARAM)lang_get("web_both"));
         SendMessageW(cb, CB_SETCURSEL, g_web_audio, 0);
+        /* liste des interfaces : sur quelle IP écouter */
+        HWND lv = GetDlgItem(h, IDC_WEB_LIST);
+        ListView_SetExtendedListViewStyle(lv, LVS_EX_CHECKBOXES | LVS_EX_FULLROWSELECT);
+        LVCOLUMNW c0, c1;
+        memset(&c0, 0, sizeof(c0));
+        c0.mask = LVCF_TEXT | LVCF_WIDTH;
+        c0.cx = 118; c0.pszText = L"IP";
+        ListView_InsertColumn(lv, 0, &c0);
+        memset(&c1, 0, sizeof(c1));
+        c1.mask = LVCF_TEXT | LVCF_WIDTH;
+        c1.cx = 142; c1.pszText = L"Interface";
+        ListView_InsertColumn(lv, 1, &c1);
+        web_enum_ips();
+        for (int i = 0; i < g_web_ip_count; i++) {
+            LVITEMW it;
+            memset(&it, 0, sizeof(it));
+            it.mask = LVIF_TEXT;
+            it.iItem = i;
+            wchar_t ipw[64];
+            MultiByteToWideChar(CP_UTF8, 0, g_web_ip_list[i].ip, -1, ipw, 64);
+            it.pszText = ipw;
+            ListView_InsertItem(lv, &it);
+            ListView_SetItemText(lv, i, 1, g_web_ip_list[i].name);
+            ListView_SetCheckState(lv, i, web_ip_checked(g_web_ip_list[i].ip));
+        }
         SetDlgItemTextW(h, IDC_WEB_CHK, lang_get("web_enable"));
         SetDlgItemTextW(h, IDC_WEB_PORT_LBL, lang_get("web_port"));
         SetDlgItemTextW(h, IDC_WEB_AUD_LBL, lang_get("web_audio_out"));
+        SetDlgItemTextW(h, IDC_WEB_LIST_LBL, lang_get("web_listen"));
         SetDlgItemTextW(h, IDOK, lang_get("web_ok"));
         SetDlgItemTextW(h, IDCANCEL, lang_get("web_cancel"));
         SetWindowTextW(h, lang_get("web_dlg_title"));
@@ -623,9 +734,20 @@ static INT_PTR CALLBACK web_dlg_proc(HWND h, UINT m, WPARAM w, LPARAM l)
             int audio = (int)SendMessageW(GetDlgItem(h, IDC_WEB_COMBO),
                                           CB_GETCURSEL, 0, 0);
             if (audio < 0) audio = 0;
+            /* IP cochées : "ip1;ip2;..." (vide = toutes) */
+            char ips[1024] = "";
+            HWND lv = GetDlgItem(h, IDC_WEB_LIST);
+            for (int i = 0; i < g_web_ip_count; i++) {
+                if (ListView_GetCheckState(lv, i)) {
+                    if (ips[0]) strcat(ips, ";");
+                    strcat(ips, g_web_ip_list[i].ip);
+                }
+            }
             g_web_enabled = on;
             g_web_port = (port >= 1 && port <= 65535) ? port : 8000;
             g_web_audio = audio;
+            strncpy(g_web_ips_cfg, ips, sizeof(g_web_ips_cfg) - 1);
+            g_web_ips_cfg[sizeof(g_web_ips_cfg) - 1] = 0;
             web_save_config();
             web_apply();
             EndDialog(h, 1);

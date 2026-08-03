@@ -8,9 +8,9 @@
 
 #include <windows.h>
 
-/* Démarre le serveur sur `port`. Retourne 0 si OK, -1 si le port est
- * occupé (ou toute autre erreur de socket). */
-int server_start(int port, HWND hwnd);
+/* Démarre le serveur sur `port`. `ips` = liste des adresses à écouter
+ * ("ip1;ip2;...", vide = toutes les interfaces). Retourne 0 si OK. */
+int server_start(int port, HWND hwnd, const char* ips);
 
 /* Arrête le serveur (threads + sockets). */
 void server_stop(void);

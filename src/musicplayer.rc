@@ -3,7 +3,7 @@ IDI_MUSICPLAYER ICON "musicplayer.ico"
 
 /* Dialog "Serveur web" (Settings ▸ Web server…) — ID numérique 104
    (doit correspondre à IDD_WEB dans main.c) */
-104 DIALOG 0, 0, 300, 158
+104 DIALOG 0, 0, 300, 244
 STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "Web server"
 FONT 8, "MS Shell Dlg"
@@ -13,6 +13,8 @@ BEGIN
     EDITTEXT 2002, 70, 38, 56, 14, ES_NUMBER | WS_TABSTOP
     LTEXT "Audio output:", 1002, 14, 66, 90, 12
     COMBOBOX 2003, 108, 64, 160, 80, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
-    DEFPUSHBUTTON "OK", 1, 92, 124, 60, 16
-    PUSHBUTTON "Cancel", 2, 162, 124, 60, 16
+    LTEXT "Listen on:", 1003, 14, 94, 60, 12
+    CONTROL "", 2004, "SysListView32", LVS_REPORT | LVS_SINGLESEL | WS_BORDER | WS_TABSTOP, 14, 108, 272, 102
+    DEFPUSHBUTTON "OK", 1, 92, 218, 60, 16
+    PUSHBUTTON "Cancel", 2, 162, 218, 60, 16
 END

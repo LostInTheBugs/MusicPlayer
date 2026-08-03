@@ -50,6 +50,7 @@ web_dlg_title=Serveur web
 web_enable=Activer le serveur web (télécommande)
 web_port=Port :
 web_audio_out=Sortie audio :
+web_listen=Écouter sur :
 web_pc=Cet ordinateur
 web_phone=Téléphone
 web_both=Les deux

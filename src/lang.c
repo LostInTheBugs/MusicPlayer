@@ -64,6 +64,7 @@ static const struct { const char* key; const wchar_t* val; } g_en[] = {
     { "web_enable",      L"Enable web server (remote control)" },
     { "web_port",        L"Port:" },
     { "web_audio_out",   L"Audio output:" },
+    { "web_listen",      L"Listen on:" },
     { "web_pc",          L"This computer" },
     { "web_phone",       L"Phone" },
     { "web_both",        L"Both" },

@@ -33,7 +33,8 @@ extern int  web_plist_shuffle(void);
 extern void web_set_audio_out(int mode);
 
 static volatile LONG g_running = 0;
-static SOCKET g_listen = INVALID_SOCKET;
+static SOCKET g_listens[32];
+static int    g_n_listens = 0;
 static HWND   g_hwnd = NULL;
 static int    g_port = 8000;
 
@@ -291,105 +292,111 @@ static DWORD WINAPI stream_thread(void* arg)
 }
 
 /* ------------------------------------------------------------------ */
-/* Thread principal : accept + dispatch                                */
+/* Thread d'acceptation : une socket d'écoute par IP sélectionnée      */
 /* ------------------------------------------------------------------ */
-static DWORD WINAPI server_thread(void* arg)
+static void dispatch(SOCKET c)
 {
-    (void)arg;
-    WSADATA wsa;
-    if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0) {
-        InterlockedExchange(&g_running, 0);
-        return 1;
+    char req[8192];
+    int rn = recv(c, req, sizeof(req) - 1, 0);
+    if (rn <= 0) { closesocket(c); return; }
+    req[rn] = 0;
+    char method[8], path[512];
+    if (sscanf(req, "%7s %511s", method, path) != 2) {
+        closesocket(c);
+        return;
     }
-    g_listen = socket(AF_INET, SOCK_STREAM, 0);
-    if (g_listen == INVALID_SOCKET) { WSACleanup(); InterlockedExchange(&g_running, 0); return 1; }
-    int yes = 1;
-    setsockopt(g_listen, SOL_SOCKET, SO_REUSEADDR, (const char*)&yes, sizeof(yes));
-    struct sockaddr_in a;
-    memset(&a, 0, sizeof(a));
-    a.sin_family = AF_INET;
-    a.sin_addr.s_addr = htonl(INADDR_ANY);
-    a.sin_port = htons((u_short)g_port);
-    if (bind(g_listen, (struct sockaddr*)&a, sizeof(a)) != 0 ||
-        listen(g_listen, 8) != 0) {
-        closesocket(g_listen);
-        g_listen = INVALID_SOCKET;
-        WSACleanup();
-        InterlockedExchange(&g_running, 0);
-        return 1;
+    if (!strcmp(path, "/")) {
+        http_response(c, "200 OK", "text/html; charset=utf-8", PAGE_HTML);
+        closesocket(c);
+    } else if (!strcmp(path, "/api/state")) {
+        api_state(c);
+        closesocket(c);
+    } else if (!strcmp(path, "/api/cmd")) {
+        const char* body = strstr(req, "\r\n\r\n");
+        if (body) body += 4;
+        else body = req + rn;
+        api_cmd(c, body);
+        closesocket(c);
+    } else if (!strncmp(path, "/stream", 7)) {
+        HANDLE h = CreateThread(NULL, 0, stream_thread, (void*)(intptr_t)c, 0, NULL);
+        if (h) CloseHandle(h);
+        else closesocket(c);
+    } else {
+        http_response(c, "404 Not Found", "text/plain", "not found");
+        closesocket(c);
     }
+}
+
+static DWORD WINAPI accept_thread(void* arg)
+{
+    SOCKET s = (SOCKET)(intptr_t)arg;
     while (g_running) {
-        SOCKET c = accept(g_listen, NULL, NULL);
+        SOCKET c = accept(s, NULL, NULL);
         if (c == INVALID_SOCKET) break;
-        char req[8192];
-        int rn = recv(c, req, sizeof(req) - 1, 0);
-        if (rn <= 0) { closesocket(c); continue; }
-        req[rn] = 0;
-        char method[8], path[512];
-        if (sscanf(req, "%7s %511s", method, path) != 2) {
-            closesocket(c);
-            continue;
-        }
-        if (!strcmp(path, "/")) {
-            http_response(c, "200 OK", "text/html; charset=utf-8", PAGE_HTML);
-            closesocket(c);
-        } else if (!strcmp(path, "/api/state")) {
-            api_state(c);
-            closesocket(c);
-        } else if (!strcmp(path, "/api/cmd")) {
-            const char* body = strstr(req, "\r\n\r\n");
-            if (body) body += 4;
-            else body = req + rn;
-            api_cmd(c, body);
-            closesocket(c);
-        } else if (!strncmp(path, "/stream", 7)) {
-            HANDLE h = CreateThread(NULL, 0, stream_thread, (void*)(intptr_t)c, 0, NULL);
-            if (h) CloseHandle(h);
-            else closesocket(c);
-        } else {
-            http_response(c, "404 Not Found", "text/plain", "not found");
-            closesocket(c);
-        }
+        dispatch(c);
     }
-    if (g_listen != INVALID_SOCKET) {
-        closesocket(g_listen);
-        g_listen = INVALID_SOCKET;
-    }
-    WSACleanup();
     return 0;
 }
 
 /* ------------------------------------------------------------------ */
 /* API publique                                                        */
 /* ------------------------------------------------------------------ */
-int server_start(int port, HWND hwnd)
+int server_start(int port, HWND hwnd, const char* ips)
 {
     if (g_running) server_stop();
     g_hwnd = hwnd;
     g_port = port;
-    g_listen = INVALID_SOCKET;
+    g_n_listens = 0;
+    WSADATA wsa;
+    if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0) return -1;
     InterlockedExchange(&g_running, 1);
-    HANDLE h = CreateThread(NULL, 0, server_thread, NULL, 0, NULL);
-    if (!h) {
+
+    /* une socket d'écoute par IP ("ip1;ip2;..." ; vide = toutes) */
+    char ipbuf[64];
+    const char* p = ips ? ips : "";
+    int failed = 0;
+    do {
+        int len = 0;
+        while (*p && *p != ';' && len < 63) ipbuf[len++] = *p++;
+        ipbuf[len] = 0;
+        if (*p == ';') p++;
+        SOCKET s = socket(AF_INET, SOCK_STREAM, 0);
+        if (s == INVALID_SOCKET) { failed = 1; break; }
+        struct sockaddr_in a;
+        memset(&a, 0, sizeof(a));
+        a.sin_family = AF_INET;
+        a.sin_port = htons((u_short)port);
+        if (len > 0)
+            a.sin_addr.s_addr = inet_addr(ipbuf);
+        else
+            a.sin_addr.s_addr = htonl(INADDR_ANY);
+        int yes = 1;
+        setsockopt(s, SOL_SOCKET, SO_REUSEADDR, (const char*)&yes, sizeof(yes));
+        if (bind(s, (struct sockaddr*)&a, sizeof(a)) != 0 || listen(s, 8) != 0) {
+            closesocket(s);
+            failed = 1;
+            break;
+        }
+        g_listens[g_n_listens++] = s;
+        HANDLE h = CreateThread(NULL, 0, accept_thread, (void*)(intptr_t)s, 0, NULL);
+        if (h) CloseHandle(h);
+    } while (*p && g_n_listens < 32);
+
+    if (failed || g_n_listens == 0) {
+        for (int i = 0; i < g_n_listens; i++) closesocket(g_listens[i]);
+        g_n_listens = 0;
+        WSACleanup();
         InterlockedExchange(&g_running, 0);
         return -1;
     }
-    CloseHandle(h);
-    /* attend que le bind soit fait (pour détecter un port occupé) */
-    for (int i = 0; i < 150 && g_running; i++) {
-        if (g_listen != INVALID_SOCKET) break;
-        Sleep(20);
-    }
-    return g_listen != INVALID_SOCKET ? 0 : -1;
+    return 0;
 }
 
 void server_stop(void)
 {
     InterlockedExchange(&g_running, 0);
-    if (g_listen != INVALID_SOCKET) {
-        closesocket(g_listen);
-        g_listen = INVALID_SOCKET;
-    }
+    for (int i = 0; i < g_n_listens; i++) closesocket(g_listens[i]);
+    g_n_listens = 0;
     Sleep(120);
 }
 

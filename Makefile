@@ -13,7 +13,7 @@
 #   make clean
 # ======================================================================
 
-VERSION := 2026.08.018-c4
+VERSION := 2026.08.018-c5
 
 CROSS    := x86_64-w64-mingw32-
 CC       := $(CROSS)gcc
@@ -26,7 +26,7 @@ CFLAGS   := -O2 -Wall -Wextra -std=c11 \
 LDFLAGS  := -Lvendor/ffmpeg/lib \
             -lavformat -lavcodec -lavutil -lswresample \
             -lole32 -luuid -lwinmm -ldsound \
-            -luser32 -lgdi32 -lshell32 -lcomdlg32 -lcomctl32 -lwininet -lws2_32 \
+            -luser32 -lgdi32 -lshell32 -lcomdlg32 -lcomctl32 -lwininet -lws2_32 -liphlpapi \
             -static-libgcc -mwindows
 
 SRC := src/main.c src/player.c src/plugin_loader.c src/lang.c src/update.c src/server.c

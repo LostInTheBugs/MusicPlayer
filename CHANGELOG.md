@@ -2,6 +2,11 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.018-c5] — 2026-08-03
+
+### Added
+- **Fenêtre Web server : liste des interfaces réseau avec cases à cocher** — chaque adresse IP (avec le nom de l'interface) peut être activée ou désactivée pour l'écoute ; le serveur n'écoute que sur les IP cochées (par défaut : toutes)
+
 ## [2026.08.018-c4] — 2026-08-03
 
 ### Added
