@@ -13,7 +13,7 @@
 #   make clean
 # ======================================================================
 
-VERSION := 2026.08.018-c5
+VERSION := 2026.08.019
 
 CROSS    := x86_64-w64-mingw32-
 CC       := $(CROSS)gcc
@@ -29,7 +29,7 @@ LDFLAGS  := -Lvendor/ffmpeg/lib \
             -luser32 -lgdi32 -lshell32 -lcomdlg32 -lcomctl32 -lwininet -lws2_32 -liphlpapi \
             -static-libgcc -mwindows
 
-SRC := src/main.c src/player.c src/plugin_loader.c src/lang.c src/update.c src/server.c
+SRC := src/main.c src/player.c src/plugin_loader.c src/lang.c src/update.c src/server.c src/config.c
 OBJ := $(SRC:.c=.o)
 RES := src/musicplayer_res.o
 BIN := bin/MusicPlayer.exe

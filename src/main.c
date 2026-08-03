@@ -26,6 +26,7 @@
 #include "lang.h"
 #include "update.h"
 #include "server.h"
+#include "config.h"
 
 #ifndef MP_VERSION
 #define MP_VERSION "2026.08.014"
@@ -80,6 +81,7 @@ static void log_line(const char* s);    /* idem */
 static wchar_t* g_plist[PLAYLIST_MAX];
 static int      g_plist_n = 0;
 static int      g_plist_idx = -1;
+static wchar_t  g_plist_dir[MAX_PATH] = { 0 };   /* dossier de la playlist */
 
 static void playlist_clear(void)
 {
@@ -136,6 +138,7 @@ static int playlist_play_index(int i)
 /* Ouvre un dossier en playlist : scan récursif + tri + lecture du premier */
 static int playlist_open_folder(const wchar_t* dir)
 {
+    wcscpy(g_plist_dir, dir);
     playlist_clear();
     playlist_scan(dir);
     if (g_plist_n == 0) return -1;
@@ -599,66 +602,23 @@ static int web_ip_checked(const char* ip)
     return 0;
 }
 
-static void web_config_path(wchar_t* out, int chars)
-{
-    GetEnvironmentVariableW(L"APPDATA", out, chars);
-    wcscat(out, L"\\MusicPlayer");
-    CreateDirectoryW(out, NULL);
-    wcscat(out, L"\\web.txt");
-}
-
 static void web_load_config(void)
 {
-    wchar_t path[MAX_PATH];
-    web_config_path(path, MAX_PATH);
-    HANDLE h = CreateFileW(path, GENERIC_READ, FILE_SHARE_READ, NULL,
-                           OPEN_EXISTING, 0, NULL);
-    if (h == INVALID_HANDLE_VALUE) {
-        g_web_port = server_find_free_port();
-        return;
-    }
-    char buf[512] = { 0 };
-    DWORD rd = 0;
-    ReadFile(h, buf, sizeof(buf) - 1, &rd, NULL);
-    CloseHandle(h);
-    buf[rd] = 0;
-    int on = 0, port = 0, audio = 0;
-    int n = sscanf(buf, "on=%d\nport=%d\naudio=%d", &on, &port, &audio);
-    char ips[1024] = "";
-    char* ipsp = strstr(buf, "ips=");
-    if (ipsp) {
-        ipsp += 4;
-        char* e = strchr(ipsp, '\n');
-        if (!e) e = ipsp + strlen(ipsp);
-        int l = (int)(e - ipsp);
-        if (l > 1023) l = 1023;
-        memcpy(ips, ipsp, (size_t)l);
-        ips[l] = 0;
-    }
-    if (n == 3) {
-        g_web_enabled = on;
-        g_web_port = (port >= 1 && port <= 65535) ? port : server_find_free_port();
-        g_web_audio = audio;
-        strncpy(g_web_ips_cfg, ips, sizeof(g_web_ips_cfg) - 1);
-        g_web_ips_cfg[sizeof(g_web_ips_cfg) - 1] = 0;
-    } else {
-        g_web_port = server_find_free_port();
-    }
+    g_web_enabled = g_cfg.web_enabled;
+    g_web_port = g_cfg.web_port > 0 ? g_cfg.web_port : server_find_free_port();
+    g_web_audio = g_cfg.web_audio;
+    strncpy(g_web_ips_cfg, g_cfg.web_ips, sizeof(g_web_ips_cfg) - 1);
+    g_web_ips_cfg[sizeof(g_web_ips_cfg) - 1] = 0;
 }
 
 static void web_save_config(void)
 {
-    wchar_t path[MAX_PATH];
-    web_config_path(path, MAX_PATH);
-    char buf[1024];
-    _snprintf(buf, sizeof(buf), "on=%d\nport=%d\naudio=%d\nips=%s\n",
-              g_web_enabled, g_web_port, g_web_audio, g_web_ips_cfg);
-    HANDLE h = CreateFileW(path, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, 0, NULL);
-    if (h != INVALID_HANDLE_VALUE) {
-        DWORD wr;
-        WriteFile(h, buf, (DWORD)strlen(buf), &wr, NULL);
-        CloseHandle(h);
-    }
+    g_cfg.web_enabled = g_web_enabled;
+    g_cfg.web_port = g_web_port;
+    g_cfg.web_audio = g_web_audio;
+    strncpy(g_cfg.web_ips, g_web_ips_cfg, sizeof(g_cfg.web_ips) - 1);
+    g_cfg.web_ips[sizeof(g_cfg.web_ips) - 1] = 0;
+    config_save();
 }
 
 static void web_apply(void)
@@ -766,6 +726,58 @@ static void do_web_dialog(void)
 {
     DialogBoxParamW(GetModuleHandleW(NULL), MAKEINTRESOURCEW(IDD_WEB),
                     g_hwnd, web_dlg_proc, 0);
+}
+
+/* ------------------------------------------------------------------ */
+/* Reprise / sauvegarde de la session (config.yml)                     */
+/* ------------------------------------------------------------------ */
+static void resume_last_session(void)
+{
+    if (g_cfg.last_path[0] == 0) return;
+    wchar_t path_w[MAX_PATH * 3];
+    utf8_to_wide(g_cfg.last_path, path_w, MAX_PATH * 3);
+    if (GetFileAttributesW(path_w) == INVALID_FILE_ATTRIBUTES) return;
+    if (GetFileAttributesW(path_w) & FILE_ATTRIBUTE_DIRECTORY) {
+        /* playlist : rescan complet du dossier — les nouveaux fichiers sont
+         * ajoutés, ceux qui n'existent plus sont retirés */
+        if (playlist_open_folder(path_w) == 0 && g_cfg.last_file[0]) {
+            wchar_t file_w[MAX_PATH * 3];
+            utf8_to_wide(g_cfg.last_file, file_w, MAX_PATH * 3);
+            for (int i = 0; i < g_plist_n; i++) {
+                if (!_wcsicmp(g_plist[i], file_w)) {
+                    playlist_play_index(i);
+                    break;
+                }
+            }
+        }
+    } else {
+        mp_open(g_cfg.last_path);
+    }
+}
+
+static void save_state(void)
+{
+    g_cfg.volume = (int)(mp_get_volume() * 100.0f + 0.5f);
+    g_cfg.speed = mp_get_speed();
+    g_cfg.shuffle = g_shuffle;
+    g_cfg.web_enabled = g_web_enabled;
+    g_cfg.web_port = g_web_port;
+    g_cfg.web_audio = g_web_audio;
+    strncpy(g_cfg.web_ips, g_web_ips_cfg, sizeof(g_cfg.web_ips) - 1);
+    g_cfg.web_ips[sizeof(g_cfg.web_ips) - 1] = 0;
+    if (g_plist_n > 0 && g_plist_dir[0]) {
+        wide_to_utf8(g_plist_dir, g_cfg.last_path, sizeof(g_cfg.last_path));
+        if (g_plist_idx >= 0 && g_plist_idx < g_plist_n)
+            wide_to_utf8(g_plist[g_plist_idx], g_cfg.last_file,
+                         sizeof(g_cfg.last_file));
+        else
+            g_cfg.last_file[0] = 0;
+    } else if (mp_get_file_name()) {
+        strncpy(g_cfg.last_path, mp_get_file_name(), sizeof(g_cfg.last_path) - 1);
+        g_cfg.last_path[sizeof(g_cfg.last_path) - 1] = 0;
+        g_cfg.last_file[0] = 0;
+    }
+    config_save();
 }
 
 /* ------------------------------------------------------------------ */
@@ -1611,6 +1623,7 @@ static LRESULT CALLBACK wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         return 0;
     }
     case WM_CLOSE:
+        save_state();
         server_stop();
         mp_plugins_shutdown();
         mp_shutdown();
@@ -1740,6 +1753,12 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR lpCmdLine, int nCmdSh
 
     mp_init();
 
+    /* configuration persistante : volume, vitesse, reprise de session */
+    config_load();
+    mp_set_volume(g_cfg.volume / 100.0f);
+    mp_set_speed(g_cfg.speed);
+    playlist_set_shuffle(g_cfg.shuffle);
+
     resolve_plugins_dir();
     {
         char dir_utf8[MAX_PATH * 2], dbg[600];
@@ -1824,6 +1843,9 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR lpCmdLine, int nCmdSh
             _snprintf(dbg, sizeof(dbg), "Command-line open failed : %s", file);
             log_line(dbg);
         }
+    } else {
+        /* pas de ligne de commande : reprise de la dernière session */
+        resume_last_session();
     }
 
     MSG msg;

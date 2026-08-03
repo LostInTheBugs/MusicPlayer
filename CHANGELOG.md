@@ -2,6 +2,16 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.019] — 2026-08-03
+
+### Added
+- **Fichier de configuration `config.yml`** (`%APPDATA%\MusicPlayer\config.yml`) : l'état du lecteur est sauvegardé à la fermeture et restauré au démarrage
+  - Volume, vitesse, mode aléatoire
+  - Dernier chemin ouvert (fichier ou dossier) et fichier en cours de lecture
+  - Configuration du serveur web (activé, port, sortie audio, IP écoutées)
+- **Rescan automatique de la playlist au démarrage** : les nouveaux fichiers (dossier et sous-dossiers) sont ajoutés, ceux qui n'existent plus sont retirés, et la lecture reprend sur le morceau en cours
+- Migration automatique de l'ancien fichier `web.txt`
+
 ## [2026.08.018-c5] — 2026-08-03
 
 ### Added
