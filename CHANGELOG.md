@@ -2,6 +2,12 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.017-c2] — 2026-08-02
+
+### Fixed
+- **File ▸ Open folder… : vrai sélecteur de dossier** — retour au dialogue classique `SHBrowseForFolderW` (avec COM initialisé) : on choisit un **dossier**, plus un fichier
+- **Vérification de mises à jour : les corrections `-cX` sont détectées** — le comparateur de versions gère le suffixe de correction (ex. `2026.08.017` → `2026.08.017-c1` est signalé comme mise à jour ; `-c2` > `-c1`)
+
 ## [2026.08.017-c1] — 2026-08-02
 
 ### Fixed

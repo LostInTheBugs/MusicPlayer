@@ -469,32 +469,27 @@ static void do_open_dialog(void)
 
 static void do_open_folder_dialog(void)
 {
-    /* Dialogue d'ouverture classique (le plus stable partout) : le user
-     * choisit n'importe quel MP3/MP4 du dossier → tout le dossier est lu
-     * (sous-dossiers inclus). */
-    wchar_t path_w[MAX_PATH] = { 0 };
-    wchar_t filter[512] = { 0 };
-    build_open_filter(filter, 512);
-    OPENFILENAMEW ofn;
-    memset(&ofn, 0, sizeof(ofn));
-    ofn.lStructSize = sizeof(ofn);
-    ofn.hwndOwner = g_hwnd;
-    ofn.lpstrFilter = filter;
-    ofn.lpstrFile = path_w;
-    ofn.nMaxFile = MAX_PATH;
-    ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST;
-    ofn.lpstrTitle = lang_get("open_folder_title");
-    if (GetOpenFileNameW(&ofn)) {
+    /* Sélecteur de dossier classique (le plus stable : fonctionne sous
+     * Windows 11 et Wine). COM initialisé pour la stabilité du shell. */
+    HRESULT hr = CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);
+    BROWSEINFOW bi;
+    memset(&bi, 0, sizeof(bi));
+    bi.hwndOwner = g_hwnd;
+    bi.lpszTitle = lang_get("open_folder_title");
+    bi.ulFlags = BIF_RETURNONLYFSDIRS;
+    LPITEMIDLIST pidl = SHBrowseForFolderW(&bi);
+    if (pidl) {
         wchar_t dir[MAX_PATH];
-        wcscpy(dir, path_w);
-        wchar_t* slash = wcsrchr(dir, L'\\');
-        if (slash) *slash = L'\0';
-        if (playlist_open_folder(dir) != 0) {
-            wchar_t msg[600];
-            swprintf(msg, 600, lang_get("err_folder"), dir);
-            MessageBoxW(g_hwnd, msg, APP_TITLE, MB_ICONERROR);
+        if (SHGetPathFromIDListW(pidl, dir)) {
+            if (playlist_open_folder(dir) != 0) {
+                wchar_t msg[600];
+                swprintf(msg, 600, lang_get("err_folder"), dir);
+                MessageBoxW(g_hwnd, msg, APP_TITLE, MB_ICONERROR);
+            }
         }
+        CoTaskMemFree(pidl);
     }
+    if (hr == S_OK || hr == S_FALSE) CoUninitialize();
 }
 
 static void do_about(void)

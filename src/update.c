@@ -22,22 +22,25 @@ static char          g_latest[32];
 static volatile LONG g_checking = 0;
 
 /* ------------------------------------------------------------------ */
-/* Comparaison de versions "AAAA.MM.NNN"                               */
+/* Comparaison de versions "AAAA.MM.NNN[-cX]"                          */
 /* ------------------------------------------------------------------ */
-static int parse_ver(const char* s, int* y, int* m, int* r)
+static int parse_ver(const char* s, int* y, int* m, int* r, int* c)
 {
+    *c = 0;
+    if (sscanf(s, "%d.%d.%d-c%d", y, m, r, c) == 4) return 1;
     return sscanf(s, "%d.%d.%d", y, m, r) == 3;
 }
 
 /* retourne 1 si `lat` est plus récente que `cur`, sinon 0 */
 static int cmp_ver(const char* cur, const char* lat)
 {
-    int cy, cm, cr, ly, lm, lr;
-    if (!parse_ver(cur, &cy, &cm, &cr) || !parse_ver(lat, &ly, &lm, &lr))
+    int cy, cm, cr, cc, ly, lm, lr, lc;
+    if (!parse_ver(cur, &cy, &cm, &cr, &cc) || !parse_ver(lat, &ly, &lm, &lr, &lc))
         return 0;
     if (ly != cy) return ly > cy ? 1 : 0;
     if (lm != cm) return lm > cm ? 1 : 0;
-    return lr > cr ? 1 : 0;
+    if (lr != cr) return lr > cr ? 1 : 0;
+    return lc > cc ? 1 : 0;
 }
 
 /* ------------------------------------------------------------------ */
