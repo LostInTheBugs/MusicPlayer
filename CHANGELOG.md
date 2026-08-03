@@ -2,6 +2,11 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.030] — 2026-08-03
+
+### Added
+- **Diffusion vers TeamSpeak 3** : Settings ▸ **Broadcast to TeamSpeak…** — choisissez un périphérique de sortie (ex. **CABLE Input** d'un Virtual Audio Cable) : la musique (et le mix DJ) est diffusée dessus en plus des haut-parleurs ; dans TeamSpeak 3, sélectionnez le câble comme **microphone** pour diffuser la musique sur le serveur
+
 ## [2026.08.029] — 2026-08-03
 
 ### Added
