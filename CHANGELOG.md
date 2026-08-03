@@ -2,6 +2,12 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.024] — 2026-08-03
+
+### Added
+- **Settings ▸ Interface…** : fenêtre pour choisir le **skin** (liste déroulante, palette par défaut comprise) et la **langue** — le sous-menu Language est retiré du menu Settings
+- **Settings ▸ Update…** : fenêtre pour configurer le **mode de mise à jour** (automatique au démarrage / manuel / désactivé) et **vérifier maintenant** — « Check for updates » et « Check for updates at startup » sont retirés du menu Settings
+
 ## [2026.08.023-c1] — 2026-08-03
 
 ### Fixed

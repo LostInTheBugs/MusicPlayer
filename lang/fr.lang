@@ -42,6 +42,15 @@ plugins_effects=Effets audio
 plugins_skins=Peaux
 plugins_services=Services
 menu_plugins_cfg=&Plugins…
+menu_interface=&Interface…
+menu_update_cfg=&Mise à jour…
+interface_skin=Skin :
+interface_lang=Langue :
+updcfg_group=Mode de mise à jour
+updcfg_auto=&Automatique (vérifier au démarrage)
+updcfg_manual=&Manuel
+updcfg_off=&Désactivé
+updcfg_check=Vérifier &maintenant…
 plugins_dlg_title=Plugins
 plugins_dlg_lbl=Plugins à afficher dans le menu Plugins :
 

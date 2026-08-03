@@ -46,10 +46,11 @@ enum {
     IDM_PLUGIN_RELOAD = 501,
     IDM_PLUGIN_CFG = 502,   /* Settings ▸ Plugins… */
     IDM_PLUGIN_BASE = 600,  /* items plugins dynamiques */
-    IDM_LANG_BASE = 700,    /* items langues dynamiques */
+    IDM_LANG_BASE = 700,    /* borne supérieure des items plugins */
     IDM_FULLSCREEN = 801,
-    IDM_CHECK_UPDATE = 802, IDM_AUTO_UPDATE = 803,
     IDM_WEB_SERVER = 804,
+    IDM_INTERFACE = 805,    /* Settings ▸ Interface… (skin + langue) */
+    IDM_UPDATE_CFG = 806,   /* Settings ▸ Update… (mode de mise à jour) */
     IDM_ABOUT = 901
 };
 
@@ -71,6 +72,7 @@ static RECT g_rc_play, g_rc_stop, g_rc_next, g_rc_shuffle, g_rc_plist, g_rc_fs, 
 static int  g_vol_drag = 0;   /* curseur de volume en cours de glissement */
 
 static void status_update(void);        /* définie plus bas */
+static void lang_pref_save(const wchar_t* code); /* idem */
 static void wide_to_utf8(const wchar_t* in, char* out, int out_chars); /* idem */
 static void log_line(const char* s);    /* idem */
 static void playlist_win_rebuild(void); /* fenêtre playlist */
@@ -589,23 +591,7 @@ static void rebuild_plugins_menu(HMENU parent)
     DrawMenuBar(g_hwnd);
 }
 
-/* Sous-menu des langues disponibles (dans le menu Paramètres, position 3) */
-static void rebuild_lang_menu(HMENU settings)
-{
-    HMENU m = CreatePopupMenu();
-    int n = 0;
-    const lang_info* li = lang_list(&n);
-    for (int i = 0; i < n; i++) {
-        AppendMenuW(m, MF_STRING, IDM_LANG_BASE + i, li[i].name);
-        if (wcscmp(li[i].code, lang_code()) == 0)
-            CheckMenuRadioItem(m, IDM_LANG_BASE, IDM_LANG_BASE + n - 1,
-                               IDM_LANG_BASE + i, MF_BYCOMMAND);
-    }
-    RemoveMenu(settings, 3, MF_BYPOSITION);
-    InsertMenuW(settings, 3, MF_BYPOSITION | MF_POPUP, (UINT_PTR)m, lang_get("menu_lang"));
-    DrawMenuBar(g_hwnd);
-}
-
+/* ------------------------------------------------------------------ */
 static HMENU create_menus(void)
 {
     HMENU bar = CreateMenu();
@@ -617,17 +603,13 @@ static HMENU create_menus(void)
     AppendMenuW(mFile, MF_STRING, IDM_EXIT, lang_get("quit"));
     AppendMenuW(bar, MF_POPUP, (UINT_PTR)mFile, lang_get("menu_file"));
 
-    /* Paramètres : vitesse, plein écran, langue, mises à jour */
+    /* Paramètres : vitesse, plein écran, interface, mises à jour */
     HMENU mSettings = CreatePopupMenu();
     AppendMenuW(mSettings, MF_POPUP, (UINT_PTR)build_speed_menu(), lang_get("speed"));
     AppendMenuW(mSettings, MF_STRING, IDM_FULLSCREEN, lang_get("fullscreen"));
     AppendMenuW(mSettings, MF_SEPARATOR, 0, NULL);
-    AppendMenuW(mSettings, MF_POPUP, (UINT_PTR)CreatePopupMenu(), lang_get("menu_lang"));
-    AppendMenuW(mSettings, MF_SEPARATOR, 0, NULL);
-    AppendMenuW(mSettings, MF_STRING, IDM_CHECK_UPDATE, lang_get("menu_check_updates"));
-    AppendMenuW(mSettings,
-                 MF_STRING | (mp_update_auto_enabled() ? MF_CHECKED : MF_UNCHECKED),
-                 IDM_AUTO_UPDATE, lang_get("menu_auto_update"));
+    AppendMenuW(mSettings, MF_STRING, IDM_INTERFACE, lang_get("menu_interface"));
+    AppendMenuW(mSettings, MF_STRING, IDM_UPDATE_CFG, lang_get("menu_update_cfg"));
     AppendMenuW(mSettings, MF_SEPARATOR, 0, NULL);
     AppendMenuW(mSettings, MF_STRING, IDM_WEB_SERVER, lang_get("menu_web_server"));
     AppendMenuW(mSettings, MF_SEPARATOR, 0, NULL);
@@ -651,7 +633,6 @@ static void rebuild_menus(void)
     SetMenu(g_hwnd, bar);
     HMENU mSettings = GetSubMenu(bar, 1);
     refresh_speed_check(GetSubMenu(mSettings, 0));
-    rebuild_lang_menu(mSettings);          /* position 3 dans Paramètres */
     rebuild_plugins_menu(bar);             /* position 2 dans la barre */
     if (old) DestroyMenu(old);
     mp_plugins_apply_skins(g_hwnd);
@@ -742,6 +723,8 @@ static void do_open_folder_dialog(void)
 #define IDD_PLUGINS     105
 #define IDD_UPDATE      106
 #define IDD_ABOUT       107
+#define IDD_INTERFACE   108
+#define IDD_UPDATE_CFG  109
 #define IDC_WEB_CHK     2001
 #define IDC_WEB_EDIT    2002
 #define IDC_WEB_COMBO   2003
@@ -754,6 +737,15 @@ static void do_open_folder_dialog(void)
 #define IDC_ABT_L1      1006
 #define IDC_ABT_L2      1007
 #define IDC_PLG_LIST    2005
+#define IDC_IF_SKIN     1013   /* dialog Interface : combo skin */
+#define IDC_IF_LANG     1014   /* dialog Interface : combo langue */
+#define IDC_IF_LBL_S    1015
+#define IDC_IF_LBL_L    1016
+#define IDC_UPD_GRP     1017   /* dialog Update : groupe mode */
+#define IDC_UPD_AUTO    1018
+#define IDC_UPD_MAN     1019
+#define IDC_UPD_OFF     1020
+#define IDC_UPD_CHECK   1021
 
 /* liste des interfaces réseau (pour le dialog) */
 typedef struct {
@@ -1021,6 +1013,131 @@ static void do_plugins_dialog(void)
 {
     DialogBoxParamW(GetModuleHandleW(NULL), MAKEINTRESOURCEW(IDD_PLUGINS),
                     g_hwnd, plugins_dlg_proc, 0);
+}
+
+/* ------------------------------------------------------------------ */
+/* Dialog Interface (Settings ▸ Interface…) : skin + langue            */
+/* ------------------------------------------------------------------ */
+static INT_PTR CALLBACK interface_dlg_proc(HWND h, UINT m, WPARAM w, LPARAM l)
+{
+    (void)l;
+    switch (m) {
+    case WM_INITDIALOG: {
+        SetDlgItemTextW(h, IDC_IF_LBL_S, lang_get("interface_skin"));
+        SetDlgItemTextW(h, IDC_IF_LBL_L, lang_get("interface_lang"));
+        HWND cs = GetDlgItem(h, IDC_IF_SKIN);
+        SendMessageW(cs, CB_ADDSTRING, 0, (LPARAM)L"Default");
+        int sel = 0;
+        int n = mp_plugins_count();
+        for (int i = 0; i < n; i++) {
+            mp_plugin* p = mp_plugins_get(i);
+            if (!p || !p->api || !(p->api->type() & MP_PLUGIN_SKIN)) continue;
+            wchar_t name_w[128];
+            utf8_to_wide(p->api->name(), name_w, 128);
+            int idx = (int)SendMessageW(cs, CB_ADDSTRING, 0, (LPARAM)name_w);
+            if (p->enabled) sel = idx;
+        }
+        SendMessageW(cs, CB_SETCURSEL, sel, 0);
+        HWND cl = GetDlgItem(h, IDC_IF_LANG);
+        int nlang = 0;
+        const lang_info* li = lang_list(&nlang);
+        int lsel = 0;
+        for (int i = 0; i < nlang; i++) {
+            int idx = (int)SendMessageW(cl, CB_ADDSTRING, 0, (LPARAM)li[i].name);
+            if (wcscmp(li[i].code, lang_code()) == 0) lsel = idx;
+        }
+        SendMessageW(cl, CB_SETCURSEL, lsel, 0);
+        return TRUE;
+    }
+    case WM_COMMAND:
+        if (LOWORD(w) == IDOK) {
+            /* skin choisi (0 = palette par défaut) */
+            int sel = (int)SendMessageW(GetDlgItem(h, IDC_IF_SKIN),
+                                        CB_GETCURSEL, 0, 0);
+            int skin_i = -1;
+            int k = 0;
+            int n = mp_plugins_count();
+            for (int i = 0; i < n; i++) {
+                mp_plugin* p = mp_plugins_get(i);
+                if (!p || !p->api || !(p->api->type() & MP_PLUGIN_SKIN)) continue;
+                k++;
+                if (k == sel) { skin_i = i; break; }
+            }
+            for (int j = 0; j < n; j++) {
+                mp_plugin* q = mp_plugins_get(j);
+                if (q && q->api && (q->api->type() & MP_PLUGIN_SKIN))
+                    mp_plugins_set_enabled(j, j == skin_i);
+            }
+            mp_plugins_apply_skins(g_hwnd);
+            /* langue choisie */
+            int lsel = (int)SendMessageW(GetDlgItem(h, IDC_IF_LANG),
+                                         CB_GETCURSEL, 0, 0);
+            int nlang = 0;
+            const lang_info* li = lang_list(&nlang);
+            if (lsel >= 0 && lsel < nlang) {
+                if (lang_set(li[lsel].code) == 0) {
+                    lang_pref_save(li[lsel].code);
+                    rebuild_menus();
+                }
+            }
+            EndDialog(h, 1);
+        } else if (LOWORD(w) == IDCANCEL) {
+            EndDialog(h, 0);
+        }
+        return TRUE;
+    }
+    return FALSE;
+}
+
+static void do_interface_dialog(void)
+{
+    DialogBoxParamW(GetModuleHandleW(NULL), MAKEINTRESOURCEW(IDD_INTERFACE),
+                    g_hwnd, interface_dlg_proc, 0);
+}
+
+/* ------------------------------------------------------------------ */
+/* Dialog Update (Settings ▸ Update…) : mode + vérification            */
+/* ------------------------------------------------------------------ */
+static INT_PTR CALLBACK updcfg_dlg_proc(HWND h, UINT m, WPARAM w, LPARAM l)
+{
+    (void)l;
+    switch (m) {
+    case WM_INITDIALOG: {
+        int mode = mp_update_get_mode();
+        CheckRadioButton(h, IDC_UPD_AUTO, IDC_UPD_OFF,
+                         mode == 0 ? IDC_UPD_OFF
+                                   : (mode == 2 ? IDC_UPD_MAN : IDC_UPD_AUTO));
+        SetDlgItemTextW(h, IDC_UPD_GRP, lang_get("updcfg_group"));
+        SetDlgItemTextW(h, IDC_UPD_AUTO, lang_get("updcfg_auto"));
+        SetDlgItemTextW(h, IDC_UPD_MAN, lang_get("updcfg_manual"));
+        SetDlgItemTextW(h, IDC_UPD_OFF, lang_get("updcfg_off"));
+        SetDlgItemTextW(h, IDC_UPD_CHECK, lang_get("updcfg_check"));
+        SetWindowTextW(h, lang_get("upd_title"));   /* "Update" sans mnémonique */
+        return TRUE;
+    }
+    case WM_COMMAND:
+        if (LOWORD(w) == IDOK) {
+            int mode = 1;
+            if (IsDlgButtonChecked(h, IDC_UPD_OFF)) mode = 0;
+            else if (IsDlgButtonChecked(h, IDC_UPD_MAN)) mode = 2;
+            mp_update_set_mode(mode);
+            EndDialog(h, 1);
+        } else if (LOWORD(w) == IDC_UPD_CHECK) {
+            EndDialog(h, 2);   /* vérifier maintenant */
+        } else if (LOWORD(w) == IDCANCEL) {
+            EndDialog(h, 0);
+        }
+        return TRUE;
+    }
+    return FALSE;
+}
+
+static void do_update_cfg_dialog(void)
+{
+    INT_PTR r = DialogBoxParamW(GetModuleHandleW(NULL),
+                                MAKEINTRESOURCEW(IDD_UPDATE_CFG),
+                                g_hwnd, updcfg_dlg_proc, 0);
+    if (r == 2) mp_update_check_async(g_hwnd, 1);
 }
 
 /* ------------------------------------------------------------------ */
@@ -1924,16 +2041,12 @@ static void on_command(int id, HMENU bar)
     case IDM_STOP:      mp_stop(); break;
     case IDM_NEXT:      playlist_next(); break;
     case IDM_FULLSCREEN: toggle_fullscreen(g_hwnd); break;
-    case IDM_CHECK_UPDATE:
-        mp_update_check_async(g_hwnd, 1);
+    case IDM_INTERFACE:
+        do_interface_dialog();
         break;
-    case IDM_AUTO_UPDATE: {
-        int on = !mp_update_auto_enabled();
-        mp_update_set_auto(on);
-        CheckMenuItem(GetSubMenu(GetMenu(g_hwnd), 1), IDM_AUTO_UPDATE,
-                      MF_BYCOMMAND | (on ? MF_CHECKED : MF_UNCHECKED));
+    case IDM_UPDATE_CFG:
+        do_update_cfg_dialog();
         break;
-    }
     case IDM_WEB_SERVER:
         do_web_dialog();
         break;
@@ -1997,17 +2110,6 @@ static void on_command(int id, HMENU bar)
                     mp_plugins_service(MP_SERVICE_WEB_APPLY, NULL);
                 }
             }
-        } else if (id >= IDM_LANG_BASE) {
-            int i = id - IDM_LANG_BASE;
-            int n = 0;
-            const lang_info* li = lang_list(&n);
-            if (i >= 0 && i < n) {
-                if (lang_set(li[i].code) == 0) {
-                    lang_pref_save(li[i].code);
-                    rebuild_menus();
-                    status_update();
-                }
-            }
         }
         break;
     }
@@ -2025,7 +2127,7 @@ static LRESULT CALLBACK wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         DragAcceptFiles(hwnd, TRUE);
         SetTimer(hwnd, 1, 250, NULL);   /* status bar */
         SetTimer(hwnd, 2, 33, NULL);    /* rendu visuel ~30 FPS */
-        if (mp_update_auto_enabled())
+        if (mp_update_get_mode() == 1)
             SetTimer(hwnd, 3, 4000, NULL); /* vérif. mises à jour au démarrage */
         /* icône de l'application */
         HICON hIcon = LoadIconW(GetModuleHandleW(NULL), MAKEINTRESOURCE(1));
@@ -2388,7 +2490,6 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR lpCmdLine, int nCmdSh
     HMENU bar = create_menus();
     SetMenu(g_hwnd, bar);
     refresh_speed_check(GetSubMenu(GetSubMenu(bar, 1), 0));
-    rebuild_lang_menu(GetSubMenu(bar, 1));
     rebuild_plugins_menu(bar);
     mp_plugins_apply_skins(g_hwnd);
     log_line("Menus built");

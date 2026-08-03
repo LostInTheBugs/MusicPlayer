@@ -57,26 +57,37 @@ static void appdata_path(wchar_t* out, size_t cap, const wchar_t* file)
     }
 }
 
-int mp_update_auto_enabled(void)
+int mp_update_get_mode(void)
 {
     wchar_t path[MAX_PATH];
     appdata_path(path, MAX_PATH, L"\\upd.txt");
     FILE* f = _wfopen(path, L"rb");
-    if (!f) return 1;                 /* défaut : activé */
-    int on = fgetc(f) == '1';
+    if (!f) return 1;                 /* défaut : automatique */
+    int c = fgetc(f);
     fclose(f);
-    return on;
+    if (c == '0' || c == '2') return 2;   /* ancien « non auto » = manuel */
+    return 1;
 }
 
-void mp_update_set_auto(int on)
+void mp_update_set_mode(int mode)
 {
     wchar_t path[MAX_PATH];
     appdata_path(path, MAX_PATH, L"\\upd.txt");
     FILE* f = _wfopen(path, L"wb");
     if (f) {
-        fputc(on ? '1' : '0', f);
+        fputc(mode == 0 ? '0' : (mode == 2 ? '2' : '1'), f);
         fclose(f);
     }
+}
+
+int mp_update_auto_enabled(void)
+{
+    return mp_update_get_mode() == 1;
+}
+
+void mp_update_set_auto(int on)
+{
+    mp_update_set_mode(on ? 1 : 2);
 }
 
 /* ------------------------------------------------------------------ */

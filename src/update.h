@@ -14,7 +14,14 @@
  * a cliqué sur le menu (affichera le résultat même si à jour). */
 void mp_update_check_async(HWND hwnd, int manual);
 
-/* Vérification automatique au démarrage (persistée dans %APPDATA%) */
+/* Mode de mise à jour (persisté dans %APPDATA%\\upd.txt) :
+ *   0 = désactivé, 1 = automatique (vérifie au démarrage),
+ *   2 = manuel (via Settings ▸ Update…) */
+int  mp_update_get_mode(void);
+void mp_update_set_mode(int mode);
+
+/* Équivalents simplifiés (compatibilité) : auto = mode 1 ; set_auto(on)
+ * bascule entre automatique (1) et manuel (2). */
 int  mp_update_auto_enabled(void);
 void mp_update_set_auto(int on);
 
