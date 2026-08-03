@@ -2,6 +2,12 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.026-c1] — 2026-08-03
+
+### Fixed
+- **Zip corrigé** : le dossier `skins/` (DLL + textures) est maintenant inclus dans l'archive de distribution
+- **Skin Vintage radio** : texture photoréaliste générée par IA (ComfyUI) — vraie radio à cadran 1950s, le visualiseur se joue dans la grille du haut-parleur
+
 ## [2026.08.026] — 2026-08-03
 
 ### Changed

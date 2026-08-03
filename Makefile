@@ -13,7 +13,7 @@
 #   make clean
 # ======================================================================
 
-VERSION := 2026.08.026
+VERSION := 2026.08.026-c1
 
 CROSS    := x86_64-w64-mingw32-
 CC       := $(CROSS)gcc
@@ -105,7 +105,7 @@ test: all plugins-examples test-samples
 # Archive portable pour Windows 11
 # ----------------------------------------------------------------------
 zip: all plugins-examples dirs
-	cd bin && zip -q ../dist/MusicPlayer-$(VERSION)-win64.zip MusicPlayer.exe $(FFMPEG_DLLS) plugins/*.dll lang/*.lang && \
+	cd bin && zip -q ../dist/MusicPlayer-$(VERSION)-win64.zip MusicPlayer.exe $(FFMPEG_DLLS) plugins/*.dll skins/*.dll skins/*.png lang/*.lang && \
 	cd .. && echo "Archive : dist/MusicPlayer-$(VERSION)-win64.zip"
 
 clean:
