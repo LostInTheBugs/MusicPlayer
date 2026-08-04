@@ -455,14 +455,40 @@ static void web_ring_write(const float* data, uint32_t frames)
 static uint32_t web_ring_write_bp(const float* data, uint32_t frames)
 {
     uint32_t pushed = 0;
-    while (pushed < frames && !g_shutdown) {
+    int stalled = 0;
+    /* Le décodage doit rester interruptible : sans les tests
+     * g_interrupt / g_state, mp_stop() et mp_seek() attendent
+     * g_decoding indéfiniment dès que le ring est plein. */
+    while (pushed < frames && !g_shutdown && !g_interrupt &&
+           g_state == MP_STATE_PLAYING) {
         LONG wr = g_web_tail;
         LONG fl = web_read_floor();
         uint32_t used = (uint32_t)wr - (uint32_t)fl;
         uint32_t free = WEB_RING_FRAMES - used;
         uint32_t w = frames - pushed;
         if (w > free) w = free;
-        if (w == 0) { Sleep(5); continue; }
+        if (w == 0) {
+            if (++stalled > 400) {          /* 400 × 5 ms = 2 s sans progrès */
+                /* Un lecteur ne consomme plus (socket mort, client tué…).
+                 * On le recale de force plutôt que de bloquer le moteur
+                 * pour tout le monde : il perd des données, les autres
+                 * continuent. */
+                EnterCriticalSection(&g_web_rd_lock);
+                for (int i = 0; i < MP_WEB_READERS; i++) {
+                    if (!g_web_rd_used[i]) continue;
+                    LONG r = __atomic_load_n(&g_web_rd[i], __ATOMIC_ACQUIRE);
+                    if ((uint32_t)((uint32_t)wr - (uint32_t)r) >= WEB_RING_FRAMES)
+                        __atomic_store_n(&g_web_rd[i],
+                            (LONG)((uint32_t)wr - WEB_RING_FRAMES / 2),
+                            __ATOMIC_RELEASE);
+                }
+                LeaveCriticalSection(&g_web_rd_lock);
+                stalled = 0;
+            }
+            Sleep(5);
+            continue;
+        }
+        stalled = 0;
         uint32_t wpos = (uint32_t)wr & WEB_RING_MASK;
         uint32_t n1 = w;
         if (n1 > WEB_RING_FRAMES - wpos) n1 = WEB_RING_FRAMES - wpos;
@@ -479,10 +505,9 @@ static uint32_t web_ring_write_bp(const float* data, uint32_t frames)
 }
 #endif /* MP_CORE */
 
-int mp_web_reader_open(void)
+/* Variante sans verrou : l'appelant doit déjà tenir g_web_rd_lock. */
+static int mp_web_reader_open_locked(void)
 {
-    EnterCriticalSection(&g_web_rd_lock);
-    int id = -1;
     for (int i = 0; i < MP_WEB_READERS; i++) {
         if (!g_web_rd_used[i]) {
             g_web_rd_used[i] = 1;
@@ -490,10 +515,16 @@ int mp_web_reader_open(void)
             __atomic_store_n(&g_web_rd[i],
                              __atomic_load_n(&g_web_tail, __ATOMIC_ACQUIRE),
                              __ATOMIC_RELEASE);
-            id = i;
-            break;
+            return i;
         }
     }
+    return -1;
+}
+
+int mp_web_reader_open(void)
+{
+    EnterCriticalSection(&g_web_rd_lock);
+    int id = mp_web_reader_open_locked();
     LeaveCriticalSection(&g_web_rd_lock);
     return id;
 }
@@ -562,7 +593,21 @@ uint32_t mp_web_read_n(int id, float* dst, uint32_t frames)
 
 uint32_t mp_web_read(float* dst, uint32_t frames)
 {
-    return mp_web_read_n(0, dst, frames);
+    /* Lecteur ouvert à la PREMIÈRE utilisation seulement : un lecteur
+     * réservé mais jamais lu retiendrait le plancher de lecture et
+     * bloquerait le moteur entier (cause de la panne 2026.08.040-c4). */
+    static LONG s_id = -1;
+    if (__atomic_load_n(&s_id, __ATOMIC_ACQUIRE) < 0) {
+        EnterCriticalSection(&g_web_rd_lock);
+        if (s_id < 0) {
+            int id = mp_web_reader_open_locked();
+            __atomic_store_n(&s_id, (LONG)id, __ATOMIC_RELEASE);
+        }
+        LeaveCriticalSection(&g_web_rd_lock);
+    }
+    LONG id = __atomic_load_n(&s_id, __ATOMIC_ACQUIRE);
+    if (id < 0) return 0;
+    return mp_web_read_n((int)id, dst, frames);
 }
 
 void mp_set_audio_out(int mode)
@@ -753,7 +798,6 @@ int mp_init(void)
     InitializeCriticalSection(&g_swr_lock);
     InitializeCriticalSection(&g_web_rd_lock);
     ring_init(&g_ring);
-    mp_web_reader_open();   /* lecteur 0 : celui de core_http / mp_web_read */
 
 #ifndef MP_CORE
     ma_device_config cfg = ma_device_config_init(ma_device_type_playback);

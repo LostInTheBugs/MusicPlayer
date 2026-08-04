@@ -136,13 +136,11 @@ static void handle_cmd(SOCKET c, const char* body)
     } else if (!strcmp(cmd, "stop")) {
         mp_stop();
     } else if (!strcmp(cmd, "next")) {
-        core_plist_lock();
+        /* hors verrou : core_plist_next appelle mp_open */
         core_plist_next();
-        core_plist_unlock();
     } else if (!strcmp(cmd, "prev")) {
-        core_plist_lock();
+        /* hors verrou : core_plist_prev appelle mp_open */
         core_plist_prev();
-        core_plist_unlock();
     } else if (!strcmp(cmd, "shuffle")) {
         core_plist_lock();
         core_plist_set_shuffle(!core_plist_get_shuffle());
@@ -156,9 +154,12 @@ static void handle_cmd(SOCKET c, const char* body)
         float v = (float)json_num(body, "value", 1.0);
         if (v >= 0.0f && v <= 1.0f) mp_set_volume(v);
     } else if (!strcmp(cmd, "playidx")) {
+        /* PAS de verrou pendant mp_open : le décodeur attend ce verrou
+         * à la fin d'un morceau (enchaînement) → deadlock sinon */
         core_plist_lock();
-        core_plist_play_index((int)json_num(body, "value", 0.0));
+        int pi = (int)json_num(body, "value", 0.0);
         core_plist_unlock();
+        core_plist_play_index(pi);
     } else if (!strcmp(cmd, "open")) {
         char path[MAX_PATH * 2] = "";
         json_str(body, "path", path, sizeof(path));
@@ -168,6 +169,7 @@ static void handle_cmd(SOCKET c, const char* body)
             DWORD attr = GetFileAttributesW(wp);
             if (attr != INVALID_FILE_ATTRIBUTES &&
                 (attr & FILE_ATTRIBUTE_DIRECTORY)) {
+                /* scan sous verrou, lecture (mp_open) après libération */
                 core_plist_lock();
                 core_plist_open_folder(wp);
                 core_plist_unlock();

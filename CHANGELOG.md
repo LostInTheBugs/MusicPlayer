@@ -2,6 +2,19 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.040-c5] — 2026-08-04
+
+### Fixed (lecture impossible — spec Claude 2 : lecteur 0 fantôme)
+- **Lecteur 0 fantôme supprimé** : réservé dans `mp_init()` mais jamais lu, son curseur figé retenait le plancher de lecture → `web_ring_write_bp` voyait le ring toujours plein → le décodeur se bloquait après ~0,74 s d'audio → plus aucune lecture. `mp_web_read` ouvre désormais son lecteur **à la première utilisation** (variante `mp_web_reader_open_locked` sans verrou)
+- **Soupape anti-blocage** dans `web_ring_write_bp` : si un lecteur ne consomme plus pendant 2 s (socket mort, client tué…), il est **recalé de force** (plus jamais le moteur ne se fige) ; le décodage reste interruptible (`!g_interrupt && g_state == PLAYING`) → Stop/Seek répondent immédiatement
+- **Deadlock des commandes** (playidx/next/prev/open dossier) : le verrou de playlist était tenu pendant `mp_open` — le décodeur attend ce verrou à la fin d'un morceau → deadlock. Les commandes libèrent le verrou avant `mp_open`
+
+### Verified (Wine)
+- `playidx 0` → 01_a.mp3 joué **en entier** (6,104/6,0 s) ; next → 02_b.mp3 ; prev → 01_a.mp3 ✓
+- Open dossier : lecture + enchaînement automatique de toute la playlist ✓
+- Client complet : les 3 morceaux joués, webserver 8000 : 200 ✓
+- 0 warning (client, plugins, core) + SELFTEST PASS
+
 ## [2026.08.040-c4] — 2026-08-04
 
 ### Fixed (son, commandes, serveur web — spec Claude appliquée en 3 phases)
