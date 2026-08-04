@@ -2,6 +2,12 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.036-c5] — 2026-08-04
+
+### Fixed (sécurité & robustesse HTTP)
+- **CSRF bloqué** : les POST (`/api/cmd` du serveur web **et** du plugin REST) exigent désormais `Content-Type: application/json` — sans ce marqueur, le serveur répond **403**. Une requête « simple » (formulaire, fetch sans header) ne peut plus piloter le lecteur depuis un site tiers ; le JS des pages web envoie le header (testé : sans header → 403, avec → 200)
+- **Client muet / lent ne bloque plus le serveur** : le dispatch lit la requête **en boucle** jusqu'à la fin des en-têtes (un seul `recv()` pouvait ne ramener qu'une partie) + **attend le corps annoncé** (`Content-Length`) + **timeout de réception 5 s** — une connexion qui n'envoie rien est fermée après le timeout au lieu de bloquer toutes les suivantes
+
 ## [2026.08.036-c4] — 2026-08-04
 
 ### Fixed (revue de code)

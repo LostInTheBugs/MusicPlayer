@@ -256,7 +256,7 @@ static const char PAGE_HTML[] =
 "  both:'<svg viewBox=\"0 0 24 24\"><rect x=\"2\" y=\"3\" width=\"13\" height=\"9\" rx=\"1\"/><path d=\"M5 15h8M9 12v3\"/><path d=\"M17 6h3a2 2 0 012 2v10a2 2 0 01-2 2h-8a2 2 0 01-2-2\"/></svg>'\n"
 "};\n"
 "var AUD_LABELS={pc:'PC',phone:'Phone',both:'Both'};\n"
-"function cmd(c){fetch('/api/cmd',{method:'POST',body:c}).catch(function(){})}\n"
+"function cmd(c){fetch('/api/cmd',{method:'POST',headers:{'Content-Type':'application/json'},body:c}).catch(function(){})}\n"
 "var aud=$('aud');\n"
 "$('bPlay').onclick=function(){\n"
 "  var playing=document.body.dataset.playing==='1';\n"
@@ -486,7 +486,7 @@ static const char PAGE_DJ[] =
 ".vu span{flex:1;background:#1d2632}\n"
 ".vu span.on{background:#3ddc84}\n"
 "</style></head><body>\n"
-"<div class=\"top\"><a href=\"/\">← MusicPlayer</a><h1>🎚️ DJ Mixing</h1><a href=\"#\" onclick=\"fetch('/api/cmd',{method:'POST',body:'dj'});setTimeout(function(){location.href='/'},300);return false\" style=\"color:#e67e22\">Quitter</a></div>\n"
+"<div class=\"top\"><a href=\"/\">← MusicPlayer</a><h1>🎚️ DJ Mixing</h1><a href=\"#\" onclick=\"fetch('/api/cmd',{method:'POST',headers:{'Content-Type':'application/json'},body:'dj'});setTimeout(function(){location.href='/'},300);return false\" style=\"color:#e67e22\">Quitter</a></div>\n"
 "<div class=\"decks\">\n"
 "<div class=\"deck\">\n"
 "<h2>DECK A</h2>\n"
@@ -614,14 +614,55 @@ static DWORD WINAPI stream_thread(void* arg)
 /* ------------------------------------------------------------------ */
 static void dispatch(SOCKET c)
 {
+    /* timeout de réception : un client muet ou lent ne bloque pas
+     * le serveur (connexions traitées séquentiellement ici) */
+    DWORD rto = 5000;
+    setsockopt(c, SOL_SOCKET, SO_RCVTIMEO, (const char*)&rto, sizeof(rto));
+
+    /* lit la requête en boucle jusqu'à la fin des en-têtes (un seul
+     * recv() peut ne ramener qu'une partie de la requête) */
     char req[8192];
-    int rn = recv(c, req, sizeof(req) - 1, 0);
+    int rn = 0;
+    while (rn < (int)sizeof(req) - 1) {
+        int r = recv(c, req + rn, (int)sizeof(req) - 1 - rn, 0);
+        if (r <= 0) break;
+        rn += r;
+        if (strstr(req, "\r\n\r\n")) break;   /* en-têtes complets */
+    }
     if (rn <= 0) { closesocket(c); return; }
     req[rn] = 0;
+
+    /* si un corps est annoncé (Content-Length), l'attendre en entier */
+    const char* hdr_end = strstr(req, "\r\n\r\n");
+    if (hdr_end) {
+        const char* cl = strstr(req, "Content-Length:");
+        if (cl) {
+            int need = atoi(cl + 15);
+            int body_off = (int)(hdr_end + 4 - req);
+            while (rn - body_off < need && rn < (int)sizeof(req) - 1) {
+                int r = recv(c, req + rn, (int)sizeof(req) - 1 - rn, 0);
+                if (r <= 0) break;
+                rn += r;
+            }
+            req[rn] = 0;
+        }
+    }
+
     char method[8], path[512];
     if (sscanf(req, "%7s %511s", method, path) != 2) {
         closesocket(c);
         return;
+    }
+    if (!strcmp(method, "POST")) {
+        /* CSRF : une requête « simple » (sans Content-Type JSON ni
+         * header custom) peut être envoyée par n'importe quel site
+         * sans CORS — on refuse tout POST non marqué */
+        const char* ct = strstr(req, "Content-Type:");
+        if (!ct || !strstr(ct, "application/json")) {
+            http_response(c, "403 Forbidden", "text/plain", "forbidden");
+            closesocket(c);
+            return;
+        }
     }
     if (!strcmp(path, "/")) {
         http_response(c, "200 OK", "text/html; charset=utf-8", PAGE_HTML);

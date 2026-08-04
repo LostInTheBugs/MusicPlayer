@@ -275,6 +275,19 @@ static void handle_client(SOCKET c)
     sscanf(req, "%15s %1023s", method, path);
     if (!strcmp(method, "OPTIONS")) {
         http_headers(c, 200, "text/plain", 0);
+    } else if (!strcmp(method, "POST")) {
+        /* CSRF : un POST « simple » (sans Content-Type JSON) peut être
+         * envoyé par n'importe quel site sans CORS → refusé */
+        const char* ct = strstr(req, "Content-Type:");
+        if (!ct || !strstr(ct, "application/json")) {
+            send_body(c, "{\"error\":\"forbidden\"}", "application/json");
+        } else if (!strcmp(path, "/api/cmd")) {
+            const char* body = strstr(req, "\r\n\r\n");
+            if (!body) body = strstr(req, "\n\n");
+            api_cmd(c, body ? body + (body[0] == '\r' ? 4 : 2) : "");
+        } else {
+            send_404(c);
+        }
     } else if (!strcmp(path, "/api/state")) {
         api_state(c);
     } else if (!strcmp(path, "/api/playlist")) {
