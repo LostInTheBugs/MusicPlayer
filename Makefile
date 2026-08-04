@@ -29,7 +29,7 @@ LDFLAGS  := -Lvendor/ffmpeg/lib \
             -lavformat -lavcodec -lavutil -lswresample \
             -lole32 -luuid -lwinmm -ldsound \
             -luser32 -lgdi32 -lshell32 -lcomdlg32 -lcomctl32 -lwininet -lws2_32 -liphlpapi -lgdiplus \
-            -static-libgcc -mwindows
+            -static -mwindows
 
 SRC := src/main.c src/player.c src/plugin_loader.c src/lang.c src/update.c src/config.c src/cd.c
 OBJ := $(SRC:.c=.o)
