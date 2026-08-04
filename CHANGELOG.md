@@ -2,6 +2,15 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.041] — 2026-08-04
+
+### Added (architecture client/serveur — phase 3 : service Windows)
+- **`musicplayer-core.exe --service`** : le moteur tourne comme **service Windows** (24/7, sans session ouverte) — `StartServiceCtrlDispatcherW`, contrôle SCM (stop/shutdown → même chemin d'arrêt que l'API, `WM_APP+1`), statut SERVICE_RUNNING/STOPPED
+- **Settings ▸ Interface…** : groupe « Windows service (moteur 24/7) » avec **Install / Uninstall / Start / Stop** + ligne d'état (installé ? en cours d'exécution ?) — via le Gestionnaire de contrôle des services (`advapi32`)
+- **Le client s'adapte** : si le service tourne, il s'y connecte **sans lancer le moteur** ; à la fermeture, il **ne l'arrête pas** (le service survit au client)
+- Installation : `CreateService` (démarrage automatique au boot), binPath `"…\musicplayer-core.exe" --service`
+- Testé : mode normal inchangé (lecture, playlist, webserver 200, SELFTEST PASS) ; `--service` se comporte correctement (sous Wine, pas de SCM → sortie propre)
+
 ## [2026.08.040-c6] — 2026-08-04
 
 ### Fixed (boutons de transport — spec Claude 3)

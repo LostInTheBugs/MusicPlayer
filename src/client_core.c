@@ -14,6 +14,7 @@
 #include <string.h>
 
 #include "client_core.h"
+#include "svc.h"
 /* playlist locale du client (cache de /api/plist) */
 #define PLAYLIST_MAX 512
 extern wchar_t* g_plist[PLAYLIST_MAX];
@@ -130,6 +131,15 @@ int cc_start(void)
         return cc_ping() ? 0 : -1;
 
     if (!cc_ping()) {
+        /* mode service : le moteur tourne déjà comme service Windows :
+         * on s'y connecte sans rien lancer */
+        if (svc_running() == 1) {
+            for (int i = 0; i < 50; i++) {
+                if (cc_ping()) return 0;
+                Sleep(200);
+            }
+            return -1;
+        }
         /* lance musicplayer-core.exe à côté de l'exe */
         wchar_t exe[MAX_PATH];
         GetModuleFileNameW(NULL, exe, MAX_PATH);
@@ -161,6 +171,11 @@ int cc_start(void)
 
 void cc_stop(void)
 {
+    if (!g_core_proc) {
+        /* le moteur est un SERVICE Windows : on ne l'arrête pas (24/7) */
+        InterlockedExchange(&g_started, 0);
+        return;
+    }
     /* 1) arrêt propre par l'API */
     cc_http2("POST", "/api/cmd", "{\"cmd\":\"shutdown\"}");
     /* 2) si le moteur a été lancé par CE client et ne s'arrête pas :

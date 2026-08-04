@@ -25,6 +25,7 @@
 #include "player.h"
 #include "client_core.h"
 #include "stream_player.h"
+#include "svc.h"
 #include "plugin.h"
 #include "plugin_loader.h"
 #include "lang.h"
@@ -1582,6 +1583,12 @@ static INT_PTR CALLBACK interface_dlg_proc(HWND h, UINT m, WPARAM w, LPARAM l)
                 }
             }
         }
+        /* statut du service Windows */
+        {
+            char st[160];
+            svc_status_text(st, sizeof(st));
+            SetDlgItemTextA(h, 1048, st);
+        }
         return TRUE;
     }
     case WM_COMMAND:
@@ -1629,6 +1636,38 @@ static INT_PTR CALLBACK interface_dlg_proc(HWND h, UINT m, WPARAM w, LPARAM l)
             EndDialog(h, 1);
         } else if (LOWORD(w) == IDCANCEL) {
             EndDialog(h, 0);
+        } else if (LOWORD(w) == 1044) {   /* Install service */
+            int rc = svc_install();
+            if (rc == 0)      MessageBoxW(h, L"Service installed.", L"Windows service", MB_OK);
+            else if (rc == 1) MessageBoxW(h, L"Service already installed.", L"Windows service", MB_OK);
+            else              MessageBoxW(h, L"Install failed (administrator required?).", L"Windows service", MB_ICONERROR);
+            char st[160];
+            svc_status_text(st, sizeof(st));
+            SetDlgItemTextA(h, 1048, st);
+        } else if (LOWORD(w) == 1045) {   /* Uninstall service */
+            int rc = svc_uninstall();
+            if (rc == 0)      MessageBoxW(h, L"Service uninstalled.", L"Windows service", MB_OK);
+            else if (rc == 1) MessageBoxW(h, L"Service not installed.", L"Windows service", MB_OK);
+            else              MessageBoxW(h, L"Uninstall failed (administrator required?).", L"Windows service", MB_ICONERROR);
+            char st[160];
+            svc_status_text(st, sizeof(st));
+            SetDlgItemTextA(h, 1048, st);
+        } else if (LOWORD(w) == 1046) {   /* Start service */
+            int rc = svc_start();
+            if (rc == 0)      MessageBoxW(h, L"Service started (the engine runs 24/7).", L"Windows service", MB_OK);
+            else if (rc == 1) MessageBoxW(h, L"Service already running.", L"Windows service", MB_OK);
+            else              MessageBoxW(h, L"Start failed (administrator required?).", L"Windows service", MB_ICONERROR);
+            char st[160];
+            svc_status_text(st, sizeof(st));
+            SetDlgItemTextA(h, 1048, st);
+        } else if (LOWORD(w) == 1047) {   /* Stop service */
+            int rc = svc_stop();
+            if (rc == 0)      MessageBoxW(h, L"Service stopped.", L"Windows service", MB_OK);
+            else if (rc == 1) MessageBoxW(h, L"Service not running.", L"Windows service", MB_OK);
+            else              MessageBoxW(h, L"Stop failed (administrator required?).", L"Windows service", MB_ICONERROR);
+            char st[160];
+            svc_status_text(st, sizeof(st));
+            SetDlgItemTextA(h, 1048, st);
         }
         return TRUE;
     }

@@ -293,10 +293,74 @@ static LRESULT CALLBACK core_wnd_proc(HWND hwnd, UINT m, WPARAM w, LPARAM l)
 }
 
 /* ------------------------------------------------------------------ */
+/* Mode service Windows : `musicplayer-core.exe --service`             */
+/* L'installation se fait depuis le client (Settings ▸ Interface).     */
+/* ------------------------------------------------------------------ */
+static SERVICE_STATUS         g_svc_status;
+static SERVICE_STATUS_HANDLE  g_svc_handle;
+
+static int run_core(HINSTANCE hInst);
+
+static DWORD WINAPI svc_ctrl(DWORD ctrl, DWORD type, LPVOID data, LPVOID ctx)
+{
+    (void)type; (void)data; (void)ctx;
+    switch (ctrl) {
+    case SERVICE_CONTROL_STOP:
+    case SERVICE_CONTROL_SHUTDOWN:
+        g_svc_status.dwCurrentState = SERVICE_STOP_PENDING;
+        g_svc_status.dwWaitHint = 5000;
+        SetServiceStatus(g_svc_handle, &g_svc_status);
+        /* même chemin que le shutdown par l'API : WM_APP+1 sort la boucle */
+        PostMessageW(g_core_hwnd, WM_APP + 1, 0, 0);
+        break;
+    case SERVICE_CONTROL_INTERROGATE:
+        SetServiceStatus(g_svc_handle, &g_svc_status);
+        break;
+    default:
+        break;
+    }
+    return NO_ERROR;
+}
+
+static void WINAPI svc_main(DWORD argc, LPTSTR* argv)
+{
+    (void)argc; (void)argv;
+    g_svc_handle = RegisterServiceCtrlHandlerExW(L"MusicPlayerCore", svc_ctrl, NULL);
+    if (!g_svc_handle) return;
+
+    g_svc_status.dwServiceType = SERVICE_WIN32_OWN_PROCESS;
+    g_svc_status.dwCurrentState = SERVICE_START_PENDING;
+    g_svc_status.dwControlsAccepted = SERVICE_ACCEPT_STOP | SERVICE_ACCEPT_SHUTDOWN;
+    g_svc_status.dwWin32ExitCode = 0;
+    g_svc_status.dwServiceSpecificExitCode = 0;
+    g_svc_status.dwCheckPoint = 0;
+    g_svc_status.dwWaitHint = 5000;
+    SetServiceStatus(g_svc_handle, &g_svc_status);
+
+    run_core(GetModuleHandleW(NULL));   /* inclut la boucle de messages (WM_APP+1 la termine) */
+
+    g_svc_status.dwCurrentState = SERVICE_STOPPED;
+    SetServiceStatus(g_svc_handle, &g_svc_status);
+}
+
 int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR lpCmd, int nShow)
 {
-    (void)hPrev; (void)lpCmd; (void)nShow;
+    (void)hPrev; (void)nShow;
 
+    if (lpCmd && strstr(lpCmd, "--service")) {
+        SERVICE_TABLE_ENTRYW table[] = {
+            { L"MusicPlayerCore", svc_main },
+            { NULL, NULL }
+        };
+        StartServiceCtrlDispatcherW(table);
+        return 0;
+    }
+    return run_core(hInst);
+}
+
+/* Démarre le moteur (fenêtre invisible + boucle de messages). */
+static int run_core(HINSTANCE hInst)
+{
     config_load();
     core_plist_init();
     core_log("core starting");
