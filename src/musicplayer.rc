@@ -68,15 +68,15 @@ CAPTION "Update"
 FONT 8, "MS Shell Dlg"
 BEGIN
     GROUPBOX "Update mode", 1017, 12, 8, 296, 96
-    AUTORADIOBUTTON "Automatic (check at startup)", 1018, 24, 24, 272, 12
+    AUTORADIOBUTTON "Automatic (check at startup)", 1018, 24, 24, 272, 12, WS_GROUP | WS_TABSTOP
     AUTORADIOBUTTON "Manual", 1019, 24, 40, 272, 12
     AUTORADIOBUTTON "Disabled", 1020, 24, 56, 272, 12
     AUTORADIOBUTTON "Fully automatic (check hourly, apply and restart)", 1022, 24, 72, 272, 12
     GROUPBOX "Update type", 1023, 12, 110, 296, 44
-    AUTORADIOBUTTON "All updates", 1024, 24, 126, 130, 12
+    AUTORADIOBUTTON "All updates", 1024, 24, 126, 130, 12, WS_GROUP | WS_TABSTOP
     AUTORADIOBUTTON "Fixes only (-cX)", 1025, 160, 126, 130, 12
     GROUPBOX "Delay before applying / notifying", 1026, 12, 160, 296, 44
-    AUTORADIOBUTTON "None", 1027, 24, 176, 56, 12
+    AUTORADIOBUTTON "None", 1027, 24, 176, 56, 12, WS_GROUP | WS_TABSTOP
     AUTORADIOBUTTON "1 day", 1028, 88, 176, 56, 12
     AUTORADIOBUTTON "1 week", 1029, 150, 176, 64, 12
     AUTORADIOBUTTON "1 month", 1030, 222, 176, 70, 12

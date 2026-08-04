@@ -2,6 +2,11 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.038-c1] — 2026-08-04
+
+### Fixed (dialog Update)
+- **Les 3 groupes de radios sont indépendants** : `WS_GROUP` manquait sur le premier bouton de chaque groupe (« Update mode », « Update type », « Delay ») — toutes les radios formaient un seul groupe et un seul choix était possible. On peut maintenant choisir le mode ET le type ET le délai.
+
 ## [2026.08.038] — 2026-08-04
 
 ### Added (Settings ▸ Update…)
