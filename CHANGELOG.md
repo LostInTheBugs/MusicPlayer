@@ -2,6 +2,14 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.037-c1] — 2026-08-04
+
+### Fixed (skins — 2e passe)
+- **Clic droit : les sous-menus ne sont plus détruits** — `DestroyMenu` détruisait récursivement les popups attachés de la barre (File/Settings/Plugins/Help) : le 1er clic droit marchait, les suivants montraient des entrées mortes. Le popup détache ses sous-menus (`RemoveMenu`) avant d'être détruit — testé : 3 clics droits d'affilée sans crash, menus intacts
+- **Barre de contrôles peinte au bon endroit** : avec un skin « contrôles en haut », le fond était peint en bas (bande opaque sur la photo) — il est peint là où sont les boutons (haut si `g_skin_ctrl_top`)
+- **Voiles semi-transparents** sur les barres (contrôles 63 % et progression 50 %) quand le skin a une image de fond : l'artwork reste lisible, les icônes gardent leur contraste
+- Commentaire orphelin de `get_visual_rect` supprimé
+
 ## [2026.08.037] — 2026-08-04
 
 ### Changed (skins « fenêtre entière » — refonte)

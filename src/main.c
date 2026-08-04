@@ -926,6 +926,11 @@ static void show_context_menu(HWND hwnd)
     GetCursorPos(&pt);
     int r = (int)TrackPopupMenu(m, TPM_RIGHTBUTTON | TPM_RETURNCMD,
                                 pt.x, pt.y, 0, hwnd, NULL);
+    /* détacher les sous-menus AVANT de détruire le popup : DestroyMenu
+     * détruit aussi les sous-menus attachés, ce qui viderait la barre.
+     * RemoveMenu détache sans détruire (DeleteMenu, lui, détruirait). */
+    for (int i = GetMenuItemCount(m) - 1; i >= 0; i--)
+        RemoveMenu(m, i, MF_BYPOSITION);
     DestroyMenu(m);
     if (r) on_command(r, menu_bar());
 }
@@ -2030,15 +2035,33 @@ static void paint_controls(HDC hdc, const RECT* rc)
     if (g_fullscreen) return;
     layout_controls(rc);
 
-    /* fond de la barre */
-    RECT bg = { rc->left, rc->bottom - CTRL_H, rc->right, rc->bottom };
-    HBRUSH bbg = CreateSolidBrush(g_skin.ctrl_bar);
-    FillRect(hdc, &bg, bbg);
-    DeleteObject(bbg);
+    /* fond de la barre : à l'endroit des contrôles (haut si le skin
+     * les y met, sinon bas) */
+    int cy = g_skin_ctrl_top ? rc->top : rc->bottom - CTRL_H;
+    RECT bg = { rc->left, cy, rc->right, cy + CTRL_H };
+    if (g_skin_bg) {
+        /* voile semi-transparent : l'artwork reste lisible dessous */
+        GpGraphics* g = NULL;
+        if (GdipCreateFromHDC(hdc, &g) == Ok) {
+            GpSolidFill* br = NULL;
+            GdipCreateSolidFill(0xA0000000, &br);   /* noir 63 % */
+            if (br) {
+                GdipFillRectangleI(g, (GpBrush*)br, bg.left, bg.top,
+                                   bg.right - bg.left, bg.bottom - bg.top);
+                GdipDeleteBrush((GpBrush*)br);
+            }
+            GdipDeleteGraphics(g);
+        }
+    } else {
+        HBRUSH bbg = CreateSolidBrush(g_skin.ctrl_bar);
+        FillRect(hdc, &bg, bbg);
+        DeleteObject(bbg);
+    }
     HPEN sep = CreatePen(PS_SOLID, 1, g_skin.ctrl_sep);
     HPEN oldp = (HPEN)SelectObject(hdc, sep);
-    MoveToEx(hdc, bg.left, bg.top, NULL);
-    LineTo(hdc, bg.right, bg.top);
+    int sy = g_skin_ctrl_top ? bg.bottom - 1 : bg.top;
+    MoveToEx(hdc, bg.left, sy, NULL);
+    LineTo(hdc, bg.right, sy);
     SelectObject(hdc, oldp);
     DeleteObject(sep);
 
@@ -2171,10 +2194,8 @@ static void get_content_rect(HWND hwnd, RECT* rc)
     }
 }
 
-/* Zone du visualiseur, en coordonnées client. Par défaut = zone de
- * contenu ; un skin peut la restreindre (skin_set_visual_rect).
- * (Le calcul du vis_rc dans paint_center fait la conversion en
- * coordonnées locales du DC mémoire.) */
+/* (La zone du visualiseur est calculée dans paint_center, en
+ * coordonnées locales du DC mémoire — voir le bloc g_skin_vis.) */
 
 #define PROGRESS_H 16   /* hauteur de la barre de progression */
 
@@ -2215,9 +2236,24 @@ static void draw_progress_bar(HDC hdc, const RECT* rc)
     int h = rc->bottom - rc->top;
     if (w <= 0 || h <= 0) return;
 
-    /* fond */
+    /* fond : voile semi-transparent si le skin a une image de fond
+     * (l'artwork reste lisible), sinon aplat habituel */
     RECT bg = { rc->left, rc->top, rc->right, rc->bottom };
-    FillRect(hdc, &bg, g_pg_bg);
+    if (g_skin_bg) {
+        GpGraphics* g = NULL;
+        if (GdipCreateFromHDC(hdc, &g) == Ok) {
+            GpSolidFill* br = NULL;
+            GdipCreateSolidFill(0x80000000, &br);   /* noir 50 % */
+            if (br) {
+                GdipFillRectangleI(g, (GpBrush*)br, bg.left, bg.top,
+                                   bg.right - bg.left, bg.bottom - bg.top);
+                GdipDeleteBrush((GpBrush*)br);
+            }
+            GdipDeleteGraphics(g);
+        }
+    } else {
+        FillRect(hdc, &bg, g_pg_bg);
+    }
 
     /* remplissage */
     double dur = mp_get_duration();
