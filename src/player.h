@@ -82,6 +82,9 @@ int  mp_web_reader_open(void);
 /* Libère un curseur (il cesse de retenir les données). */
 void mp_web_reader_close(int id);
 
+/* Purge le flux de diffusion (stop / seek / nouveau morceau). */
+void mp_web_flush(void);
+
 /* Lit jusqu'à `frames` frames pour le lecteur `id`. Chaque lecteur voit
  * l'intégralité du flux. La mémoire n'est réellement libérée que
  * lorsque TOUS les lecteurs ouverts ont consommé. */

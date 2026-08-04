@@ -2,6 +2,23 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.040-c6] — 2026-08-04
+
+### Fixed (boutons de transport — spec Claude 3)
+Le problème : les commandes partaient bien et le moteur les exécutait bien, mais **~1,5-2 s d'audio restaient en transit** après l'appui (web_ring du core 0,74 s + tampons TCP 0,37 s + ring du client 0,74 s) — le son continuait après Stop/Pause, et l'icône ne basculait qu'au polling de 250 ms.
+
+- **`mp_web_flush()`** (core) : purge le flux de diffusion (tous les lecteurs recalés sur l'écriture) — appelée par `mp_stop`, `mp_seek`, `mp_open` **avant** la remise à zéro de la position
+- **`SO_SNDBUF 8192`** dans `stream_loop` : borne l'audio en vol dans la socket à ~46 ms
+- **`sp_flush()`** (client) : purge du ring local demandée par l'UI, vidée **par le callback audio** (seul possesseur du tail) — silence immédiat sur stop/pause/changement
+- **`client_transport(cmd, flush)`** : purge + commande + **état rafraîchi immédiatement** (plus d'icône en retard) 
+- **`client_play_pause()` déterministe** : plus de bascule `playpause` (2 clics rapides sur un état périmé = bouton mort) — décide `play`/`pause` d'après l'état connu du moteur
+- **Stop/Seek/Next/Prev** : purge + état immédiat ; Espace et S au clavier comme les boutons ; API plugins (host_play_pause/host_stop) branchée sur les nouvelles fonctions
+- Pas de purge sur pause : le tampon est conservé pour reprendre sans trou ; mode DJ intact
+
+### Verified (Wine)
+- Stop : state 0, position 0, immédiat ✓ · Pause : state 2, position figée ✓
+- Lecture, playlist, webserver 8000 : 200 ✓ · 0 warning (client, plugins, core) + SELFTEST PASS
+
 ## [2026.08.040-c5] — 2026-08-04
 
 ### Fixed (lecture impossible — spec Claude 2 : lecteur 0 fantôme)

@@ -120,6 +120,7 @@ static int  g_device_ok = 0;
 static HANDLE g_thread = NULL;
 static volatile LONG g_volume_pct = 80;   /* 0..100 (défaut config) */
 static uint32_t g_dev_rate = 44100;       /* sample rate réel du device */
+static volatile LONG g_flush_req = 0;     /* purge demandée par l'UI */
 
 /* ------------------------------------------------------------------ */
 /* Resample linéaire 44 100 Hz (flux du moteur) → g_dev_rate.          */
@@ -179,6 +180,14 @@ void sp_set_volume(float v)
 
 float sp_get_volume(void) { return (float)g_volume_pct / 100.0f; }
 
+/* Demande la purge du ring local. Le vidage est fait PAR le callback
+ * audio : lui seul possède g_tail, l'appeler depuis le thread UI
+ * corromprait le ring. */
+void sp_flush(void)
+{
+    InterlockedExchange(&g_flush_req, 1);
+}
+
 /* ------------------------------------------------------------------ */
 /* Callback audio : joue le flux reçu                                  */
 /* ------------------------------------------------------------------ */
@@ -186,6 +195,15 @@ static void data_cb(ma_device* dev, void* out, const void* in, ma_uint32 frames)
 {
     (void)dev; (void)in;
     float* dst = (float*)out;
+
+    /* purge demandée (stop, pause, changement de morceau) : le vidage
+     * est fait ICI, par le callback — lui seul possède g_tail */
+    if (InterlockedExchange(&g_flush_req, 0)) {
+        LONG h = __atomic_load_n(&g_head, __ATOMIC_ACQUIRE);
+        __atomic_store_n(&g_tail, h, __ATOMIC_RELEASE);
+        g_peek_tail = h;
+    }
+
     uint32_t got = sp_ring_read(dst, frames);
     if (got < frames)
         memset(dst + (size_t)got * 2, 0, (size_t)(frames - got) * 2 * sizeof(float));

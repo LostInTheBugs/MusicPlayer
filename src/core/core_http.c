@@ -193,6 +193,10 @@ static void stream_loop(SOCKET c)
 {
     int rid = mp_web_reader_open();
     if (rid < 0) return;
+    /* petit tampon d'émission : borne l'audio en transit à ~46 ms, pour
+     * que stop/seek prennent effet quasi immédiatement chez le client */
+    int sndbuf = 8192;
+    setsockopt(c, SOL_SOCKET, SO_SNDBUF, (const char*)&sndbuf, sizeof(sndbuf));
     unsigned char wav[44] = {
         'R','I','F','F', 0xff,0xff,0xff,0x7f, 'W','A','V','E',
         'f','m','t',' ', 16,0,0,0, 1,0, 2,0,

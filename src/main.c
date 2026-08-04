@@ -145,8 +145,11 @@ static int playlist_play_index(int i)
         status_update();
         return 0;
     }
-    /* client/serveur : le moteur joue l'index de SA playlist */
+    /* client/serveur : le moteur joue l'index de SA playlist.
+     * purge du son local (effet immédiat) + état rafraîchi tout de suite */
+    sp_flush();
     cc_cmd_val("playidx", i);
+    cc_poll();
     playlist_win_highlight();
     return 0;
 }
@@ -177,6 +180,27 @@ int playlist_get_shuffle(void)
     return g_shuffle;
 }
 
+/* Commande de transport : purge le son local pour un effet immédiat,
+ * envoie la commande au moteur, puis rafraîchit l'état tout de suite
+ * (sans attendre le timer de 250 ms, qui donnait une icône en retard).
+ * flush = 0 pour les commandes qui ne doivent pas couper le son. */
+static void client_transport(const char* cmd, int flush)
+{
+    if (flush) sp_flush();
+    cc_cmd(cmd);
+    cc_poll();          /* état à jour immédiatement */
+    status_update();
+    if (g_hwnd) InvalidateRect(g_hwnd, NULL, FALSE);
+}
+
+/* Lecture / pause déterministe : on décide d'après l'état connu du
+ * moteur plutôt que d'envoyer une bascule. */
+static void client_play_pause(void)
+{
+    if (cc_st() == MP_STATE_PLAYING) client_transport("pause", 1);
+    else                             client_transport("play", 0);
+}
+
 static void playlist_next(void)
 {
     if (g_plist_n == 0) return;
@@ -187,7 +211,7 @@ static void playlist_next(void)
     }
     if (g_plist_idx + 1 >= g_plist_n) {
         g_plist_idx = g_plist_n;       /* marque la fin de la playlist */
-        cc_cmd("stop");
+        client_transport("stop", 1);
     } else if (playlist_play_index(g_plist_idx + 1) != 0) {
         g_plist_idx++;                 /* fichier illisible : on saute */
         playlist_next();
@@ -281,8 +305,8 @@ static double      host_get_position(void) { return cc_pos(); }
 static double      host_get_duration(void) { return cc_dur(); }
 static float       host_get_volume(void) { return sp_get_volume(); }
 static float       host_get_speed(void) { return cc_speed(); }
-static void        host_play_pause(void) { cc_cmd("playpause"); }
-static void        host_stop(void) { cc_cmd("stop"); }
+static void        host_play_pause(void) { client_play_pause(); }
+static void        host_stop(void) { client_transport("stop", 1); }
 static void        host_next(void) { playlist_next(); }
 static void        host_set_volume(float v) { sp_set_volume(v); }
 static void        host_set_speed(float s) { cc_cmd_val("speed", s); }
@@ -3051,9 +3075,9 @@ static void mouse_down(HWND hwnd, int x, int y)
             if (g_dj_track_a >= 0 && g_dj_track_a < g_plist_n)
                 playlist_play_index(g_dj_track_a);
         } else if (PtInRect(&g_dj_bpause_a, pt)) {
-            cc_cmd("playpause");
+            client_play_pause();
         } else if (PtInRect(&g_dj_bstop_a, pt)) {
-            cc_cmd("stop");
+            client_transport("stop", 1);
         } else if (PtInRect(&g_dj_bplay_b, pt)) {
             if (g_dj_track_b >= 0 && g_dj_track_b < g_plist_n) {
                 char utf8[MAX_PATH * 3];
@@ -3094,7 +3118,9 @@ static void mouse_down(HWND hwnd, int x, int y)
             double ratio = (double)(x - rc.left) / (double)w;
             if (ratio < 0.0) ratio = 0.0;
             if (ratio > 1.0) ratio = 1.0;
+            sp_flush();
             cc_cmd_val("seek", ratio * dur);
+            cc_poll();
             status_update();
         }
         return;
@@ -3102,11 +3128,11 @@ static void mouse_down(HWND hwnd, int x, int y)
 
     if (x >= g_rc_play.left && x <= g_rc_play.right &&
         y >= g_rc_play.top && y <= g_rc_play.bottom) {
-        cc_cmd("playpause");
+        client_play_pause();
         status_update();
     } else if (x >= g_rc_stop.left && x <= g_rc_stop.right &&
                y >= g_rc_stop.top && y <= g_rc_stop.bottom) {
-        cc_cmd("stop");
+        client_transport("stop", 1);
         status_update();
     } else if (x >= g_rc_next.left && x <= g_rc_next.right &&
                y >= g_rc_next.top && y <= g_rc_next.bottom) {
@@ -3205,12 +3231,12 @@ static void on_command(int id, HMENU bar)
             else if (g_plist_idx >= 0) cd_play(g_plist_idx + 1);
             status_update();
         } else {
-            cc_cmd("playpause");
+            client_play_pause();
         }
         break;
     case IDM_STOP:
         if (g_cd_mode) cd_stop();
-        else cc_cmd("stop");
+        else client_transport("stop", 1);
         status_update();
         break;
     case IDM_NEXT:      playlist_next(); break;
@@ -3361,8 +3387,8 @@ static LRESULT CALLBACK wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
     }
     case WM_KEYDOWN:
         switch (wp) {
-        case VK_SPACE:   cc_cmd("playpause"); break;
-        case 'S':        cc_cmd("stop"); break;
+        case VK_SPACE:   client_play_pause(); break;
+        case 'S':        client_transport("stop", 1); break;
         case 'N':        playlist_next(); break;
         case VK_UP:      SendMessageW(hwnd, WM_COMMAND, IDM_VOL_UP, 0); break;
         case VK_DOWN:    SendMessageW(hwnd, WM_COMMAND, IDM_VOL_DOWN, 0); break;

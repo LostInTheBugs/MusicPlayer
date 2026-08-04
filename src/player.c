@@ -537,6 +537,21 @@ void mp_web_reader_close(int id)
     LeaveCriticalSection(&g_web_rd_lock);
 }
 
+/* Purge le flux de diffusion : tous les lecteurs sont recalés sur la
+ * position d'écriture, donc l'audio déjà décodé mais non encore envoyé
+ * est abandonné. À appeler sur stop / seek / changement de morceau,
+ * sinon les clients continuent de jouer l'ancien son ~1 s. */
+void mp_web_flush(void)
+{
+    EnterCriticalSection(&g_web_rd_lock);
+    LONG wr = __atomic_load_n(&g_web_tail, __ATOMIC_ACQUIRE);
+    for (int i = 0; i < MP_WEB_READERS; i++) {
+        if (!g_web_rd_used[i]) continue;
+        __atomic_store_n(&g_web_rd[i], wr, __ATOMIC_RELEASE);
+    }
+    LeaveCriticalSection(&g_web_rd_lock);
+}
+
 uint32_t mp_web_read_n(int id, float* dst, uint32_t frames)
 {
     if (id < 0 || id >= MP_WEB_READERS || !g_web_rd_used[id]) return 0;
@@ -888,6 +903,7 @@ int mp_open(const char* path)
 #ifndef MP_CORE
     ring_clear(&g_ring);
 #endif
+    mp_web_flush();
     g_eof = 0;
     g_interrupt = 0;
     g_played = 0;
@@ -961,6 +977,8 @@ void mp_stop(void)
         if (g_codec) avcodec_flush_buffers(g_codec);
     }
     ring_clear(&g_ring);
+    mp_web_flush();      /* AVANT g_played : la purge fait bouger le
+                            plancher de lecture, donc la position */
     g_eof = 0;
     g_played = 0;
     g_state = MP_STATE_STOPPED;
@@ -982,6 +1000,7 @@ void mp_seek(double seconds)
     av_seek_frame(g_fmt, -1, ts, AVSEEK_FLAG_BACKWARD);
     if (g_codec) avcodec_flush_buffers(g_codec);
     ring_clear(&g_ring);
+    mp_web_flush();
     g_eof = 0;
     __atomic_store_n(&g_played, (LONG64)(seconds * (double)g_device_rate),
                      __ATOMIC_RELAXED);

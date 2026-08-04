@@ -15,11 +15,14 @@
  * TeamSpeak (plugin SERVICE côté client) lit le même flux via
  * sp_web_read (host API web_read). */
 
-/* Démarre le device audio + le thread de réception du flux. */
+/* Démarre la lecture du flux du moteur (device + thread réseau). */
 int sp_start(void);
-
 /* Arrête tout. */
 void sp_stop(void);
+
+/* Vide le ring local : le son s'arrête immédiatement (stop, pause,
+ * changement de morceau). */
+void sp_flush(void);
 
 /* Volume local 0.0 .. 1.0 (appliqué dans le callback). */
 void  sp_set_volume(float v);
