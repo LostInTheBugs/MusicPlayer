@@ -2,6 +2,13 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.040-c3] — 2026-08-04
+
+### Fixed (son — le ring buffer du client était corrompu)
+- **Le ring buffer du lecteur de flux écrivait à la position de LECTURE** (tail) au lieu de la position d'ÉCRITURE (head), et avançait le tail en écrivant : les données jouées par le haut-parleur étaient mélangées (échantillons L/R croisés, paquets partiels, silence intermittent) — le « son indescriptible ». Réécrit en SPSC standard : le producteur (thread réseau) écrit à `head`, le consommateur (callback audio) lit à `tail`
+- Diagnostiqué par **dump du flux réellement joué** : avant : 30 469 sauts > 0,5 et fréquence 3303 Hz (bruit) ; après : **0 saut, sine 440 Hz propre**
+- Conséquence du bug : le client avalait le flux trop vite → le moteur atteignait la fin du morceau prématurément → cycle « Playing puis Finished puis Playing » — corrigé (le client consomme désormais au rythme de la carte son, le moteur enchaîne à la vitesse réelle)
+
 ## [2026.08.040-c2] — 2026-08-04
 
 ### Fixed (son — cause racine)

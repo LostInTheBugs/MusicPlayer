@@ -40,20 +40,20 @@ static void sp_ring_write(const float* data, uint32_t frames)
 {
     LONG h = g_head;
     LONG t = __atomic_load_n(&g_tail, __ATOMIC_ACQUIRE);
-    uint32_t used = (uint32_t)(t - h) & SP_RING_MASK;
+    uint32_t used = (uint32_t)h - (uint32_t)t;   /* rempli = head - tail */
     if (used + frames > SP_RING_FRAMES) {
-        /* dépassement : on jette les plus anciennes */
+        /* dépassement : on jette les plus anciennes (head avance) */
         uint32_t drop = used + frames - SP_RING_FRAMES;
-        g_head = (LONG)((uint32_t)h + drop);
+        h = (LONG)((uint32_t)h + drop);
     }
-    uint32_t wpos = (uint32_t)t & SP_RING_MASK;
+    uint32_t wpos = (uint32_t)h & SP_RING_MASK;  /* écrit à la position head */
     uint32_t n1 = frames;
     if (n1 > SP_RING_FRAMES - wpos) n1 = SP_RING_FRAMES - wpos;
     memcpy(g_ring + (size_t)wpos * 2, data, (size_t)n1 * 2 * sizeof(float));
     if (n1 < frames)
         memcpy(g_ring, data + (size_t)n1 * 2,
                (size_t)(frames - n1) * 2 * sizeof(float));
-    __atomic_store_n(&g_tail, (LONG)((uint32_t)t + frames), __ATOMIC_RELEASE);
+    __atomic_store_n(&g_head, (LONG)((uint32_t)h + frames), __ATOMIC_RELEASE);
 }
 
 static uint32_t sp_ring_read(float* dst, uint32_t frames)
