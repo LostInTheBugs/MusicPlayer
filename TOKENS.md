@@ -10,12 +10,12 @@ LLM token usage for this project, tallied session by session.
 | Scripted agent sessions (API) | 0 |
 | Models | deepseek-v4-flash |
 | Messages | 437 |
-| API calls | 1411 |
-| Input tokens | 3 424 378 |
-| Output tokens | 2 113 980 |
-| **Total (input + output)** | **5 538 358** |
-| Cache read (reused at reduced price) | 396 271 616 |
-| **Estimated cost** | **≈ 2.03 USD** |
+| API calls | 1442 |
+| Input tokens | 3 482 844 |
+| Output tokens | 2 134 384 |
+| **Total (input + output)** | **5 617 228** |
+| Cache read (reused at reduced price) | 403 220 352 |
+| **Estimated cost** | **≈ 2.07 USD** |
 
 ## How to re-read the counter
 
