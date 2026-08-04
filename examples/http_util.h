@@ -118,11 +118,26 @@ static inline void http_f32_to_s16(const float* in, unsigned char* out,
 
 /* Anti-CSRF : le POST doit porter un Content-Type non-simple
  * (application/json) — sinon une requête « simple » pourrait être
- * envoyée par n'importe quel site sans CORS. */
+ * envoyée par n'importe quel site sans CORS.
+ * La recherche est insensible à la casse (un client HTTP/2 ou une lib
+ * peut normaliser en minuscules) et la valeur est bornée à la fin de
+ * SA ligne : un corps contenant la chaîne "application/json" ne peut
+ * pas faire passer un autre type. */
 static inline int http_post_is_json(const char* req)
 {
-    const char* ct = strstr(req, "Content-Type:");
-    return ct && strstr(ct, "application/json") != NULL;
+    const char* p = req;
+    for (;;) {
+        p = strchr(p, '\n');
+        if (!p) return 0;
+        p++;
+        if (!_strnicmp(p, "Content-Type:", 13)) {
+            const char* v = p + 13;
+            while (*v == ' ' || *v == '\t') v++;
+            const char* eol = strpbrk(v, "\r\n");
+            size_t len = eol ? (size_t)(eol - v) : strlen(v);
+            return len >= 16 && !_strnicmp(v, "application/json", 16);
+        }
+    }
 }
 
 #endif /* MP_HTTP_UTIL_H */

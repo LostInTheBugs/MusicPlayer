@@ -2,6 +2,11 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.036-c10] — 2026-08-04
+
+### Fixed (revue de code — 5e passe)
+- **`http_post_is_json` précisé** : la valeur du `Content-Type` est **bornée à la fin de sa ligne** (un corps contenant la chaîne « application/json » ne peut plus faire passer un autre type — testé : `text/plain` + corps piégé → 403) et la recherche d'en-tête est **insensible à la casse** (compatibilité clients HTTP/2/lib normalisant en minuscules — testé : `content-type:` → 200)
+
 ## [2026.08.036-c9] — 2026-08-04
 
 ### Fixed / Refactored (revue de code — 4e passe)
