@@ -55,7 +55,7 @@ static void get_local_ip(char* ip, int max)
             struct sockaddr_in local;
             int len = sizeof(local);
             getsockname(s, (struct sockaddr*)&local, &len);
-            _snprintf(ip, max, "%s", inet_ntoa(local.sin_addr));
+            snprintf(ip, max, "%s", inet_ntoa(local.sin_addr));
         }
         closesocket(s);
     }
@@ -67,7 +67,7 @@ static void get_local_ip(char* ip, int max)
 static void http_headers(SOCKET c, int code, const char* ctype, int len)
 {
     char hdr[512];
-    _snprintf(hdr, sizeof(hdr),
+    snprintf(hdr, sizeof(hdr),
         "HTTP/1.1 %d %s\r\n"
         "Content-Type: %s\r\n"
         "Content-Length: %d\r\n"
@@ -89,7 +89,7 @@ static void root_desc(SOCKET c)
     char ip[64];
     get_local_ip(ip, sizeof(ip));
     char xml[4096];
-    _snprintf(xml, sizeof(xml),
+    snprintf(xml, sizeof(xml),
         "<?xml version=\"1.0\"?>\r\n"
         "<root xmlns=\"urn:schemas-upnp-org:device-1-0\">\r\n"
         "<specVersion><major>1</major><minor>0</minor></specVersion>\r\n"
@@ -169,7 +169,7 @@ static void xml_escape(const wchar_t* in, char* out, int max)
         else if (in[i] == L'>') { memcpy(out + o, "&gt;", 4); o += 4; }
         else if (in[i] == L'"') { memcpy(out + o, "&quot;", 6); o += 6; }
         else if (in[i] < 128)   { out[o++] = (char)in[i]; }
-        else                    { o += _snprintf(out + o, max - o, "&#%u;",
+        else                    { o += snprintf(out + o, max - o, "&#%u;",
                                                  (unsigned)in[i]); }
     }
     out[o] = 0;
@@ -191,7 +191,7 @@ static void soap_browse(SOCKET c)
         else if (fs) base = fs + 1;
         char t[256];
         xml_escape(base, t, sizeof(t));
-        off += _snprintf(didl + off, sizeof(didl) - off,
+        off += snprintf(didl + off, sizeof(didl) - off,
             "<item id=\"%d\" parentID=\"0\" restricted=\"1\">"
             "<dc:title>%s</dc:title>"
             "<upnp:class>object.item.audioItem.musicTrack</upnp:class>"
@@ -201,7 +201,7 @@ static void soap_browse(SOCKET c)
     }
     didl[off] = 0;
     char body[17000];
-    _snprintf(body, sizeof(body),
+    snprintf(body, sizeof(body),
         "<?xml version=\"1.0\" encoding=\"utf-8\"?>"
         "<s:Envelope xmlns:s=\"http://schemas.xmlsoap.org/soap/envelope/\" "
         "s:encodingStyle=\"http://schemas.xmlsoap.org/soap/encoding/\">"
@@ -244,8 +244,14 @@ static void media_stream(SOCKET c, int idx)
         "Transfer-Encoding: chunked\r\n"
         "\r\n";
     send(c, h, (int)strlen(h), 0);
-    static float fbuf[1024 * 2];
-    static unsigned char obuf[4096];
+    /* tampons propres à CE client (un client_thread par connexion) */
+    float* fbuf = (float*)malloc(1024 * 2 * sizeof(float));
+    unsigned char* obuf = (unsigned char*)malloc(4096);
+    if (!fbuf || !obuf) {
+        free(fbuf);
+        free(obuf);
+        return;
+    }
     while (g_running) {
         uint32_t n = g_h->web_read(fbuf, 1024);
         if (!n) { Sleep(20); continue; }
@@ -257,11 +263,13 @@ static void media_stream(SOCKET c, int idx)
             obuf[i * 2 + 1] = (unsigned char)((s16 >> 8) & 0xff);
         }
         char lenstr[32];
-        _snprintf(lenstr, sizeof(lenstr), "%x\r\n", (int)(n * 4));
+        snprintf(lenstr, sizeof(lenstr), "%x\r\n", (int)(n * 4));
         send(c, lenstr, (int)strlen(lenstr), 0);
         if (send(c, (const char*)obuf, (int)(n * 4), 0) <= 0) break;
         send(c, "\r\n", 2, 0);
     }
+    free(fbuf);
+    free(obuf);
     send(c, "0\r\n\r\n", 5, 0);
 }
 
@@ -322,7 +330,7 @@ static void ssdp_reply(const char* st, const char* usn)
     char ip[64];
     get_local_ip(ip, sizeof(ip));
     char msg[1024];
-    _snprintf(msg, sizeof(msg),
+    snprintf(msg, sizeof(msg),
         "HTTP/1.1 200 OK\r\n"
         "CACHE-CONTROL: max-age=1800\r\n"
         "DATE: Thu, 01 Jan 1970 00:00:00 GMT\r\n"
@@ -346,7 +354,7 @@ static void ssdp_notify(const char* nts)
     char ip[64];
     get_local_ip(ip, sizeof(ip));
     char msg[1024];
-    _snprintf(msg, sizeof(msg),
+    snprintf(msg, sizeof(msg),
         "NOTIFY * HTTP/1.1\r\n"
         "HOST: 239.255.255.250:1900\r\n"
         "CACHE-CONTROL: max-age=1800\r\n"
@@ -444,7 +452,7 @@ static int upnp_start(void)
     const char* ips = g_h->svc_ips ? g_h->svc_ips("upnp") : "";
     if (ips && ips[0]) {
         char tmp[128];
-        _snprintf(tmp, sizeof(tmp), "%s", ips);
+        snprintf(tmp, sizeof(tmp), "%s", ips);
         char* tok = strtok(tmp, ";");
         addr.sin_addr.s_addr = inet_addr(tok ? tok : "0.0.0.0");
     } else {
@@ -519,7 +527,7 @@ static void pl_service(mp_plugin* self, int event, void* data)
         if (!g_running) {
             if (upnp_start() == 0) {
                 char msg[160];
-                _snprintf(msg, sizeof(msg),
+                snprintf(msg, sizeof(msg),
                           "DLNA/UPnP: server on port %d (MusicPlayer)",
                           net_port());
                 log_line(msg);

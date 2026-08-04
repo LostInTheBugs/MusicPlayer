@@ -2,6 +2,12 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.036-c8] — 2026-08-04
+
+### Fixed (revue de code — 3e passe)
+- **UPnP `media_stream` : tampons par connexion** (dernier static survivant sur un chemin multi-clients — `plugin_rtp.c` / `plugin_multiroom.c` gardent leurs static : thread de service unique, correct) + `snprintf` partout dans le plugin
+- **player.c : `#include <math.h>` explicite** pour `llround` (ne plus dépendre de l'include transitif de miniaudio.h)
+
 ## [2026.08.036-c7] — 2026-08-04
 
 ### Fixed (revue de code — 2e passe)
