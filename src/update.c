@@ -9,6 +9,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include "update.h"
 
 #ifndef MP_VERSION
@@ -20,6 +21,9 @@
 
 static char          g_latest[32];
 static volatile LONG g_checking = 0;
+static int           g_mode = -1;   /* cache : 0 désactivé, 1 auto, 2 manuel, 3 autonome */
+static int           g_type = -1;   /* 0 toutes, 1 correctives (-cX) */
+static int           g_lag = -1;    /* jours : 0, 1, 7, 30 */
 
 /* ------------------------------------------------------------------ */
 /* Comparaison de versions "AAAA.MM.NNN[-cX]"                          */
@@ -57,27 +61,78 @@ static void appdata_path(wchar_t* out, size_t cap, const wchar_t* file)
     }
 }
 
-int mp_update_get_mode(void)
-{
-    wchar_t path[MAX_PATH];
-    appdata_path(path, MAX_PATH, L"\\upd.txt");
-    FILE* f = _wfopen(path, L"rb");
-    if (!f) return 1;                 /* défaut : automatique */
-    int c = fgetc(f);
-    fclose(f);
-    if (c == '0' || c == '2') return 2;   /* ancien « non auto » = manuel */
-    return 1;
-}
-
-void mp_update_set_mode(int mode)
+static void cfg_save(void)
 {
     wchar_t path[MAX_PATH];
     appdata_path(path, MAX_PATH, L"\\upd.txt");
     FILE* f = _wfopen(path, L"wb");
     if (f) {
-        fputc(mode == 0 ? '0' : (mode == 2 ? '2' : '1'), f);
+        fprintf(f, "mode=%d\ntype=%d\nlag=%d\n", g_mode, g_type, g_lag);
         fclose(f);
     }
+}
+
+static void cfg_load(void)
+{
+    wchar_t path[MAX_PATH];
+    appdata_path(path, MAX_PATH, L"\\upd.txt");
+    FILE* f = _wfopen(path, L"rb");
+    g_mode = 1;                    /* défaut : automatique */
+    g_type = 0;                    /* défaut : toutes les mises à jour */
+    g_lag = 7;                     /* défaut : 1 semaine */
+    if (f) {
+        char buf[128] = "";
+        size_t n = fread(buf, 1, sizeof(buf) - 1, f);
+        buf[n] = 0;
+        fclose(f);
+        char* p;
+        if ((p = strstr(buf, "mode="))) g_mode = atoi(p + 5);
+        if ((p = strstr(buf, "type="))) g_type = atoi(p + 5);
+        if ((p = strstr(buf, "lag=")))  g_lag  = atoi(p + 4);
+        if (!strstr(buf, "mode=")) {
+            /* ancien format : un seul caractère '0'/'1'/'2' */
+            int c = buf[0];
+            g_mode = (c == '0' || c == '2') ? 2 : 1;
+        }
+    }
+}
+
+int mp_update_get_mode(void)
+{
+    if (g_mode < 0) cfg_load();
+    return g_mode;
+}
+
+void mp_update_set_mode(int mode)
+{
+    if (mode < 0 || mode > 3) return;
+    g_mode = mode;
+    cfg_save();
+}
+
+int mp_update_get_type(void)
+{
+    if (g_type < 0) cfg_load();
+    return g_type;
+}
+
+void mp_update_set_type(int type)
+{
+    g_type = type ? 1 : 0;
+    cfg_save();
+}
+
+int mp_update_get_lag(void)
+{
+    if (g_lag < 0) cfg_load();
+    return g_lag;
+}
+
+void mp_update_set_lag(int days)
+{
+    if (days < 0) days = 0;
+    g_lag = days;
+    cfg_save();
 }
 
 int mp_update_auto_enabled(void)
@@ -165,6 +220,42 @@ typedef struct {
     int  manual;
 } upd_ctx;
 
+/* ------------------------------------------------------------------ */
+/* Filtres : type (toutes / correctives) et délai (lag)                */
+/* ------------------------------------------------------------------ */
+static int update_allowed(const char* ver)
+{
+    /* correctives seulement : la release doit porter un -cX */
+    if (mp_update_get_type() == 1) {
+        int y, m, r, c;
+        if (!parse_ver(ver, &y, &m, &r, &c) || c == 0) return 0;
+    }
+    return 1;
+}
+
+/* "2026-08-04T09:13:13Z" → temps UNIX (UTC) */
+static time_t parse_iso8601(const char* s)
+{
+    struct tm t;
+    memset(&t, 0, sizeof(t));
+    if (sscanf(s, "%d-%d-%dT%d:%d:%d", &t.tm_year, &t.tm_mon, &t.tm_mday,
+               &t.tm_hour, &t.tm_min, &t.tm_sec) != 6)
+        return 0;
+    t.tm_year -= 1900;
+    t.tm_mon -= 1;
+    return _mkgmtime(&t);
+}
+
+static int update_in_lag(const char* json, int lag_days)
+{
+    if (lag_days <= 0) return 0;
+    const char* pa = strstr(json, "\"published_at\":\"");
+    if (!pa) return 0;
+    time_t rel = parse_iso8601(pa + 16);
+    if (rel <= 0) return 0;
+    return (time(NULL) - rel) < (time_t)lag_days * 86400;
+}
+
 static DWORD WINAPI upd_thread(LPVOID arg)
 {
     upd_ctx* ctx = (upd_ctx*)arg;
@@ -205,7 +296,11 @@ static DWORD WINAPI upd_thread(LPVOID arg)
                         memcpy(g_latest, t, (size_t)(e - t));
                         g_latest[e - t] = 0;
                         state = (cmp_ver(MP_VERSION, g_latest) &&
-                                 !is_skipped(g_latest)) ? 1 : 0;
+                                 !is_skipped(g_latest) &&
+                                 update_allowed(g_latest)) ? 1 : 0;
+                        /* délai : ne pas signaler une release trop fraîche */
+                        if (state == 1 && update_in_lag(buf, mp_update_get_lag()))
+                            state = 0;
                     }
                 }
             }
@@ -242,3 +337,46 @@ void mp_update_check_async(HWND hwnd, int manual)
 }
 
 const char* mp_update_latest(void) { return g_latest; }
+
+/* ------------------------------------------------------------------ */
+/* Mode autonome : télécharge, déploie via un script, relance          */
+/* ------------------------------------------------------------------ */
+int mp_update_apply_and_restart(void)
+{
+    wchar_t appdir[MAX_PATH];
+    GetModuleFileNameW(NULL, appdir, MAX_PATH);
+    wchar_t* slash = wcsrchr(appdir, L'\\');
+    if (slash) *slash = 0;
+
+    wchar_t zip_path[MAX_PATH];
+    wcscpy(zip_path, appdir);
+    wcscat(zip_path, L"\\update.zip");
+    if (mp_update_download(mp_update_latest(), zip_path) != 0) return -1;
+
+    /* script : attend la fermeture du programme, extrait le zip à côté
+     * de l'exe, relance, puis se supprime */
+    wchar_t bat[MAX_PATH];
+    wcscpy(bat, appdir);
+    wcscat(bat, L"\\updater.bat");
+    FILE* f = _wfopen(bat, L"w");
+    if (!f) return -1;
+    fwprintf(f,
+        L"@echo off\r\n"
+        L"timeout /t 3 /nobreak >nul\r\n"
+        L"cd /d \"%~dp0\"\r\n"
+        L"powershell -NoProfile -Command \"Expand-Archive -Force -Path update.zip -DestinationPath .\"\r\n"
+        L"del update.zip\r\n"
+        L"start \"\" MusicPlayer.exe\r\n"
+        L"del \"%~f0\"\r\n");
+    fclose(f);
+
+    SHELLEXECUTEINFOW sei;
+    memset(&sei, 0, sizeof(sei));
+    sei.cbSize = sizeof(sei);
+    sei.fMask = SEE_MASK_NOCLOSEPROCESS;
+    sei.lpFile = bat;
+    sei.nShow = SW_HIDE;
+    if (!ShellExecuteExW(&sei)) return -1;
+    if (sei.hProcess) CloseHandle(sei.hProcess);
+    return 0;
+}

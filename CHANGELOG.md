@@ -2,6 +2,14 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.038] — 2026-08-04
+
+### Added (Settings ▸ Update…)
+- **Mode autonome** : vérifie **toutes les heures**, applique la mise à jour et **redémarre sans rien demander** (timer 1 h + application via script : attente de fermeture, extraction du zip, relance, auto-nettoyage)
+- **Type de mises à jour** : toutes (défaut) ou **correctives seulement** (versions `-cX`)
+- **Délai avant d'appliquer / signaler** : 0, 1 jour, 1 semaine (défaut) ou 1 mois — une release plus récente que le délai n'est ni proposée ni appliquée (`published_at` comparé à l'horloge locale)
+- Persistance : `upd.txt` au format `mode=… / type=… / lag=…` (ancien format monoparamètre toujours lu)
+
 ## [2026.08.037-c2] — 2026-08-04
 
 ### Added

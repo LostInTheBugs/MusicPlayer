@@ -1658,23 +1658,29 @@ static INT_PTR CALLBACK updcfg_dlg_proc(HWND h, UINT m, WPARAM w, LPARAM l)
         return dlg_skin_color(h, w, l);
     case WM_INITDIALOG: {
         int mode = mp_update_get_mode();
-        CheckRadioButton(h, IDC_UPD_AUTO, IDC_UPD_OFF,
-                         mode == 0 ? IDC_UPD_OFF
-                                   : (mode == 2 ? IDC_UPD_MAN : IDC_UPD_AUTO));
-        SetDlgItemTextW(h, IDC_UPD_GRP, lang_get("updcfg_group"));
-        SetDlgItemTextW(h, IDC_UPD_AUTO, lang_get("updcfg_auto"));
-        SetDlgItemTextW(h, IDC_UPD_MAN, lang_get("updcfg_manual"));
-        SetDlgItemTextW(h, IDC_UPD_OFF, lang_get("updcfg_off"));
-        SetDlgItemTextW(h, IDC_UPD_CHECK, lang_get("updcfg_check"));
-        SetWindowTextW(h, lang_get("upd_title"));   /* "Update" sans mnémonique */
+        CheckRadioButton(h, 1018, 1022,
+                         mode == 0 ? 1020 : mode == 2 ? 1019 :
+                         mode == 3 ? 1022 : 1018);
+        CheckRadioButton(h, 1024, 1025,
+                         mp_update_get_type() ? 1025 : 1024);
+        int lag = mp_update_get_lag();
+        CheckRadioButton(h, 1027, 1030,
+                         lag >= 30 ? 1030 : lag >= 7 ? 1029 :
+                         lag >= 1 ? 1028 : 1027);
         return TRUE;
     }
     case WM_COMMAND:
         if (LOWORD(w) == IDOK) {
             int mode = 1;
-            if (IsDlgButtonChecked(h, IDC_UPD_OFF)) mode = 0;
-            else if (IsDlgButtonChecked(h, IDC_UPD_MAN)) mode = 2;
+            if (IsDlgButtonChecked(h, 1019)) mode = 2;
+            else if (IsDlgButtonChecked(h, 1020)) mode = 0;
+            else if (IsDlgButtonChecked(h, 1022)) mode = 3;
             mp_update_set_mode(mode);
+            mp_update_set_type(IsDlgButtonChecked(h, 1025) ? 1 : 0);
+            int lag = IsDlgButtonChecked(h, 1028) ? 1 :
+                      IsDlgButtonChecked(h, 1029) ? 7 :
+                      IsDlgButtonChecked(h, 1030) ? 30 : 0;
+            mp_update_set_lag(lag);
             EndDialog(h, 1);
         } else if (LOWORD(w) == IDC_UPD_CHECK) {
             EndDialog(h, 2);   /* vérifier maintenant */
@@ -3348,8 +3354,10 @@ static LRESULT CALLBACK wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         DragAcceptFiles(hwnd, TRUE);
         SetTimer(hwnd, 1, 250, NULL);   /* status bar */
         SetTimer(hwnd, 2, 33, NULL);    /* rendu visuel ~30 FPS */
-        if (mp_update_get_mode() == 1)
+        if (mp_update_get_mode() == 1 || mp_update_get_mode() == 3)
             SetTimer(hwnd, 3, 4000, NULL); /* vérif. mises à jour au démarrage */
+        if (mp_update_get_mode() == 3)
+            SetTimer(hwnd, 4, 3600000, NULL); /* mode autonome : toutes les heures */
         /* icône de l'application */
         HICON hIcon = LoadIconW(GetModuleHandleW(NULL), MAKEINTRESOURCE(1));
         if (hIcon) {
@@ -3437,6 +3445,11 @@ static LRESULT CALLBACK wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
             mp_update_check_async(hwnd, 0);
             return 0;
         }
+        if (wp == 4) {
+            /* mode autonome : vérification toutes les heures */
+            mp_update_check_async(hwnd, 0);
+            return 0;
+        }
         if (wp == 1)
             playlist_tick();       /* enchaîne à la fin d'un morceau */
         status_update();
@@ -3447,6 +3460,13 @@ static LRESULT CALLBACK wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
          * wp = manuel (1) / automatique (0) ; lp = 0 à jour, 1 dispo, 2 erreur */
         int manual = (int)wp;
         int state = (int)lp;
+        if (state == 1 && !manual && mp_update_get_mode() == 3) {
+            /* mode autonome : appliquer et redémarrer sans demander */
+            if (mp_update_apply_and_restart() == 0) {
+                PostQuitMessage(0);   /* le script relancera le programme */
+                return 0;
+            }
+        }
         if (state == 1) {
             /* avertissement : mise à jour maintenant, plus tard,
              * ou ignorer cette version (seules les suivantes seront
