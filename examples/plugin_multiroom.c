@@ -89,6 +89,11 @@ static DWORD WINAPI mr_thread(LPVOID arg)
     unsigned short seq = 0;
     unsigned int ts = 0;
 
+    /* lecteur dédié : chaque diffuseur a son propre curseur, sinon ils
+     * se volent les échantillons (un seul flux partagé) */
+    int rid = -1;
+    if (g_h->web_reader_open) rid = g_h->web_reader_open();
+
     {
         char msg[160];
         _snprintf(msg, sizeof(msg),
@@ -97,7 +102,9 @@ static DWORD WINAPI mr_thread(LPVOID arg)
         log_line(msg);
     }
     while (g_running) {
-        uint32_t n = g_h->web_read(fbuf, PKT_FRAMES);
+        uint32_t n = (rid >= 0 && g_h->web_read_n)
+                   ? g_h->web_read_n(rid, fbuf, PKT_FRAMES)
+                   : g_h->web_read(fbuf, PKT_FRAMES);
         if (!n) { Sleep(20); continue; }
         unsigned char* p = pkt + 12;
         for (uint32_t i = 0; i < n * 2; i++) {
@@ -122,6 +129,7 @@ static DWORD WINAPI mr_thread(LPVOID arg)
         seq++;
         ts += n;
     }
+    if (rid >= 0 && g_h->web_reader_close) g_h->web_reader_close(rid);
     closesocket(s);
     return 0;
 }

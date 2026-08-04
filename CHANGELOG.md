@@ -2,6 +2,12 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.041-c2] — 2026-08-04
+
+### Fixed (RTP et Multiroom se volaient les échantillons)
+Les diffuseurs **RTP** et **Multiroom** utilisaient tous les deux `web_read` (lecteur 0 partagé) : activés ensemble, chaque paquet lu par l'un était perdu pour l'autre → flux hachés. Chacun réserve désormais **son propre lecteur** (`mp_web_reader_open` / `web_read_n` / close à l'arrêt) — le complément de la phase 2 de la spec Claude (webserver/UPnP/REST étaient déjà migrés).
+- Vérifié sous Wine avec RTP + Multiroom actifs : le `/stream` du client reçoit le flux **complet** (24 620 octets) et la lecture reste propre
+
 ## [2026.08.041-c1] — 2026-08-04
 
 ### Changed (démarrage du moteur au login — sans droits admin)
