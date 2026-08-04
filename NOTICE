@@ -1,0 +1,21 @@
+MusicPlayer
+===========
+Copyright (c) 2026 LostInTheBugs
+
+This project's own source code is licensed under the MIT License
+(see LICENSE).
+
+Third-party components distributed in the release archives
+-----------------------------------------------------------
+
+- FFmpeg (libavformat, libavcodec, libavutil, libswresample)
+  Built from the BtbN "win64-lgpl-shared" builds (FFmpeg n8.1),
+  licensed under the GNU Lesser General Public License v2.1 or later.
+  These libraries are linked dynamically (separate DLLs shipped next
+  to MusicPlayer.exe) and are NOT covered by this project's MIT
+  license. See LICENSE-FFmpeg.txt in the release archives for the
+  full license text, and https://github.com/BtbN/FFmpeg-Builds for
+  the build sources.
+
+- miniaudio (single-header audio library)
+  https://github.com/mackron/miniaudio — public domain / MIT-0.
