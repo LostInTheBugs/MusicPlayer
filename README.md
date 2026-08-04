@@ -27,7 +27,7 @@ cross-compiled from Linux with MinGW-w64.
 
 ## Version
 
-`2026.08.036-c6` — see [CHANGELOG.md](CHANGELOG.md)
+`2026.08.036-c7` — see [CHANGELOG.md](CHANGELOG.md)
 
 ## Run on Windows 11
 
@@ -55,7 +55,7 @@ mkdir -p vendor/ffmpeg
 curl -L -o vendor/miniaudio.h \
   https://raw.githubusercontent.com/mackron/miniaudio/v0.11.25/miniaudio.h
 # FFmpeg win64 shared build (BtbN) — extract into vendor/ffmpeg/
-# https://github.com/BtbN/FFmpeg-Builds/releases (win64-gpl-shared)
+# https://github.com/BtbN/FFmpeg-Builds/releases (win64-lgpl-shared)
 ```
 
 Build and test:

@@ -2,6 +2,15 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.036-c7] — 2026-08-04
+
+### Fixed (revue de code — 2e passe)
+- **Position : facteur vitesse intégré** — chaque bloc joué est accumulé en `got / speed` dans le callback : la barre affiche le **temps du morceau** quel que soit le speed (testé : à 2×, la position atteint 6:00/6:00 à la fin du morceau de 6 min au lieu de 3:00), et reste exact si la vitesse change en cours de morceau
+- **`dj_stream_thread` et `api_stream` : tampons par thread** (plus de static partagé — la page DJ ouvre les decks A et B simultanément, usage nominal)
+- **Lecture hors bornes corrigée dans la boucle recv** : `req[rn] = 0` est posé **avant** chaque `strstr` (le buffer n'était pas terminé → strstr pouvait lire au-delà de rn, chemin atteignable par le réseau)
+- **CORS du REST API documenté et assumé** : lecture ouverte (`Access-Control-Allow-Origin: *` pour les GET), commandes protégées (POST exige `Content-Type: application/json` → le preflight cross-origin échoue, pas d'`Allow-Headers`)
+- **README : instructions vendor corrigées** (`win64-gpl-shared` → `win64-lgpl-shared`) — plus de risque de régénérer le problème de licence
+
 ## [2026.08.036-c6] — 2026-08-04
 
 ### Fixed (build, robustesse, CI)

@@ -562,8 +562,17 @@ static void data_cb(ma_device* dev, void* out, const void* in, ma_uint32 frames)
 
     if (g_state == MP_STATE_PLAYING) {
         uint32_t got = ring_read(&g_ring, dst, frames);
-        if (got > 0)
-            __atomic_add_fetch(&g_played, (LONG64)got, __ATOMIC_RELAXED);
+        if (got > 0) {
+            /* position = temps DU MORCEAU : le resampler sort à
+             * device_rate × speed, donc chaque bloc joué représente
+             * got / speed frames de morceau ; pondérer par la vitesse
+             * courante reste exact même si elle change en cours */
+            float s = g_speed;
+            if (s < 0.1f) s = 1.0f;
+            LONG64 adv = (LONG64)llround((double)got / (double)s);
+            if (adv < 1) adv = 1;
+            __atomic_add_fetch(&g_played, adv, __ATOMIC_RELAXED);
+        }
         if (got < frames) {
             /* sous-remplissage : silence + détection de fin */
             memset(dst + (size_t)got * 2, 0, (size_t)(frames - got) * 2 * sizeof(float));

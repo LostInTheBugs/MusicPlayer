@@ -14,7 +14,14 @@
  *   GET  /api/stream   → flux audio (WAV PCM 44,1 kHz stéréo)
  *   GET  /health       → "ok"
  *
- * Toutes les réponses portent Access-Control-Allow-Origin: * (CORS).
+ * Sécurité CORS (assumée) :
+ *   - LECTURE ouverte : les GET répondent Access-Control-Allow-Origin: *
+ *     (des clients web externes peuvent afficher l'état du lecteur).
+ *   - COMMANDES protégées : POST /api/cmd exige Content-Type:
+ *     application/json (en-tête non-simple). Un site tiers déclencherait
+ *     un preflight OPTIONS qui échoue (le serveur ne renvoie pas
+ *     Access-Control-Allow-Headers) : les commandes cross-origin sont
+ *     donc bloquées.
  */
 #include <winsock2.h>
 #include <windows.h>
@@ -45,7 +52,7 @@ static void json_escape(const wchar_t* in, char* out, int max)
         if (in[i] < 128 && in[i] != '"' && in[i] != '\\') {
             out[o++] = (char)in[i];
         } else {
-            o += _snprintf(out + o, max - o, "\\u%04x", (unsigned)in[i]);
+            o += snprintf(out + o, max - o, "\\u%04x", (unsigned)in[i]);
         }
     }
     out[o] = 0;
@@ -58,7 +65,7 @@ static void json_escape_a(const char* in, char* out, int max)
         if ((unsigned char)in[i] >= 32 && in[i] != '"' && in[i] != '\\') {
             out[o++] = in[i];
         } else {
-            o += _snprintf(out + o, max - o, "\\u%04x", (unsigned char)in[i]);
+            o += snprintf(out + o, max - o, "\\u%04x", (unsigned char)in[i]);
         }
     }
     out[o] = 0;
@@ -68,7 +75,7 @@ static void json_escape_a(const char* in, char* out, int max)
 static void http_headers(SOCKET c, int code, const char* ctype, int len)
 {
     char hdr[512];
-    _snprintf(hdr, sizeof(hdr),
+    snprintf(hdr, sizeof(hdr),
         "HTTP/1.1 %d %s\r\n"
         "Content-Type: %s\r\n"
         "Content-Length: %d\r\n"
@@ -124,11 +131,11 @@ static void api_state(SOCKET c)
         else if (fs) base = fs + 1;
         char t[256];
         json_escape(base, t, sizeof(t));
-        off += _snprintf(items + off, sizeof(items) - off, "%s\"%s\"",
+        off += snprintf(items + off, sizeof(items) - off, "%s\"%s\"",
                          i ? "," : "", t);
     }
     items[off] = 0;
-    _snprintf(body, sizeof(body),
+    snprintf(body, sizeof(body),
         "{\"state\":\"%s\",\"pos\":%.1f,\"dur\":%.1f,\"vol\":%.2f,"
         "\"speed\":%.2f,\"audio\":%d,\"shuffle\":%d,\"dj\":%d,"
         "\"idx\":%d,\"count\":%d,\"name\":\"%s\",\"title\":\"%s\","
@@ -155,12 +162,12 @@ static void api_playlist(SOCKET c)
         else if (fs) base = fs + 1;
         char t[256];
         json_escape(base, t, sizeof(t));
-        off += _snprintf(body + off, sizeof(body) - off, "%s\"%s\"",
+        off += snprintf(body + off, sizeof(body) - off, "%s\"%s\"",
                          i ? "," : "", t);
     }
     body[off] = 0;
     char out[16400];
-    _snprintf(out, sizeof(out), "{\"count\":%d,\"items\":[%s]}", count, body);
+    snprintf(out, sizeof(out), "{\"count\":%d,\"items\":[%s]}", count, body);
     send_body(c, out, "application/json");
 }
 
@@ -208,7 +215,7 @@ static void api_cmd(SOCKET c, const char* cmd)
             int i = atoi(cmd + 8);
             if (i >= 0 && i < g_h->plist_count()) g_h->plist_play(i);
         } else {
-            _snprintf(resp, sizeof(resp), "{\"ok\":false,\"error\":\"unknown command\"}");
+            snprintf(resp, sizeof(resp), "{\"ok\":false,\"error\":\"unknown command\"}");
         }
     }
     send_body(c, resp, "application/json");
@@ -234,14 +241,21 @@ static void api_stream(SOCKET c)
     memcpy(hdr + 36, "data", 4);
     http_headers(c, 200, "audio/wav", -1);
     char hlen[64];
-    _snprintf(hlen, sizeof(hlen), "%d", 44);
+    snprintf(hlen, sizeof(hlen), "%d", 44);
     /* on renvoie le vrai header WAV puis le flux brut */
     (void)hlen;
     /* Content-Length inconnu : re-send avec un header sans longueur */
     /* (http_headers a mis -1 → on force chunked n'est pas supporté :
      * on renvoie le header en 2 parties) */
-    static float fbuf[1024 * 2];
-    static unsigned char obuf[4096];
+    /* tampons propres à CE thread (un thread par connexion) */
+    float* fbuf = (float*)malloc(1024 * 2 * sizeof(float));
+    unsigned char* obuf = (unsigned char*)malloc(4096);
+    if (!fbuf || !obuf) {
+        free(fbuf);
+        free(obuf);
+        closesocket(c);
+        return;
+    }
     send(c, (const char*)hdr, 44, 0);
     while (g_running) {
         uint32_t n = g_h->web_read(fbuf, 1024);
@@ -255,6 +269,8 @@ static void api_stream(SOCKET c)
         }
         if (send(c, (const char*)obuf, (int)(n * 4), 0) <= 0) break;
     }
+    free(fbuf);
+    free(obuf);
 }
 
 /* ------------------------------------------------------------------ */
@@ -345,7 +361,7 @@ static int server_start(void)
     const char* ips = g_h->svc_ips ? g_h->svc_ips("rest") : "";
     if (ips && ips[0]) {
         char tmp[128];
-        _snprintf(tmp, sizeof(tmp), "%s", ips);
+        snprintf(tmp, sizeof(tmp), "%s", ips);
         char* tok = strtok(tmp, ";");
         addr.sin_addr.s_addr = inet_addr(tok ? tok : "0.0.0.0");
     } else {
@@ -411,7 +427,7 @@ static void pl_service(mp_plugin* self, int event, void* data)
         if (!g_running) {
             if (server_start() == 0) {
                 char msg[128];
-                _snprintf(msg, sizeof(msg), "REST API listening on port %d",
+                snprintf(msg, sizeof(msg), "REST API listening on port %d",
                           g_h->svc_port ? g_h->svc_port("rest") : REST_PORT);
                 log_line(msg);
             } else {

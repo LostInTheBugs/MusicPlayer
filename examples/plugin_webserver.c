@@ -426,16 +426,25 @@ static DWORD WINAPI dj_stream_thread(void* arg)
         'd','a','t','a', 0xff,0xff,0xff,0x7f
     };
     send_all(c, (const char*)wav, 44);
-    static float fbuf[2048 * 2];
-    static uint8_t obuf[16384];
+    /* tampons propres à CE thread : la page DJ ouvre /dj/streamA et
+     * /dj/streamB simultanément (2 threads, mêmes buffers → corruption
+     * si statiques) */
+    float* fbuf = (float*)malloc(2048 * 2 * sizeof(float));
+    uint8_t* obuf = (uint8_t*)malloc(16384);
+    if (!fbuf || !obuf) {
+        free(fbuf);
+        free(obuf);
+        closesocket(c);
+        return 0;
+    }
     uint32_t idle = 0;
     while (g_running) {
         uint32_t n = dj_read(d, fbuf, 2048);
         if (n == 0) {
             if (d->eof) break;
             if (++idle > 25) {
-                memset(obuf, 0, sizeof(obuf));
-                if (send(c, (const char*)obuf, sizeof(obuf), 0) <= 0) break;
+                memset(obuf, 0, 16384);
+                if (send(c, (const char*)obuf, 16384, 0) <= 0) break;
                 idle = 0;
             }
             Sleep(20);
@@ -453,6 +462,8 @@ static DWORD WINAPI dj_stream_thread(void* arg)
         Sleep(5);    /* pacing : 46 ms de son par paquet (léger buffer) */
     }
     closesocket(c);
+    free(fbuf);
+    free(obuf);
     return 0;
 }
 
@@ -627,10 +638,11 @@ static void dispatch(SOCKET c)
         int r = recv(c, req + rn, (int)sizeof(req) - 1 - rn, 0);
         if (r <= 0) break;
         rn += r;
+        req[rn] = 0;                 /* termine AVANT strstr (jamais
+                                        de lecture au-delà de rn) */
         if (strstr(req, "\r\n\r\n")) break;   /* en-têtes complets */
     }
     if (rn <= 0) { closesocket(c); return; }
-    req[rn] = 0;
 
     /* si un corps est annoncé (Content-Length), l'attendre en entier */
     const char* hdr_end = strstr(req, "\r\n\r\n");
