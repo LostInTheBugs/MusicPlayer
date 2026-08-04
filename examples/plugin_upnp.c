@@ -253,8 +253,12 @@ static void media_stream(SOCKET c, int idx)
         free(obuf);
         return;
     }
+    int rid = -1;
+    if (g_h->web_reader_open) rid = g_h->web_reader_open();
     while (g_running) {
-        uint32_t n = g_h->web_read(fbuf, 1024);
+        uint32_t n = (rid >= 0 && g_h->web_read_n)
+                   ? g_h->web_read_n(rid, fbuf, 1024)
+                   : g_h->web_read(fbuf, 1024);
         if (!n) { Sleep(20); continue; }
         http_f32_to_s16(fbuf, obuf, n, 1.0f);
         char lenstr[32];
@@ -263,6 +267,7 @@ static void media_stream(SOCKET c, int idx)
         if (send(c, (const char*)obuf, (int)(n * 4), 0) <= 0) break;
         send(c, "\r\n", 2, 0);
     }
+    if (rid >= 0 && g_h->web_reader_close) g_h->web_reader_close(rid);
     free(fbuf);
     free(obuf);
     send(c, "0\r\n\r\n", 5, 0);

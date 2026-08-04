@@ -28,8 +28,8 @@
 #define MAX_PATH 260
 #endif
 
-/* API plugins MusicPlayer — version 2 */
-#define MP_PLUGIN_API_VERSION 3
+/* API plugins MusicPlayer — version 4 */
+#define MP_PLUGIN_API_VERSION 4
 
 typedef enum {
     MP_PLUGIN_SKIN         = 1 << 0,
@@ -156,6 +156,14 @@ typedef struct mp_host_api {
      * redimensionnable et la barre d'état est masquée (skin « fenêtre
      * entière »). w <= 0 ou h <= 0 : retour au comportement libre. */
     void (*skin_set_window_size)(int w, int h, int fixed);
+
+    /* --- flux de diffusion : lecteur dédié (multi-clients) ---
+     * Un plugin qui diffuse le flux doit réserver son propre curseur,
+     * sinon il vole les échantillons des autres consommateurs.
+     * NULL si l'hôte ne le gère pas (tester avant d'appeler). */
+    int      (*web_reader_open)(void);
+    void     (*web_reader_close)(int id);
+    uint32_t (*web_read_n)(int id, float* dst, uint32_t frames);
 } mp_host_api;
 
 /*

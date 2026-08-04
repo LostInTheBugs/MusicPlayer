@@ -346,6 +346,12 @@ static int         host_web_find_free_port(void) { return find_free_port(); }
 static uint32_t    host_web_read(float* dst, uint32_t frames)
 { return sp_web_read(dst, frames); }
 
+/* le client n'a pas de ring de diffusion multi-lecteurs : stubs */
+static int      host_web_reader_open(void) { return 0; }
+static void     host_web_reader_close(int id) { (void)id; }
+static uint32_t host_web_read_n(int id, float* dst, uint32_t frames)
+{ (void)id; return sp_web_read(dst, frames); }
+
 /* ------------------------------------------------------------------ */
 /* Skins : palette de couleurs (modifiée par les plugins SKIN)         */
 /* ------------------------------------------------------------------ */
@@ -667,7 +673,8 @@ static const mp_host_api g_host = {
     host_skin_set_layout,
     host_get_metadata, host_get_cover, host_plist_path,
     host_get_skin_colors,
-    host_skin_set_window_size
+    host_skin_set_window_size,
+    host_web_reader_open, host_web_reader_close, host_web_read_n
 };
 
 /* ------------------------------------------------------------------ */
@@ -1145,6 +1152,7 @@ static void web_apply(void)
     mp_set_audio_out(g_web_audio);
     /* le serveur web est un plugin SERVICE : reconfiguration */
     mp_plugins_service(MP_SERVICE_WEB_APPLY, NULL);
+    cc_push_web_config(g_cfg.web_enabled, g_cfg.web_port, g_cfg.web_ips);
 }
 
 static INT_PTR CALLBACK web_dlg_proc(HWND h, UINT m, WPARAM w, LPARAM l)
@@ -1326,6 +1334,7 @@ static INT_PTR CALLBACK plugins_dlg_proc(HWND h, UINT m, WPARAM w, LPARAM l)
             }
             /* reconfigurer les services (serveur web…) */
             mp_plugins_service(MP_SERVICE_WEB_APPLY, NULL);
+    cc_push_web_config(g_cfg.web_enabled, g_cfg.web_port, g_cfg.web_ips);
             rebuild_menus();
             EndDialog(h, 1);
         } else if (LOWORD(w) == IDCANCEL) {
@@ -1455,6 +1464,7 @@ static INT_PTR CALLBACK net_dlg_proc(HWND h, UINT m, WPARAM w, LPARAM l)
             config_save();
             /* reconfigurer les services réseau */
             mp_plugins_service(MP_SERVICE_WEB_APPLY, NULL);
+    cc_push_web_config(g_cfg.web_enabled, g_cfg.web_port, g_cfg.web_ips);
             EndDialog(h, 1);
         } else if (LOWORD(w) == IDCANCEL) {
             EndDialog(h, 0);
@@ -3296,6 +3306,7 @@ static void on_command(int id, HMENU bar)
                 if ((t & MP_PLUGIN_SERVICE) && p->api->service) {
                     p->api->service(p, MP_SERVICE_CLICK, NULL);
                     mp_plugins_service(MP_SERVICE_WEB_APPLY, NULL);
+    cc_push_web_config(g_cfg.web_enabled, g_cfg.web_port, g_cfg.web_ips);
                 }
             }
         }

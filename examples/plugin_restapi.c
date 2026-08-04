@@ -244,13 +244,18 @@ static void api_stream(SOCKET c)
         closesocket(c);
         return;
     }
+    int rid = -1;
+    if (g_h->web_reader_open) rid = g_h->web_reader_open();
     send(c, (const char*)hdr, 44, 0);
     while (g_running) {
-        uint32_t n = g_h->web_read(fbuf, 1024);
+        uint32_t n = (rid >= 0 && g_h->web_read_n)
+                   ? g_h->web_read_n(rid, fbuf, 1024)
+                   : g_h->web_read(fbuf, 1024);
         if (!n) { Sleep(20); continue; }
         http_f32_to_s16(fbuf, obuf, n, 1.0f);
         if (send(c, (const char*)obuf, (int)(n * 4), 0) <= 0) break;
     }
+    if (rid >= 0 && g_h->web_reader_close) g_h->web_reader_close(rid);
     free(fbuf);
     free(obuf);
 }

@@ -561,10 +561,14 @@ static DWORD WINAPI stream_thread(void* arg)
         closesocket(c);
         return 0;
     }
+    int rid = -1;
+    if (g_h->web_reader_open) rid = g_h->web_reader_open();
     uint32_t idle = 0;
     float vol = 1.0f;
     while (g_running) {
-        uint32_t n = g_h->web_read(fbuf, 1024);
+        uint32_t n = (rid >= 0 && g_h->web_read_n)
+                   ? g_h->web_read_n(rid, fbuf, 1024)
+                   : g_h->web_read(fbuf, 1024);
         if (n == 0) {
             if (++idle > 50) {
                 memset(obuf, 0, 4096);
@@ -585,6 +589,7 @@ static DWORD WINAPI stream_thread(void* arg)
         }
         if (send(c, (const char*)obuf, (int)(n * 4), 0) <= 0) break;
     }
+    if (rid >= 0 && g_h->web_reader_close) g_h->web_reader_close(rid);
     closesocket(c);
     free(fbuf);
     free(obuf);

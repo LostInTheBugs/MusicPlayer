@@ -393,8 +393,27 @@ static volatile LONG  g_audio_out = 0;   /* 0 = PC, 1 = téléphone, 2 = les deu
 #define WEB_RING_FRAMES (1 << 15)   /* 32768 frames ≈ 0,74 s */
 #define WEB_RING_MASK   (WEB_RING_FRAMES - 1)
 static float          g_web_ring[WEB_RING_FRAMES * 2];
-static LONG           g_web_head = 0;
-static LONG           g_web_tail = 0;
+static LONG           g_web_tail = 0;      /* écrit par le décodeur */
+static LONG           g_web_rd[MP_WEB_READERS];       /* curseur de chaque lecteur */
+static LONG           g_web_rd_used[MP_WEB_READERS];  /* 1 = curseur réservé */
+static CRITICAL_SECTION g_web_rd_lock;     /* protège l'ouverture/fermeture */
+
+/* Position en deçà de laquelle plus aucun lecteur n'a besoin des
+ * données. S'il n'y a aucun lecteur ouvert, on renvoie l'écriture
+ * (rien à conserver). */
+static LONG web_read_floor(void)
+{
+    LONG wr = __atomic_load_n(&g_web_tail, __ATOMIC_ACQUIRE);
+    LONG floor = wr;
+    int any = 0;
+    for (int i = 0; i < MP_WEB_READERS; i++) {
+        if (!g_web_rd_used[i]) continue;
+        LONG r = __atomic_load_n(&g_web_rd[i], __ATOMIC_ACQUIRE);
+        if (!any || (int32_t)(r - floor) < 0) floor = r;
+        any = 1;
+    }
+    return floor;
+}
 
 /* Écrit les frames décodées (float stéréo, déjà à la vitesse choisie).
  * Non bloquant : si le ring est plein, les données les plus anciennes
@@ -403,21 +422,29 @@ static LONG           g_web_tail = 0;
 #ifndef MP_CORE
 static void web_ring_write(const float* data, uint32_t frames)
 {
-    LONG h = g_web_head;
-    LONG t = __atomic_load_n(&g_web_tail, __ATOMIC_ACQUIRE);
-    uint32_t used = (uint32_t)(t - h) & WEB_RING_MASK;
+    LONG wr = g_web_tail;
+    LONG fl = web_read_floor();
+    uint32_t used = (uint32_t)wr - (uint32_t)fl;
     if (used + frames > WEB_RING_FRAMES) {
+        /* jette les plus anciennes : avance les lecteurs trop en retard */
         uint32_t drop = used + frames - WEB_RING_FRAMES;
-        g_web_head = (LONG)((uint32_t)h + drop);
+        uint32_t newfl = (uint32_t)wr - drop;
+        for (int i = 0; i < MP_WEB_READERS; i++) {
+            if (!g_web_rd_used[i]) continue;
+            LONG r = __atomic_load_n(&g_web_rd[i], __ATOMIC_ACQUIRE);
+            if ((uint32_t)r < newfl)
+                __atomic_store_n(&g_web_rd[i], (LONG)newfl, __ATOMIC_RELEASE);
+        }
+        fl = (LONG)newfl;
     }
-    uint32_t wpos = (uint32_t)t & WEB_RING_MASK;
+    uint32_t wpos = (uint32_t)wr & WEB_RING_MASK;
     uint32_t n1 = frames;
     if (n1 > WEB_RING_FRAMES - wpos) n1 = WEB_RING_FRAMES - wpos;
     memcpy(g_web_ring + (size_t)wpos * 2, data, (size_t)n1 * 2 * sizeof(float));
     if (n1 < frames)
         memcpy(g_web_ring, data + (size_t)n1 * 2,
                (size_t)(frames - n1) * 2 * sizeof(float));
-    __atomic_store_n(&g_web_tail, (LONG)((uint32_t)t + frames),
+    __atomic_store_n(&g_web_tail, (LONG)((uint32_t)wr + frames),
                      __ATOMIC_RELEASE);
 }
 #endif /* !MP_CORE */
@@ -429,14 +456,14 @@ static uint32_t web_ring_write_bp(const float* data, uint32_t frames)
 {
     uint32_t pushed = 0;
     while (pushed < frames && !g_shutdown) {
-        LONG h = g_web_head;
-        LONG t = __atomic_load_n(&g_web_tail, __ATOMIC_ACQUIRE);
-        uint32_t used = (uint32_t)(t - h) & WEB_RING_MASK;
+        LONG wr = g_web_tail;
+        LONG fl = web_read_floor();
+        uint32_t used = (uint32_t)wr - (uint32_t)fl;
         uint32_t free = WEB_RING_FRAMES - used;
         uint32_t w = frames - pushed;
         if (w > free) w = free;
         if (w == 0) { Sleep(5); continue; }
-        uint32_t wpos = (uint32_t)t & WEB_RING_MASK;
+        uint32_t wpos = (uint32_t)wr & WEB_RING_MASK;
         uint32_t n1 = w;
         if (n1 > WEB_RING_FRAMES - wpos) n1 = WEB_RING_FRAMES - wpos;
         memcpy(g_web_ring + (size_t)wpos * 2, data + (size_t)pushed * 2,
@@ -444,7 +471,7 @@ static uint32_t web_ring_write_bp(const float* data, uint32_t frames)
         if (n1 < w)
             memcpy(g_web_ring, data + (size_t)(pushed + n1) * 2,
                    (size_t)(w - n1) * 2 * sizeof(float));
-        __atomic_store_n(&g_web_tail, (LONG)((uint32_t)t + w),
+        __atomic_store_n(&g_web_tail, (LONG)((uint32_t)wr + w),
                          __ATOMIC_RELEASE);
         pushed += w;
     }
@@ -452,14 +479,44 @@ static uint32_t web_ring_write_bp(const float* data, uint32_t frames)
 }
 #endif /* MP_CORE */
 
-uint32_t mp_web_read(float* dst, uint32_t frames)
+int mp_web_reader_open(void)
 {
-    LONG h = __atomic_load_n(&g_web_head, __ATOMIC_ACQUIRE);
-    LONG t = g_web_tail;
-    uint32_t used = (uint32_t)(t - h) & WEB_RING_MASK;
+    EnterCriticalSection(&g_web_rd_lock);
+    int id = -1;
+    for (int i = 0; i < MP_WEB_READERS; i++) {
+        if (!g_web_rd_used[i]) {
+            g_web_rd_used[i] = 1;
+            /* démarre sur les données les plus récentes */
+            __atomic_store_n(&g_web_rd[i],
+                             __atomic_load_n(&g_web_tail, __ATOMIC_ACQUIRE),
+                             __ATOMIC_RELEASE);
+            id = i;
+            break;
+        }
+    }
+    LeaveCriticalSection(&g_web_rd_lock);
+    return id;
+}
+
+void mp_web_reader_close(int id)
+{
+    if (id < 0 || id >= MP_WEB_READERS) return;
+    EnterCriticalSection(&g_web_rd_lock);
+    g_web_rd_used[id] = 0;
+    LeaveCriticalSection(&g_web_rd_lock);
+}
+
+uint32_t mp_web_read_n(int id, float* dst, uint32_t frames)
+{
+    if (id < 0 || id >= MP_WEB_READERS || !g_web_rd_used[id]) return 0;
+    LONG wr = __atomic_load_n(&g_web_tail, __ATOMIC_ACQUIRE);
+    LONG rd = __atomic_load_n(&g_web_rd[id], __ATOMIC_ACQUIRE);
+    uint32_t used = (uint32_t)wr - (uint32_t)rd;
+    if (used > WEB_RING_FRAMES) {          /* lecteur décroché : recalage */
+        rd = (LONG)((uint32_t)wr - WEB_RING_FRAMES);
+        used = WEB_RING_FRAMES;
+    }
 #ifdef MP_CORE
-    /* core : pas de carte son — la position avance quand un client
-     * consomme le flux ; la fin de fichier est détectée ici aussi */
     if (used == 0) {
         if (g_eof && g_state == MP_STATE_PLAYING)
             InterlockedCompareExchange((LONG*)&g_state, MP_STATE_FINISHED,
@@ -470,26 +527,42 @@ uint32_t mp_web_read(float* dst, uint32_t frames)
     if (used == 0) return 0;
 #endif
     if (frames > used) frames = used;
-    uint32_t rpos = (uint32_t)h & WEB_RING_MASK;
+
+#ifdef MP_CORE
+    LONG floor_before = web_read_floor();
+#endif
+
+    uint32_t rpos = (uint32_t)rd & WEB_RING_MASK;
     uint32_t n1 = frames;
     if (n1 > WEB_RING_FRAMES - rpos) n1 = WEB_RING_FRAMES - rpos;
     memcpy(dst, g_web_ring + (size_t)rpos * 2, (size_t)n1 * 2 * sizeof(float));
     if (n1 < frames)
         memcpy(dst + (size_t)n1 * 2, g_web_ring,
                (size_t)(frames - n1) * 2 * sizeof(float));
-    __atomic_store_n(&g_web_head, (LONG)((uint32_t)h + frames),
+    __atomic_store_n(&g_web_rd[id], (LONG)((uint32_t)rd + frames),
                      __ATOMIC_RELEASE);
+
 #ifdef MP_CORE
-    if (frames > 0) {
-        /* position = temps du morceau (vitesse pondérée) */
+    /* La position du morceau avance quand les données sont
+     * DÉFINITIVEMENT consommées, c'est-à-dire quand le lecteur le plus
+     * en retard progresse — pas à chaque lecture d'un lecteur donné,
+     * sinon deux clients feraient avancer la position deux fois. */
+    LONG floor_after = web_read_floor();
+    int32_t d = (int32_t)(floor_after - floor_before);
+    if (d > 0) {
         float s = g_speed;
         if (s < 0.1f) s = 1.0f;
-        LONG64 adv = (LONG64)llround((double)frames / (double)s);
+        LONG64 adv = (LONG64)llround((double)d / (double)s);
         if (adv < 1) adv = 1;
         __atomic_add_fetch(&g_played, adv, __ATOMIC_RELAXED);
     }
 #endif
     return frames;
+}
+
+uint32_t mp_web_read(float* dst, uint32_t frames)
+{
+    return mp_web_read_n(0, dst, frames);
 }
 
 void mp_set_audio_out(int mode)
@@ -678,7 +751,9 @@ static void data_cb(ma_device* dev, void* out, const void* in, ma_uint32 frames)
 int mp_init(void)
 {
     InitializeCriticalSection(&g_swr_lock);
+    InitializeCriticalSection(&g_web_rd_lock);
     ring_init(&g_ring);
+    mp_web_reader_open();   /* lecteur 0 : celui de core_http / mp_web_read */
 
 #ifndef MP_CORE
     ma_device_config cfg = ma_device_config_init(ma_device_type_playback);
@@ -727,6 +802,7 @@ void mp_shutdown(void)
     free(g_path); g_path = NULL;
     g_stream_idx = -1;
     g_state = MP_STATE_STOPPED;
+    DeleteCriticalSection(&g_web_rd_lock);
     DeleteCriticalSection(&g_swr_lock);
 }
 

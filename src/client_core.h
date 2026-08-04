@@ -54,6 +54,10 @@ int cc_ping(void);
  * Remplit g_plist/g_plist_n (globals du client). */
 void cc_plist_refresh(void);
 
+/* Pousse la configuration réseau vers le core (le core ne relit pas
+ * config.yml de lui-même). */
+void cc_push_web_config(int enabled, int port, const char* ips);
+
 /* Chemin complet du morceau courant (depuis la playlist locale). */
 const wchar_t* cc_current_path(void);
 

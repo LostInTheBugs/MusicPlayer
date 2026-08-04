@@ -26,6 +26,7 @@
 static float* g_ring = NULL;
 static LONG   g_head = 0;   /* écrit par le thread réseau (RELEASE) */
 static LONG   g_tail = 0;   /* lu par le callback audio (RELEASE) */
+static volatile LONG g_stop = 0;
 static LONG   g_peek_tail = 0;  /* curseur du lecteur "peek" (TS) :
 
                                   le plugin TeamSpeak lit le flux via
@@ -36,24 +37,34 @@ static LONG   g_peek_tail = 0;  /* curseur du lecteur "peek" (TS) :
                                   curseur : le TS voit tout le flux SANS
                                   voler les échantillons du device. */
 
+/* Écriture bloquante : si le ring est plein, on attend que le callback
+ * audio consomme. C'est CE blocage qui ferme la fenêtre TCP et cale
+ * tout le reste de la chaîne sur la carte son. Ne jamais jeter de
+ * données ici : jeter ferait tourner le core à vitesse maximale. */
 static void sp_ring_write(const float* data, uint32_t frames)
 {
-    LONG h = g_head;
-    LONG t = __atomic_load_n(&g_tail, __ATOMIC_ACQUIRE);
-    uint32_t used = (uint32_t)h - (uint32_t)t;   /* rempli = head - tail */
-    if (used + frames > SP_RING_FRAMES) {
-        /* dépassement : on jette les plus anciennes (head avance) */
-        uint32_t drop = used + frames - SP_RING_FRAMES;
-        h = (LONG)((uint32_t)h + drop);
+    uint32_t pushed = 0;
+    while (pushed < frames && !g_stop) {
+        LONG h = g_head;   /* seul le producteur écrit head */
+        LONG t = __atomic_load_n(&g_tail, __ATOMIC_ACQUIRE);
+        uint32_t used = (uint32_t)h - (uint32_t)t;
+        uint32_t space = SP_RING_FRAMES - used;
+        uint32_t w = frames - pushed;
+        if (w > space) w = space;
+        if (w == 0) { Sleep(2); continue; }   /* plein : on n'aspire plus */
+
+        uint32_t wpos = (uint32_t)h & SP_RING_MASK;
+        uint32_t n1 = w;
+        if (n1 > SP_RING_FRAMES - wpos) n1 = SP_RING_FRAMES - wpos;
+        memcpy(g_ring + (size_t)wpos * 2, data + (size_t)pushed * 2,
+               (size_t)n1 * 2 * sizeof(float));
+        if (n1 < w)
+            memcpy(g_ring, data + (size_t)(pushed + n1) * 2,
+                   (size_t)(w - n1) * 2 * sizeof(float));
+
+        __atomic_store_n(&g_head, (LONG)((uint32_t)h + w), __ATOMIC_RELEASE);
+        pushed += w;
     }
-    uint32_t wpos = (uint32_t)h & SP_RING_MASK;  /* écrit à la position head */
-    uint32_t n1 = frames;
-    if (n1 > SP_RING_FRAMES - wpos) n1 = SP_RING_FRAMES - wpos;
-    memcpy(g_ring + (size_t)wpos * 2, data, (size_t)n1 * 2 * sizeof(float));
-    if (n1 < frames)
-        memcpy(g_ring, data + (size_t)n1 * 2,
-               (size_t)(frames - n1) * 2 * sizeof(float));
-    __atomic_store_n(&g_head, (LONG)((uint32_t)h + frames), __ATOMIC_RELEASE);
 }
 
 static uint32_t sp_ring_read(float* dst, uint32_t frames)
@@ -81,6 +92,13 @@ uint32_t sp_web_read(float* dst, uint32_t frames)
     LONG h = __atomic_load_n(&g_head, __ATOMIC_ACQUIRE);
     LONG t = g_peek_tail;
     uint32_t filled = (uint32_t)h - (uint32_t)t;
+    if (filled > SP_RING_FRAMES) {
+        /* lecteur trop en retard : on le recale sur la plus ancienne
+         * donnée encore valide */
+        t = (LONG)((uint32_t)h - SP_RING_FRAMES);
+        g_peek_tail = t;
+        filled = SP_RING_FRAMES;
+    }
     if (frames > filled) frames = filled;
     if (frames == 0) return 0;
     uint32_t rpos = (uint32_t)t & SP_RING_MASK;
@@ -99,7 +117,6 @@ uint32_t sp_web_read(float* dst, uint32_t frames)
 /* ------------------------------------------------------------------ */
 static ma_device g_device;
 static int  g_device_ok = 0;
-static volatile LONG g_stop = 0;
 static HANDLE g_thread = NULL;
 static volatile LONG g_volume_pct = 80;   /* 0..100 (défaut config) */
 static uint32_t g_dev_rate = 44100;       /* sample rate réel du device */
@@ -280,16 +297,30 @@ int sp_start(void)
     cfg.dataCallback = data_cb;
 
     if (ma_device_init(NULL, &cfg, &g_device) == MA_SUCCESS) {
-        if (ma_device_start(&g_device) == MA_SUCCESS) {
-            g_device_ok = 1;
-            if (g_device.sampleRate > 0) g_dev_rate = g_device.sampleRate;
-            ma_device_set_master_volume(&g_device, sp_get_volume());
-        } else {
-            ma_device_uninit(&g_device);
-        }
+        g_device_ok = 1;
+        if (g_device.sampleRate > 0) g_dev_rate = g_device.sampleRate;
+    } else {
+        return -1;   /* pas de carte son : inutile de démarrer le flux */
     }
 
+    /* thread réseau AVANT de démarrer le device : le flux commence à
+     * remplir le ring */
     g_thread = CreateThread(NULL, 0, stream_thread, NULL, 0, NULL);
+
+    /* pré-remplissage ~200 ms : évite un sous-remplissage au démarrage */
+    for (int i = 0; i < 200 && !g_stop; i++) {
+        LONG h = __atomic_load_n(&g_head, __ATOMIC_ACQUIRE);
+        if ((uint32_t)h - (uint32_t)g_tail >= 44100 / 5) break;
+        Sleep(5);
+    }
+
+    if (ma_device_start(&g_device) == MA_SUCCESS) {
+        ma_device_set_master_volume(&g_device, sp_get_volume());
+    } else {
+        ma_device_uninit(&g_device);
+        g_device_ok = 0;
+    }
+
     return 0;
 }
 

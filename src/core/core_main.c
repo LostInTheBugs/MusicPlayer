@@ -235,7 +235,7 @@ static int host_get_shuffle(void)
 }
 
 static const mp_host_api g_host = {
-    3,
+    4,
     core_log,
     host_get_state, mp_get_position, mp_get_duration,
     mp_get_volume, mp_get_speed, host_get_file_name,
@@ -253,7 +253,8 @@ static const mp_host_api g_host = {
     host_noop4,                  /* skin_set_layout */
     mp_plugins_get_metadata, core_get_cover, host_plist_path,
     host_noop_skincolors,
-    host_noop_wsize
+    host_noop_wsize,
+    mp_web_reader_open, mp_web_reader_close, mp_web_read_n
 };
 
 /* ------------------------------------------------------------------ */
@@ -318,6 +319,9 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR lpCmd, int nShow)
 
     mp_init();                 /* moteur sans carte son (mode silencieux) */
     load_plugins();
+    /* démarre les services réseau (webserver, upnp, rtp, multiroom) :
+     * ils n'ouvrent leurs sockets qu'à la réception de cet événement */
+    mp_plugins_service(MP_SERVICE_WEB_APPLY, NULL);
     core_http_start();
     core_log("core ready (REST on 8080)");
 
@@ -330,7 +334,6 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR lpCmd, int nShow)
     core_http_stop();
     mp_plugins_shutdown();
     mp_shutdown();
-    config_save();
     core_log("core stopped");
     return 0;
 }

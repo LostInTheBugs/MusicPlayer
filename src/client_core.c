@@ -83,8 +83,38 @@ static http_resp cc_http2(const char* method, const char* path,
     return r;
 }
 
+/* Pousse la configuration réseau vers le core (le core ne relit pas
+ * config.yml de lui-même). */
+void cc_push_web_config(int enabled, int port, const char* ips)
+{
+    char body[1024];
+    snprintf(body, sizeof(body), "web_enabled=%d&web_port=%d&web_ips=%s",
+             enabled ? 1 : 0, port, ips);
+    HINTERNET inet = InternetOpenA("MusicPlayer-Client/1.0",
+                                   INTERNET_OPEN_TYPE_DIRECT, NULL, NULL, 0);
+    if (!inet) return;
+    DWORD to = 3000;
+    InternetSetOption(inet, INTERNET_OPTION_CONNECT_TIMEOUT, &to, sizeof(to));
+    InternetSetOption(inet, INTERNET_OPTION_RECEIVE_TIMEOUT, &to, sizeof(to));
+    HINTERNET conn = InternetConnectA(inet, "127.0.0.1", (INTERNET_PORT)CC_PORT,
+                                      NULL, NULL, INTERNET_SERVICE_HTTP, 0, 0);
+    if (conn) {
+        HINTERNET h = HttpOpenRequestA(conn, "POST", "/api/config", NULL, NULL,
+                                       NULL, INTERNET_FLAG_RELOAD |
+                                       INTERNET_FLAG_NO_CACHE_WRITE, 0);
+        if (h) {
+            HttpSendRequestA(h,
+                             "Content-Type: application/x-www-form-urlencoded\r\n",
+                             (DWORD)-1L, (LPVOID)body, (DWORD)strlen(body));
+            InternetCloseHandle(h);
+        }
+        InternetCloseHandle(conn);
+    }
+    InternetCloseHandle(inet);
+}
+
 /* ------------------------------------------------------------------ */
-/* API publique                                                        */
+/* Cycle de vie du moteur                                              */
 /* ------------------------------------------------------------------ */
 int cc_ping(void)
 {

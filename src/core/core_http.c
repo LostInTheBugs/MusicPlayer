@@ -189,6 +189,8 @@ static void handle_cmd(SOCKET c, const char* body)
 /* ------------------------------------------------------------------ */
 static void stream_loop(SOCKET c)
 {
+    int rid = mp_web_reader_open();
+    if (rid < 0) return;
     unsigned char wav[44] = {
         'R','I','F','F', 0xff,0xff,0xff,0x7f, 'W','A','V','E',
         'f','m','t',' ', 16,0,0,0, 1,0, 2,0,
@@ -201,10 +203,11 @@ static void stream_loop(SOCKET c)
     unsigned char* obuf = (unsigned char*)malloc(16384);
     if (!fbuf || !obuf) {
         free(fbuf); free(obuf);
+        mp_web_reader_close(rid);
         return;
     }
     while (InterlockedCompareExchange(&g_running, 1, 1)) {
-        uint32_t n = mp_web_read(fbuf, 2048);
+        uint32_t n = mp_web_read_n(rid, fbuf, 2048);
         if (!n) { Sleep(5); continue; }
         /* niveaux RMS par canal (pour les visuels du client) */
         float sl = 0, sr = 0;
@@ -216,10 +219,10 @@ static void stream_loop(SOCKET c)
         InterlockedExchange((volatile LONG*)&g_lvl_r, (LONG)((sr / (float)n) * 100000.0f));
         http_f32_to_s16(fbuf, obuf, n, 1.0f);
         if (send(c, (const char*)obuf, (int)(n * 4), 0) <= 0) break;
-        Sleep(5);    /* pacing : 46 ms de son par paquet */
     }
     free(fbuf);
     free(obuf);
+    mp_web_reader_close(rid);
 }
 
 /* ------------------------------------------------------------------ */
@@ -284,6 +287,26 @@ static DWORD WINAPI client_thread(LPVOID arg)
         http_response(c, 200, "application/json", js);
     } else if (!strcmp(method, "GET") && !strcmp(path, "/stream")) {
         stream_loop(c);
+    } else if (!strcmp(method, "POST") && !strcmp(path, "/api/config")) {
+        /* corps : "web_enabled=1&web_port=8000&web_ips=..." */
+        const char* body = strstr(req, "\r\n\r\n");
+        body = body ? body + 4 : "";
+        const char* p;
+        if ((p = strstr(body, "web_enabled=")) != NULL)
+            g_cfg.web_enabled = atoi(p + 12);
+        if ((p = strstr(body, "web_port=")) != NULL)
+            g_cfg.web_port = atoi(p + 9);
+        if ((p = strstr(body, "web_ips=")) != NULL) {
+            p += 8;
+            const char* e = strchr(p, '&');
+            size_t n = e ? (size_t)(e - p) : strlen(p);
+            if (n >= sizeof(g_cfg.web_ips)) n = sizeof(g_cfg.web_ips) - 1;
+            memcpy(g_cfg.web_ips, p, n);
+            g_cfg.web_ips[n] = 0;
+        }
+        /* applique à chaud */
+        mp_plugins_service(MP_SERVICE_WEB_APPLY, NULL);
+        http_response(c, 200, "application/json", "{\"status\":\"ok\"}");
     } else if (!strcmp(method, "POST") && !strcmp(path, "/api/cmd")) {
         if (!http_post_is_json(req)) {
             http_response(c, 403, "text/plain", "forbidden");

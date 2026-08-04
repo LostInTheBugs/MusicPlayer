@@ -69,6 +69,24 @@ const char* mp_get_file_name(void);
  * destiné au téléphone. Consomme les données. 0 si rien de disponible. */
 uint32_t mp_web_read(float* dst, uint32_t frames);
 
+/* ------------------------------------------------------------------ */
+/* Flux de diffusion : plusieurs lecteurs indépendants                 */
+/* ------------------------------------------------------------------ */
+#define MP_WEB_READERS 4
+
+/* Réserve un curseur de lecture. Renvoie un id (0..MP_WEB_READERS-1)
+ * ou -1 si plus de place. Le curseur démarre sur les données les plus
+ * récentes. */
+int  mp_web_reader_open(void);
+
+/* Libère un curseur (il cesse de retenir les données). */
+void mp_web_reader_close(int id);
+
+/* Lit jusqu'à `frames` frames pour le lecteur `id`. Chaque lecteur voit
+ * l'intégralité du flux. La mémoire n'est réellement libérée que
+ * lorsque TOUS les lecteurs ouverts ont consommé. */
+uint32_t mp_web_read_n(int id, float* dst, uint32_t frames);
+
 /* Sortie audio : 0 = cet ordinateur, 1 = téléphone seul, 2 = les deux. */
 void mp_set_audio_out(int mode);
 int  mp_get_audio_out(void);

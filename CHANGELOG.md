@@ -2,6 +2,31 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.040-c4] — 2026-08-04
+
+### Fixed (son, commandes, serveur web — spec Claude appliquée en 3 phases)
+**Phase 1 — contre-débit rétabli (le son)**
+- `sp_ring_write` (client) : **écriture bloquante** — si le ring est plein, on attend que la carte son consomme au lieu de jeter : c'est ce blocage qui cale toute la chaîne sur la carte son (le morceau dure sa durée réelle, la position avance au rythme réel)
+- Curseur « peek » du TeamSpeak **borné** (recalage si le lecteur est trop en retard)
+- **Pré-remplissage ~200 ms** avant le démarrage du device (thread réseau démarré avant, plus de silence initial)
+- `core_http.c` : le **faux pacing `Sleep(5)`** supprimé (le `send()` bloquant cadence désormais)
+- `player.c` : le **masque** `& WEB_RING_MASK` retiré du calcul d'occupation (ring plein = 0 détecté → écrasement de données non lues)
+
+**Phase 2 — plusieurs lecteurs sur le flux du core**
+- **4 curseurs de lecture indépendants** (`mp_web_reader_open/close/read_n`) : chaque consommateur (/stream du client, webserver téléphone, UPnP, REST) a son propre curseur — plus de vols d'échantillons entre consommateurs
+- La position du morceau n'avance que quand le **lecteur le plus en retard** progresse (pas de double comptage avec plusieurs clients)
+- API plugins **v4** + `web_reader_open/close/read_n` dans l'API hôte (webserver, UPnP, REST migrés)
+
+**Phase 3 — serveur web redémarré**
+- Le core envoie désormais l'événement `MP_SERVICE_WEB_APPLY` au démarrage : **webserver 8000, RTP, UPnP, Multiroom démarrent** (ils attendaient cet événement que le core n'envoyait jamais)
+- Endpoint `POST /api/config` (web_enabled/web_port/web_ips appliqués à chaud) + `cc_push_web_config` côté client (les 4 sites de réglage)
+- Le core **n'écrase plus `config.yml`** à sa sortie (le client est le seul propriétaire de la config)
+
+### Verified (Wine)
+- Position qui avance au rythme réel, pause (state 2, position figée), stop (state 0), playpause ✓
+- Webserver 8000 : 200 sur la page et l'API ✓ · RTP/UPnP/Multiroom démarrés ✓
+- 0 warning (client, plugins, core) + SELFTEST PASS
+
 ## [2026.08.040-c3] — 2026-08-04
 
 ### Fixed (son — le ring buffer du client était corrompu)
