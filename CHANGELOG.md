@@ -2,6 +2,11 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.036-c3] — 2026-08-03
+
+### Changed
+- **Licence FFmpeg : bascule GPL → LGPL** — le projet est distribué avec les builds **BtbN `win64-lgpl-shared`** (FFmpeg n8.1) au lieu des builds GPL : le code source reste **MIT** (la liaison dynamique avec des DLL FFmpeg LGPL ne contamine pas le projet) ; `LICENSE-FFmpeg.txt` (notice LGPL de FFmpeg) est inclus dans l'archive distribuée
+
 ## [2026.08.036-c2] — 2026-08-03
 
 ### Fixed

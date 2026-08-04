@@ -27,7 +27,7 @@ cross-compiled from Linux with MinGW-w64.
 
 ## Version
 
-`2026.08.036-c2` — see [CHANGELOG.md](CHANGELOG.md)
+`2026.08.036-c3` — see [CHANGELOG.md](CHANGELOG.md)
 
 ## Run on Windows 11
 
@@ -150,3 +150,10 @@ Full breakdown: [TOKENS.md](TOKENS.md).
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
+**FFmpeg** (décodage audio) is linked dynamically and distributed as
+separate binaries built from the **BtbN `win64-lgpl-shared`** builds
+(FFmpeg n8.1, **LGPLv2.1+** — see `LICENSE-FFmpeg.txt` shipped in the
+archive). The project's own source code stays under MIT; FFmpeg's
+obligations (LGPL notice, source availability) are carried by the
+bundled FFmpeg binaries.

@@ -4,7 +4,7 @@
 #
 # Dépendances (à laisser dans vendor/) :
 #   - vendor/miniaudio.h           (miniaudio 0.11.x, mono-fichier)
-#   - vendor/ffmpeg/               (FFmpeg n8.1 win64-gpl-shared, BtbN)
+#   - vendor/ffmpeg/               (FFmpeg n8.1 win64-lgpl-shared, BtbN)
 #
 # Usage :
 #   make            -> bin/MusicPlayer.exe + DLLs FFmpeg
@@ -13,7 +13,7 @@
 #   make clean
 # ======================================================================
 
-VERSION := 2026.08.036-c2
+VERSION := 2026.08.036-c3
 
 CROSS    := x86_64-w64-mingw32-
 CC       := $(CROSS)gcc
@@ -45,6 +45,7 @@ dirs:
 $(BIN): $(OBJ) $(RES)
 	$(CC) $(CFLAGS) -o $@ $(OBJ) $(RES) $(LDFLAGS)
 	cp $(addprefix vendor/ffmpeg/bin/,$(FFMPEG_DLLS)) bin/
+	cp vendor/ffmpeg/LICENSE.txt bin/LICENSE-FFmpeg.txt
 	cp lang/* bin/lang/
 
 src/musicplayer_res.o: src/musicplayer.rc src/musicplayer.ico
@@ -113,7 +114,7 @@ test: all plugins-examples test-samples
 # Archive portable pour Windows 11
 # ----------------------------------------------------------------------
 zip: all plugins-examples dirs
-	cd bin && zip -q ../dist/MusicPlayer-$(VERSION)-win64.zip MusicPlayer.exe $(FFMPEG_DLLS) plugins/*.dll skins/*.dll skins/*.png lang/*.lang && \
+	cd bin && zip -q ../dist/MusicPlayer-$(VERSION)-win64.zip MusicPlayer.exe $(FFMPEG_DLLS) LICENSE-FFmpeg.txt plugins/*.dll skins/*.dll skins/*.png lang/*.lang && \
 	cd .. && echo "Archive : dist/MusicPlayer-$(VERSION)-win64.zip"
 
 clean:
