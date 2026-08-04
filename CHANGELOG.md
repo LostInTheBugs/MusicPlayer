@@ -2,6 +2,19 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.041-c1] — 2026-08-04
+
+### Changed (démarrage du moteur au login — sans droits admin)
+Le service Windows (041) exigeait des droits administrateur pour s'installer. Remplacé par le **démarrage automatique au login de l'utilisateur** :
+- **Autostart via HKCU\…\CurrentVersion\Run** : **aucun droit spécial requis**
+- **Icône du moteur dans la zone de notification** (barre des tâches) avec menu au **clic droit** :
+  - *Open MusicPlayer client* (lance l'interface)
+  - *Open web remote* (ouvre le navigateur sur la télécommande web)
+  - *Exit* (arrête le moteur)
+  - double-clic : lance le client
+- **Settings ▸ Interface…** : groupe « Start with Windows (login) » — **Enable autostart / Disable autostart / Start engine now / Stop engine** + ligne d'état (autostart activé ? moteur en cours d'exécution ?)
+- Le client se connecte au moteur s'il tourne (lancé au login) sans le relancer, et ne l'arrête pas à sa fermeture ; le moteur lancé par le client lui-même reste arrêté avec lui
+
 ## [2026.08.041] — 2026-08-04
 
 ### Added (architecture client/serveur — phase 3 : service Windows)

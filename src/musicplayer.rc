@@ -57,11 +57,11 @@ BEGIN
     LTEXT "Screen 4 shows :", 1036, 24, 164, 190, 10
     COMBOBOX 1043, 220, 161, 96, 120, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
     LTEXT "", 1037, 24, 190, 290, 10
-    GROUPBOX "Windows service (moteur 24/7)", 1050, 12, 278, 316, 62
-    PUSHBUTTON "Install", 1044, 24, 294, 60, 16
-    PUSHBUTTON "Uninstall", 1045, 92, 294, 70, 16
-    PUSHBUTTON "Start", 1046, 170, 294, 50, 16
-    PUSHBUTTON "Stop", 1047, 228, 294, 50, 16
+    GROUPBOX "Start with Windows (login)", 1050, 12, 278, 316, 62
+    PUSHBUTTON "Enable autostart", 1044, 24, 294, 80, 16
+    PUSHBUTTON "Disable autostart", 1045, 110, 294, 82, 16
+    PUSHBUTTON "Start engine now", 1046, 198, 294, 76, 16
+    PUSHBUTTON "Stop engine", 1047, 278, 294, 46, 16
     LTEXT "", 1048, 24, 318, 290, 12
     DEFPUSHBUTTON "OK", IDOK, 192, 352, 70, 18
     PUSHBUTTON "Cancel", IDCANCEL, 272, 352, 70, 18

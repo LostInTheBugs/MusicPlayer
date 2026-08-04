@@ -268,6 +268,54 @@ static void load_plugins(void)
 /* ------------------------------------------------------------------ */
 /* Fenêtre invisible : timers (enchaînement playlist) + sortie         */
 /* ------------------------------------------------------------------ */
+#define TRAY_ID       1
+#define IDM_TRAY_CLIENT 1001
+#define IDM_TRAY_WEB    1002
+#define IDM_TRAY_EXIT   1003
+static HICON g_tray_icon = NULL;
+
+/* Lance le client (MusicPlayer.exe, à côté du core). */
+static void tray_open_client(void)
+{
+    wchar_t exe[MAX_PATH];
+    GetModuleFileNameW(NULL, exe, MAX_PATH);
+    wchar_t* slash = wcsrchr(exe, L'\\');
+    if (slash) wcscpy(slash + 1, L"MusicPlayer.exe");
+    if (GetFileAttributesW(exe) != INVALID_FILE_ATTRIBUTES) {
+        STARTUPINFOW si;
+        PROCESS_INFORMATION pi;
+        memset(&si, 0, sizeof(si));
+        memset(&pi, 0, sizeof(pi));
+        si.cb = sizeof(si);
+        CreateProcessW(exe, NULL, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi);
+        CloseHandle(pi.hThread);
+        CloseHandle(pi.hProcess);
+    }
+}
+
+/* Ouvre la télécommande web (page du webserver du core). */
+static void tray_open_web(void)
+{
+    wchar_t url[128];
+    swprintf(url, 128, L"http://127.0.0.1:%d",
+             g_cfg.web_port > 0 ? g_cfg.web_port : 8000);
+    ShellExecuteW(NULL, L"open", url, NULL, NULL, SW_SHOWNORMAL);
+}
+
+static void tray_menu(HWND hwnd)
+{
+    HMENU m = CreatePopupMenu();
+    AppendMenuW(m, MF_STRING, IDM_TRAY_CLIENT, L"Open MusicPlayer client");
+    AppendMenuW(m, MF_STRING, IDM_TRAY_WEB, L"Open web remote");
+    AppendMenuW(m, MF_SEPARATOR, 0, NULL);
+    AppendMenuW(m, MF_STRING, IDM_TRAY_EXIT, L"Exit");
+    POINT pt;
+    GetCursorPos(&pt);
+    SetForegroundWindow(hwnd);
+    TrackPopupMenu(m, TPM_RIGHTBUTTON | TPM_RETURNCMD, pt.x, pt.y, 0, hwnd, NULL);
+    DestroyMenu(m);
+}
+
 static LRESULT CALLBACK core_wnd_proc(HWND hwnd, UINT m, WPARAM w, LPARAM l)
 {
     switch (m) {
@@ -281,6 +329,15 @@ static LRESULT CALLBACK core_wnd_proc(HWND hwnd, UINT m, WPARAM w, LPARAM l)
             core_plist_unlock();
             return 0;
         }
+        return 0;
+    case WM_APP + 2:          /* notifications de l'icône de la barre */
+        if ((UINT)l == WM_RBUTTONUP) { tray_menu(hwnd); return 0; }
+        if ((UINT)l == WM_LBUTTONDBLCLK) { tray_open_client(); return 0; }
+        return 0;
+    case WM_COMMAND:
+        if (LOWORD(w) == IDM_TRAY_CLIENT) tray_open_client();
+        else if (LOWORD(w) == IDM_TRAY_WEB) tray_open_web();
+        else if (LOWORD(w) == IDM_TRAY_EXIT) PostQuitMessage(0);
         return 0;
     case WM_APP + 1:          /* shutdown demandé par l'API */
         PostQuitMessage(0);
@@ -381,6 +438,26 @@ static int run_core(HINSTANCE hInst)
                                 WS_OVERLAPPEDWINDOW, 0, 0, 0, 0,
                                 NULL, NULL, hInst, NULL);
 
+    /* icône dans la zone de notification (clic droit : menu) */
+    {
+        wchar_t exe[MAX_PATH];
+        GetModuleFileNameW(NULL, exe, MAX_PATH);
+        wchar_t* slash = wcsrchr(exe, L'\\');
+        if (slash) wcscpy(slash + 1, L"MusicPlayer.exe");
+        HICON ic = (HICON)ExtractIconW(GetModuleHandleW(NULL), exe, 0);
+        g_tray_icon = ic ? ic : LoadIcon(NULL, IDI_APPLICATION);
+        NOTIFYICONDATAW nid;
+        memset(&nid, 0, sizeof(nid));
+        nid.cbSize = sizeof(nid);
+        nid.hWnd = g_core_hwnd;
+        nid.uID = TRAY_ID;
+        nid.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP;
+        nid.uCallbackMessage = WM_APP + 2;
+        nid.hIcon = g_tray_icon;
+        wcscpy(nid.szTip, L"MusicPlayer Core — clic droit : menu");
+        Shell_NotifyIconW(NIM_ADD, &nid);
+    }
+
     mp_init();                 /* moteur sans carte son (mode silencieux) */
     load_plugins();
     /* démarre les services réseau (webserver, upnp, rtp, multiroom) :
@@ -398,6 +475,15 @@ static int run_core(HINSTANCE hInst)
     core_http_stop();
     mp_plugins_shutdown();
     mp_shutdown();
+    /* retire l'icône de la zone de notification */
+    {
+        NOTIFYICONDATAW nid;
+        memset(&nid, 0, sizeof(nid));
+        nid.cbSize = sizeof(nid);
+        nid.hWnd = g_core_hwnd;
+        nid.uID = TRAY_ID;
+        Shell_NotifyIconW(NIM_DELETE, &nid);
+    }
     core_log("core stopped");
     return 0;
 }

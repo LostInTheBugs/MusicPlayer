@@ -1636,35 +1636,35 @@ static INT_PTR CALLBACK interface_dlg_proc(HWND h, UINT m, WPARAM w, LPARAM l)
             EndDialog(h, 1);
         } else if (LOWORD(w) == IDCANCEL) {
             EndDialog(h, 0);
-        } else if (LOWORD(w) == 1044) {   /* Install service */
+        } else if (LOWORD(w) == 1044) {   /* Enable autostart */
             int rc = svc_install();
-            if (rc == 0)      MessageBoxW(h, L"Service installed.", L"Windows service", MB_OK);
-            else if (rc == 1) MessageBoxW(h, L"Service already installed.", L"Windows service", MB_OK);
-            else              MessageBoxW(h, L"Install failed (administrator required?).", L"Windows service", MB_ICONERROR);
+            if (rc == 0)      MessageBoxW(h, L"Autostart enabled: the engine will start at your next login.", L"Start with Windows", MB_OK);
+            else if (rc == 1) MessageBoxW(h, L"Autostart already enabled.", L"Start with Windows", MB_OK);
+            else              MessageBoxW(h, L"Enable failed.", L"Start with Windows", MB_ICONERROR);
             char st[160];
             svc_status_text(st, sizeof(st));
             SetDlgItemTextA(h, 1048, st);
-        } else if (LOWORD(w) == 1045) {   /* Uninstall service */
+        } else if (LOWORD(w) == 1045) {   /* Disable autostart */
             int rc = svc_uninstall();
-            if (rc == 0)      MessageBoxW(h, L"Service uninstalled.", L"Windows service", MB_OK);
-            else if (rc == 1) MessageBoxW(h, L"Service not installed.", L"Windows service", MB_OK);
-            else              MessageBoxW(h, L"Uninstall failed (administrator required?).", L"Windows service", MB_ICONERROR);
+            if (rc == 0)      MessageBoxW(h, L"Autostart disabled.", L"Start with Windows", MB_OK);
+            else if (rc == 1) MessageBoxW(h, L"Autostart was not enabled.", L"Start with Windows", MB_OK);
+            else              MessageBoxW(h, L"Disable failed.", L"Start with Windows", MB_ICONERROR);
             char st[160];
             svc_status_text(st, sizeof(st));
             SetDlgItemTextA(h, 1048, st);
-        } else if (LOWORD(w) == 1046) {   /* Start service */
+        } else if (LOWORD(w) == 1046) {   /* Start engine now */
             int rc = svc_start();
-            if (rc == 0)      MessageBoxW(h, L"Service started (the engine runs 24/7).", L"Windows service", MB_OK);
-            else if (rc == 1) MessageBoxW(h, L"Service already running.", L"Windows service", MB_OK);
-            else              MessageBoxW(h, L"Start failed (administrator required?).", L"Windows service", MB_ICONERROR);
+            if (rc == 0)      MessageBoxW(h, L"Engine started (icon in the notification area).", L"Start with Windows", MB_OK);
+            else if (rc == 1) MessageBoxW(h, L"Engine already running.", L"Start with Windows", MB_OK);
+            else              MessageBoxW(h, L"Start failed.", L"Start with Windows", MB_ICONERROR);
             char st[160];
             svc_status_text(st, sizeof(st));
             SetDlgItemTextA(h, 1048, st);
-        } else if (LOWORD(w) == 1047) {   /* Stop service */
+        } else if (LOWORD(w) == 1047) {   /* Stop engine */
             int rc = svc_stop();
-            if (rc == 0)      MessageBoxW(h, L"Service stopped.", L"Windows service", MB_OK);
-            else if (rc == 1) MessageBoxW(h, L"Service not running.", L"Windows service", MB_OK);
-            else              MessageBoxW(h, L"Stop failed (administrator required?).", L"Windows service", MB_ICONERROR);
+            if (rc == 0)      MessageBoxW(h, L"Engine stopped.", L"Start with Windows", MB_OK);
+            else if (rc == 1) MessageBoxW(h, L"Engine not running.", L"Start with Windows", MB_OK);
+            else              MessageBoxW(h, L"Stop failed.", L"Start with Windows", MB_ICONERROR);
             char st[160];
             svc_status_text(st, sizeof(st));
             SetDlgItemTextA(h, 1048, st);
