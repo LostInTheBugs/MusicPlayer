@@ -2,6 +2,16 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.039] — 2026-08-04
+
+### Added (architecture client/serveur — phase 1 : moteur autonome)
+- **`musicplayer-core.exe`** : le moteur sans interface — playlist, décodeur FFmpeg, CD, plugins services réseau (webserver, metadata, cover, UPnP, RTP/AES67, Multiroom) dans un **dossier `core_plugins/` dédié**. Fenêtre invisible, timers d'enchaînement, log `musicplayer-core.log`
+- **API publique REST** (port 8080, `svc_rest_port`) documentée dans **`API.md`** : `/health`, `/api/state`, `/api/plist`, `/api/cover`, `/api/levels`, `/stream` (PCM WAV 44,1 kHz stéréo), `POST /api/cmd` (play, pause, stop, next, prev, seek, speed, shuffle, open, playidx, shutdown — anti-CSRF Content-Type JSON)
+- **Flux diffusé** : pas de carte son côté moteur — la position avance au rythme des clients qui consomment `/stream` (backpressure), la fin de morceau est détectée par le consommateur
+- **`player.c` compile en deux modes** : `MP_CORE` (sans miniaudio, diffusion) et normal (carte son locale) — le client actuel est **inchangé et fonctionne**
+- Testé sous Wine : state/plist/cover/levels/cmd ✓, `/stream` = PCM réel (peak 2752) ✓, shutdown propre ✓
+- Le zip inclut `musicplayer-core.exe` + `core_plugins/`
+
 ## [2026.08.038-c1] — 2026-08-04
 
 ### Fixed (dialog Update)

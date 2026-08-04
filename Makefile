@@ -13,7 +13,7 @@
 #   make clean
 # ======================================================================
 
-VERSION := 2026.08.038-c1
+VERSION := 2026.08.039
 
 CROSS    := x86_64-w64-mingw32-
 CC       := $(CROSS)gcc
@@ -36,6 +36,16 @@ OBJ := $(SRC:.c=.o)
 RES := src/musicplayer_res.o
 BIN := bin/MusicPlayer.exe
 
+# ----------------------------------------------------------------------
+# Core (musicplayer-core.exe) — moteur sans UI, API REST publique.
+# Même moteur (player.c) compilé avec -DMP_CORE : pas de carte son,
+# le flux part vers les clients via /stream.
+# ----------------------------------------------------------------------
+CORE_OBJ := build/core_main.o build/core_http.o build/core_playlist.o \
+            build/core_player.o build/core_plugin_loader.o \
+            build/core_config.o build/core_cd.o
+CORE_BIN := bin/musicplayer-core.exe
+
 # DLLs FFmpeg nécessaires au runtime (à livrer à côté de l'exe)
 FFMPEG_DLLS := avcodec-62.dll avformat-62.dll avutil-60.dll swresample-6.dll
 
@@ -56,9 +66,38 @@ src/musicplayer_res.o: src/musicplayer.rc src/musicplayer.ico
 %.o: %.c
 	$(CC) $(CFLAGS) -c -o $@ $<
 
+# --- core (objets séparés dans build/, -DMP_CORE pour player.c) ---
+core: dirs $(CORE_BIN)
+
+$(CORE_BIN): $(CORE_OBJ)
+	$(CC) $(CFLAGS) -o $@ $(CORE_OBJ) $(LDFLAGS)
+
+build/core_main.o: src/core/core_main.c
+	@mkdir -p build
+	$(CC) $(CFLAGS) -c -o $@ $<
+build/core_http.o: src/core/core_http.c
+	@mkdir -p build
+	$(CC) $(CFLAGS) -c -o $@ $<
+build/core_playlist.o: src/core/core_playlist.c
+	@mkdir -p build
+	$(CC) $(CFLAGS) -c -o $@ $<
+build/core_player.o: src/player.c
+	@mkdir -p build
+	$(CC) $(CFLAGS) -DMP_CORE -c -o $@ $<
+build/core_plugin_loader.o: src/plugin_loader.c
+	@mkdir -p build
+	$(CC) $(CFLAGS) -c -o $@ $<
+build/core_config.o: src/config.c
+	@mkdir -p build
+	$(CC) $(CFLAGS) -c -o $@ $<
+build/core_cd.o: src/cd.c
+	@mkdir -p build
+	$(CC) $(CFLAGS) -c -o $@ $<
+
 # dépendances d'en-têtes générées par -MMD -MP : modifier player.h
 # (ou tout autre .h) déclenche la recompilation des .c concernés
 -include $(OBJ:.o=.d)
+-include $(CORE_OBJ:.o=.d)
 
 # ----------------------------------------------------------------------
 # Dépendances vendor (miniaudio + FFmpeg LGPL) — utilisé par la CI
@@ -106,6 +145,10 @@ plugins-examples: $(BIN)
 	$(CC) -O2 -shared -o bin/plugins/metadata.dll examples/plugin_metadata.c -Isrc -static-libgcc
 	$(CC) -O2 -shared -o bin/plugins/lyrics.dll examples/plugin_lyrics.c -Isrc -static-libgcc -luser32 -lgdi32
 	$(CC) -O2 -shared -o bin/plugins/cover.dll examples/plugin_cover.c -Isrc -static-libgcc -luser32 -lgdi32 -lgdiplus -Wno-incompatible-pointer-types
+	@mkdir -p bin/core_plugins
+	cp -f bin/plugins/webserver.dll bin/plugins/metadata.dll bin/plugins/cover.dll \
+	      bin/plugins/upnp.dll bin/plugins/rtp.dll bin/plugins/multiroom.dll bin/core_plugins/
+	cp -f examples/multiroom.txt bin/core_plugins/multiroom.txt
 	mkdir -p bin/skins
 	$(CC) -O2 -shared -o bin/skins/skin_retro60.dll examples/plugin_skin_retro60.c -Isrc -static-libgcc
 	$(CC) -O2 -shared -o bin/skins/skin_retro70.dll examples/plugin_skin_retro70.c -Isrc -static-libgcc
@@ -133,12 +176,13 @@ test: all plugins-examples test-samples
 # ----------------------------------------------------------------------
 # Archive portable pour Windows 11
 # ----------------------------------------------------------------------
-zip: all plugins-examples dirs
-	cd bin && zip -q ../dist/MusicPlayer-$(VERSION)-win64.zip MusicPlayer.exe $(FFMPEG_DLLS) LICENSE-FFmpeg.txt plugins/*.dll skins/*.dll skins/*.png lang/*.lang && \
+zip: all plugins-examples dirs core
+	cd bin && zip -q ../dist/MusicPlayer-$(VERSION)-win64.zip MusicPlayer.exe musicplayer-core.exe $(FFMPEG_DLLS) LICENSE-FFmpeg.txt plugins/*.dll core_plugins/*.dll core_plugins/*.txt skins/*.dll skins/*.png lang/*.lang && \
 	cd .. && echo "Archive : dist/MusicPlayer-$(VERSION)-win64.zip"
 
 clean:
 	rm -f $(OBJ) $(OBJ:.o=.d) bin/*.exe bin/*.dll bin/*.log
+	rm -rf build
 	@echo "Note : dist/*.zip (livrables) n'est pas supprimé ; utilisez 'make distclean' si besoin."
 
 .PHONY: all dirs setup plugins-examples test-samples test zip clean

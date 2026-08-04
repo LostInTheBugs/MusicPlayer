@@ -303,12 +303,19 @@ static void ring_init(ring_t* r)
 /* barrières mémoire explicites : la visibilité des données écrites
  * avant le store RELEASE est garantie pour le load ACQUIRE de l'autre
  * thread (contrairement à volatile seul sous GCC) */
+#ifndef MP_CORE
 static void ring_clear(ring_t* r)
 {
     __atomic_store_n(&r->head, 0, __ATOMIC_RELAXED);
     __atomic_store_n(&r->tail, 0, __ATOMIC_RELAXED);
 }
+#else
+/* core : le ring principal n'est pas utilisé, mais les fonctions
+ * (close/seek/stop) l'appellent pour rester identiques */
+static void ring_clear(ring_t* r) { (void)r; }
+#endif
 
+#ifndef MP_CORE
 static uint32_t ring_write(ring_t* r, const float* data, uint32_t frames)
 {
     LONG t = __atomic_load_n(&r->tail, __ATOMIC_ACQUIRE);
@@ -327,7 +334,9 @@ static uint32_t ring_write(ring_t* r, const float* data, uint32_t frames)
     __atomic_store_n(&r->head, (LONG)((uint32_t)h + frames), __ATOMIC_RELEASE);
     return frames;
 }
+#endif /* !MP_CORE */
 
+#ifndef MP_CORE
 static uint32_t ring_read(ring_t* r, float* dst, uint32_t frames)
 {
     LONG h = __atomic_load_n(&r->head, __ATOMIC_ACQUIRE);
@@ -345,6 +354,7 @@ static uint32_t ring_read(ring_t* r, float* dst, uint32_t frames)
     __atomic_store_n(&r->tail, (LONG)((uint32_t)t + frames), __ATOMIC_RELEASE);
     return frames;
 }
+#endif /* !MP_CORE */
 
 /* ------------------------------------------------------------------ */
 /* État global                                                        */
@@ -390,6 +400,7 @@ static LONG           g_web_tail = 0;
  * Non bloquant : si le ring est plein, les données les plus anciennes
  * sont jetées (personne n'écoute → on ne ralentit pas la lecture).
  * Accès SPSC avec barrières mémoire explicites (__atomic). */
+#ifndef MP_CORE
 static void web_ring_write(const float* data, uint32_t frames)
 {
     LONG h = g_web_head;
@@ -409,13 +420,55 @@ static void web_ring_write(const float* data, uint32_t frames)
     __atomic_store_n(&g_web_tail, (LONG)((uint32_t)t + frames),
                      __ATOMIC_RELEASE);
 }
+#endif /* !MP_CORE */
+
+#ifdef MP_CORE
+/* Variante bloquante (core) : attend que de la place se libère, pour
+ * que le décodage avance au rythme des clients qui consomment. */
+static uint32_t web_ring_write_bp(const float* data, uint32_t frames)
+{
+    uint32_t pushed = 0;
+    while (pushed < frames && !g_shutdown) {
+        LONG h = g_web_head;
+        LONG t = __atomic_load_n(&g_web_tail, __ATOMIC_ACQUIRE);
+        uint32_t used = (uint32_t)(t - h) & WEB_RING_MASK;
+        uint32_t free = WEB_RING_FRAMES - used;
+        uint32_t w = frames - pushed;
+        if (w > free) w = free;
+        if (w == 0) { Sleep(5); continue; }
+        uint32_t wpos = (uint32_t)t & WEB_RING_MASK;
+        uint32_t n1 = w;
+        if (n1 > WEB_RING_FRAMES - wpos) n1 = WEB_RING_FRAMES - wpos;
+        memcpy(g_web_ring + (size_t)wpos * 2, data + (size_t)pushed * 2,
+               (size_t)n1 * 2 * sizeof(float));
+        if (n1 < w)
+            memcpy(g_web_ring, data + (size_t)(pushed + n1) * 2,
+                   (size_t)(w - n1) * 2 * sizeof(float));
+        __atomic_store_n(&g_web_tail, (LONG)((uint32_t)t + w),
+                         __ATOMIC_RELEASE);
+        pushed += w;
+    }
+    return pushed;
+}
+#endif /* MP_CORE */
 
 uint32_t mp_web_read(float* dst, uint32_t frames)
 {
     LONG h = __atomic_load_n(&g_web_head, __ATOMIC_ACQUIRE);
     LONG t = g_web_tail;
     uint32_t used = (uint32_t)(t - h) & WEB_RING_MASK;
+#ifdef MP_CORE
+    /* core : pas de carte son — la position avance quand un client
+     * consomme le flux ; la fin de fichier est détectée ici aussi */
+    if (used == 0) {
+        if (g_eof && g_state == MP_STATE_PLAYING)
+            InterlockedCompareExchange((LONG*)&g_state, MP_STATE_FINISHED,
+                                       MP_STATE_PLAYING);
+        return 0;
+    }
+#else
     if (used == 0) return 0;
+#endif
     if (frames > used) frames = used;
     uint32_t rpos = (uint32_t)h & WEB_RING_MASK;
     uint32_t n1 = frames;
@@ -426,6 +479,16 @@ uint32_t mp_web_read(float* dst, uint32_t frames)
                (size_t)(frames - n1) * 2 * sizeof(float));
     __atomic_store_n(&g_web_head, (LONG)((uint32_t)h + frames),
                      __ATOMIC_RELEASE);
+#ifdef MP_CORE
+    if (frames > 0) {
+        /* position = temps du morceau (vitesse pondérée) */
+        float s = g_speed;
+        if (s < 0.1f) s = 1.0f;
+        LONG64 adv = (LONG64)llround((double)frames / (double)s);
+        if (adv < 1) adv = 1;
+        __atomic_add_fetch(&g_played, adv, __ATOMIC_RELAXED);
+    }
+#endif
     return frames;
 }
 
@@ -531,11 +594,22 @@ static DWORD WINAPI decode_thread(LPVOID unused)
                         while (pushed < (uint32_t)got &&
                                g_state == MP_STATE_PLAYING &&
                                !g_interrupt && !g_shutdown) {
+#ifdef MP_CORE
+                            /* core : pas de carte son — la backpressure
+                             * se fait sur le ring de diffusion : le
+                             * décodage attend que les clients (/stream)
+                             * consomment, donc avance au rythme réel */
+                            uint32_t w = web_ring_write_bp(
+                                out_buf + (size_t)pushed * 2,
+                                (uint32_t)got - pushed);
+                            pushed += w;
+#else
                             uint32_t w = ring_write(&g_ring, out_buf + (size_t)pushed * 2,
                                                     (uint32_t)got - pushed);
                             web_ring_write(out_buf + (size_t)pushed * 2, w);
                             pushed += w;
                             if (pushed < (uint32_t)got) Sleep(5);
+#endif
                         }
                         if (g_state != MP_STATE_PLAYING || g_interrupt || g_shutdown) break;
                     }
@@ -554,8 +628,10 @@ static DWORD WINAPI decode_thread(LPVOID unused)
 }
 
 /* ------------------------------------------------------------------ */
-/* Callback miniaudio                                                  */
+/* Callback miniaudio (CLIENT uniquement — le core n'a pas de carte    */
+/* son : le flux part vers les clients via /stream)                    */
 /* ------------------------------------------------------------------ */
+#ifndef MP_CORE
 static void data_cb(ma_device* dev, void* out, const void* in, ma_uint32 frames)
 {
     (void)dev; (void)in;
@@ -594,6 +670,7 @@ static void data_cb(ma_device* dev, void* out, const void* in, ma_uint32 frames)
     if (g_audio_out == 1)
         memset(dst, 0, (size_t)frames * 2 * sizeof(float));
 }
+#endif /* !MP_CORE */
 
 /* ------------------------------------------------------------------ */
 /* API publique                                                        */
@@ -603,6 +680,7 @@ int mp_init(void)
     InitializeCriticalSection(&g_swr_lock);
     ring_init(&g_ring);
 
+#ifndef MP_CORE
     ma_device_config cfg = ma_device_config_init(ma_device_type_playback);
     cfg.playback.format = ma_format_f32;
     cfg.playback.channels = 2;
@@ -619,6 +697,9 @@ int mp_init(void)
         }
     }
     /* si aucun périphérique : mode silencieux, le décodage fonctionne quand même */
+#else
+    /* core : pas de carte son — le flux est diffusé aux clients */
+#endif
 
     g_thread = CreateThread(NULL, 0, decode_thread, NULL, 0, NULL);
     return 0;
@@ -634,10 +715,12 @@ void mp_shutdown(void)
         CloseHandle(g_thread);
         g_thread = NULL;
     }
+#ifndef MP_CORE
     if (g_device_ok) {
         ma_device_uninit(&g_device);
         g_device_ok = 0;
     }
+#endif
     if (g_swr) { swr_free(&g_swr); g_swr = NULL; }
     if (g_codec) { avcodec_free_context(&g_codec); g_codec = NULL; }
     if (g_fmt) { avformat_close_input(&g_fmt); g_fmt = NULL; }
@@ -682,7 +765,9 @@ int mp_open(const char* path)
 
     if (setup_swr() < 0) { mp_close(); return -1; }
 
+#ifndef MP_CORE
     ring_clear(&g_ring);
+#endif
     g_eof = 0;
     g_interrupt = 0;
     g_played = 0;
