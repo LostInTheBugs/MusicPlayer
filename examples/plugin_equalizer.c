@@ -100,12 +100,53 @@ static void pl_process(mp_plugin* self, float* samples, unsigned frames,
 /* ------------------------------------------------------------------ */
 /* Fenêtre de l'égaliseur (attachée sous la fenêtre principale)        */
 /* ------------------------------------------------------------------ */
-#define EQ_W 316
 #define EQ_H 152
 
 static HWND g_eq_win = NULL;
 static RECT g_sl[NBANDS + 1];      /* 10 bandes + preamp */
 static int g_drag = -1;
+
+/* palette du skin actif (les couleurs suivent le thème du core) */
+static void eq_colors(COLORREF* bg, COLORREF* text, COLORREF* accent,
+                      COLORREF* track, COLORREF* knob, COLORREF* border)
+{
+    const mp_skin_colors* sk =
+        g_h && g_h->get_skin_colors ? g_h->get_skin_colors() : NULL;
+    *bg     = sk ? (COLORREF)sk->bg     : RGB(28, 32, 40);
+    *text   = sk ? (COLORREF)sk->text   : RGB(120, 210, 120);
+    *accent = sk ? (COLORREF)sk->accent : RGB(60, 160, 60);
+    *track  = sk ? (COLORREF)sk->track  : RGB(60, 66, 78);
+    *knob   = sk ? (COLORREF)sk->knob   : RGB(140, 220, 140);
+    *border = sk ? (COLORREF)sk->prog_border : RGB(90, 100, 115);
+}
+
+/* géométrie des curseurs : répartis sur toute la largeur de la fenêtre */
+static void eq_layout(void)
+{
+    RECT rc;
+    GetClientRect(g_eq_win, &rc);
+    int W = rc.right - rc.left;
+    if (W < 100) W = 100;
+    int sl_w = 20;
+    int usable = W - 24;
+    int gap = (usable - NBANDS * sl_w) / (NBANDS - 1);
+    if (gap < 2) {
+        gap = 2;
+        sl_w = (usable - (NBANDS - 1) * gap) / NBANDS;
+        if (sl_w < 6) sl_w = 6;
+    }
+    int x0 = 12;
+    for (int i = 0; i < NBANDS; i++) {
+        g_sl[i].left = x0 + i * (sl_w + gap);
+        g_sl[i].top = 26;
+        g_sl[i].right = g_sl[i].left + sl_w;
+        g_sl[i].bottom = g_sl[i].top + 88;
+    }
+    g_sl[NBANDS].left = 74;
+    g_sl[NBANDS].top = 134;
+    g_sl[NBANDS].right = W - 14;
+    g_sl[NBANDS].bottom = g_sl[NBANDS].top + 8;
+}
 
 static void eq_set_gain(int idx, double db)
 {
@@ -142,8 +183,10 @@ static void eq_follow(void)
     GetWindowRect(main, &mr);
     RECT er;
     GetWindowRect(g_eq_win, &er);
-    int w = er.right - er.left;
+    int w = mr.right - mr.left;    /* même largeur que le core */
     int h = er.bottom - er.top;
+    if (w != er.right - er.left)
+        eq_layout();
     SetWindowPos(g_eq_win, NULL, mr.left, mr.bottom + 2, w, h,
                  SWP_NOZORDER | SWP_NOACTIVATE);
 }
@@ -152,9 +195,21 @@ static void eq_paint(HDC hdc)
 {
     RECT rc;
     GetClientRect(g_eq_win, &rc);
-    HBRUSH bg = CreateSolidBrush(RGB(28, 32, 40));
+    int W = rc.right - rc.left;
+    COLORREF cbg, ctext, cacc, ctrk, cknb, cbrd;
+    eq_colors(&cbg, &ctext, &cacc, &ctrk, &cknb, &cbrd);
+
+    HBRUSH bg = CreateSolidBrush(cbg);
     FillRect(hdc, &rc, bg);
     DeleteObject(bg);
+    /* bordure fine comme le core */
+    HPEN pen = CreatePen(PS_SOLID, 1, cbrd);
+    HPEN op = (HPEN)SelectObject(hdc, pen);
+    HBRUSH ob = (HBRUSH)SelectObject(hdc, GetStockObject(NULL_BRUSH));
+    Rectangle(hdc, rc.left, rc.top, rc.right, rc.bottom);
+    SelectObject(hdc, op);
+    SelectObject(hdc, ob);
+    DeleteObject(pen);
 
     SetBkMode(hdc, TRANSPARENT);
     HFONT f = CreateFontW(13, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
@@ -166,48 +221,48 @@ static void eq_paint(HDC hdc)
                            CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
                            DEFAULT_PITCH, L"Segoe UI");
     HFONT old = (HFONT)SelectObject(hdc, f);
-    SetTextColor(hdc, RGB(120, 210, 120));
-    RECT tr = { 8, 5, 150, 22 };
+    SetTextColor(hdc, ctext);
+    RECT tr = { 8, 5, W - 100, 22 };
     DrawTextW(hdc, L"EQUALIZER", -1, &tr, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
 
-    /* bouton ON */
-    RECT on = { EQ_W - 74, 6, EQ_W - 36, 20 };
-    HBRUSH onb = CreateSolidBrush(g_eq_on ? RGB(60, 160, 60) : RGB(90, 90, 100));
+    /* bouton ON (aux couleurs du skin) */
+    RECT on = { W - 74, 6, W - 36, 20 };
+    HBRUSH onb = CreateSolidBrush(g_eq_on ? cacc : ctrk);
     FillRect(hdc, &on, onb);
     DeleteObject(onb);
     SelectObject(hdc, f2);
-    SetTextColor(hdc, RGB(240, 240, 240));
+    SetTextColor(hdc, cbg);
     DrawTextW(hdc, g_eq_on ? L"ON" : L"OFF", -1, &on,
               DT_CENTER | DT_VCENTER | DT_SINGLELINE);
     /* bouton fermer */
-    RECT xr = { EQ_W - 28, 6, EQ_W - 10, 20 };
-    SetTextColor(hdc, RGB(200, 90, 80));
+    RECT xr = { W - 28, 6, W - 10, 20 };
+    SetTextColor(hdc, ctext);
     DrawTextW(hdc, L"✕", -1, &xr, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
 
     /* sliders verticaux */
     for (int i = 0; i < NBANDS; i++) {
         RECT* s = &g_sl[i];
-        HBRUSH trk = CreateSolidBrush(RGB(60, 66, 78));
+        HBRUSH trk = CreateSolidBrush(ctrk);
         FillRect(hdc, s, trk);
         DeleteObject(trk);
         /* ligne 0 dB */
         int half = (s->bottom - s->top) / 2;
-        HPEN pen = CreatePen(PS_SOLID, 1, RGB(100, 140, 100));
-        HPEN op = (HPEN)SelectObject(hdc, pen);
+        HPEN lpen = CreatePen(PS_SOLID, 1, cbrd);
+        HPEN lop = (HPEN)SelectObject(hdc, lpen);
         MoveToEx(hdc, s->left, s->top + half, NULL);
         LineTo(hdc, s->right, s->top + half);
-        SelectObject(hdc, op);
-        DeleteObject(pen);
+        SelectObject(hdc, lop);
+        DeleteObject(lpen);
         /* curseur */
         double db = g_gain[i];
         int cy = s->top + half - (int)(db / 12.0 * half);
         RECT k = { s->left + 1, cy - 5, s->right - 1, cy + 5 };
-        HBRUSH kb = CreateSolidBrush(RGB(140, 220, 140));
+        HBRUSH kb = CreateSolidBrush(cknb);
         FillRect(hdc, &k, kb);
         DeleteObject(kb);
         /* label fréquence */
         SelectObject(hdc, f2);
-        SetTextColor(hdc, RGB(170, 180, 190));
+        SetTextColor(hdc, ctext);
         char lbl[16];
         if (g_freqs[i] >= 1000)
             _snprintf(lbl, sizeof(lbl), "%dk", (int)(g_freqs[i] / 1000.0));
@@ -221,17 +276,17 @@ static void eq_paint(HDC hdc)
     /* preamp (horizontal, en bas) */
     {
         RECT* s = &g_sl[NBANDS];
-        HBRUSH trk = CreateSolidBrush(RGB(60, 66, 78));
+        HBRUSH trk = CreateSolidBrush(ctrk);
         FillRect(hdc, s, trk);
         DeleteObject(trk);
         double db = g_preamp;
         int cx = s->left + (int)((db + 12.0) / 24.0 * (s->right - s->left));
         RECT k = { cx - 5, s->top - 1, cx + 5, s->bottom + 1 };
-        HBRUSH kb = CreateSolidBrush(RGB(140, 220, 140));
+        HBRUSH kb = CreateSolidBrush(cknb);
         FillRect(hdc, &k, kb);
         DeleteObject(kb);
         SelectObject(hdc, f2);
-        SetTextColor(hdc, RGB(170, 180, 190));
+        SetTextColor(hdc, ctext);
         RECT lr = { 10, s->top - 2, 64, s->bottom + 2 };
         DrawTextW(hdc, L"PREAMP", -1, &lr, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
         SelectObject(hdc, f);
@@ -247,6 +302,11 @@ static LRESULT CALLBACK eq_proc(HWND h, UINT m, WPARAM w, LPARAM l)
     switch (m) {
     case WM_TIMER:
         eq_follow();
+        InvalidateRect(h, NULL, TRUE);   /* le skin peut avoir changé */
+        return 0;
+    case WM_SIZE:
+        eq_layout();
+        InvalidateRect(h, NULL, TRUE);
         return 0;
     case WM_PAINT: {
         PAINTSTRUCT ps;
@@ -257,8 +317,11 @@ static LRESULT CALLBACK eq_proc(HWND h, UINT m, WPARAM w, LPARAM l)
     }
     case WM_LBUTTONDOWN: {
         POINT pt = { GET_X_LPARAM(l), GET_Y_LPARAM(l) };
-        RECT on = { EQ_W - 74, 6, EQ_W - 36, 20 };
-        RECT xr = { EQ_W - 28, 6, EQ_W - 10, 20 };
+        RECT rc;
+        GetClientRect(h, &rc);
+        int W = rc.right - rc.left;
+        RECT on = { W - 74, 6, W - 36, 20 };
+        RECT xr = { W - 28, 6, W - 10, 20 };
         if (PtInRect(&on, pt)) {
             InterlockedExchange(&g_eq_on, !g_eq_on);
             InvalidateRect(h, NULL, TRUE);
@@ -321,24 +384,13 @@ static void eq_open(void)
     }
     RECT mr;
     GetWindowRect(main, &mr);
+    int w0 = mr.right - mr.left;
     g_eq_win = CreateWindowExW(WS_EX_TOPMOST, L"MPEqWin", L"Equalizer",
                                WS_POPUP,
-                               mr.left, mr.bottom + 2, EQ_W, EQ_H,
+                               mr.left, mr.bottom + 2, w0, EQ_H,
                                main, NULL, GetModuleHandleW(NULL), NULL);
     if (!g_eq_win) return;
-    /* géométrie des curseurs */
-    int sl_w = 20, gap = 6;
-    int x0 = 12;
-    for (int i = 0; i < NBANDS; i++) {
-        g_sl[i].left = x0 + i * (sl_w + gap);
-        g_sl[i].top = 26;
-        g_sl[i].right = g_sl[i].left + sl_w;
-        g_sl[i].bottom = g_sl[i].top + 88;
-    }
-    g_sl[NBANDS].left = 74;
-    g_sl[NBANDS].top = 134;
-    g_sl[NBANDS].right = EQ_W - 14;
-    g_sl[NBANDS].bottom = g_sl[NBANDS].top + 8;
+    eq_layout();
     ShowWindow(g_eq_win, SW_SHOW);
     SetTimer(g_eq_win, 1, 200, NULL);
     eq_follow();

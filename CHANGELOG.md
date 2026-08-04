@@ -2,6 +2,12 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.036-c1] — 2026-08-03
+
+### Changed
+- **Equalizer : docké aux dimensions du core** — la fenêtre de l'equalizer a **exactement la même largeur que la fenêtre principale** et **se redimensionne avec elle** (curseurs répartis automatiquement)
+- **Equalizer : thème du core** — la fenêtre utilise **la palette du skin actif** (fond, texte, accent, pistes, curseurs, bordure) et se met à jour en direct quand on change de skin (nouvelle API `get_skin_colors`)
+
 ## [2026.08.036] — 2026-08-03
 
 ### Added

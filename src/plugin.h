@@ -143,6 +143,11 @@ typedef struct mp_host_api {
     const char* (*get_metadata)(const char* path, const char* field);
     const unsigned char* (*get_cover)(const char* path, size_t* len);
     const wchar_t* (*plist_path)(int i);
+
+    /* --- skins : palette courante (lecture) ---
+     * Renvoie la palette du skin actif (pour les fenêtres liées au
+     * thème, ex. l'equalizer). NULL si indisponible. */
+    const mp_skin_colors* (*get_skin_colors)(void);
 } mp_host_api;
 
 /*

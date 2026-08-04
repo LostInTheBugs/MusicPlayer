@@ -387,8 +387,11 @@ static mp_skin_colors g_skin = {
     RGB(120, 126, 140),  /* mark */
     RGB(255, 255, 255),  /* knob */
     RGB(28, 30, 38),     /* prog_bg */
-    RGB(92, 98, 116),    /* prog_border */
+    RGB(92, 98, 116)     /* prog_border */
 };
+
+/* palette courante (lecture) : pour les fenêtres liées au thème */
+static const mp_skin_colors* host_get_skin_colors(void) { return &g_skin; }
 
 static ULONG_PTR g_gdiplus_token = 0;  /* GDI+ initialisé au démarrage */
 static GpImage* g_skin_bg = NULL;      /* image de fond du skin */
@@ -639,7 +642,8 @@ static const mp_host_api g_host = {
     host_skin_set_bg,
     host_skin_set_visual_rect,
     host_skin_set_layout,
-    host_get_metadata, host_get_cover, host_plist_path
+    host_get_metadata, host_get_cover, host_plist_path,
+    host_get_skin_colors
 };
 
 /* ------------------------------------------------------------------ */
