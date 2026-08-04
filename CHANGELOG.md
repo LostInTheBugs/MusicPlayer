@@ -2,6 +2,13 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.036-c9] — 2026-08-04
+
+### Fixed / Refactored (revue de code — 4e passe)
+- **`examples/http_util.h` créé** (header-only, un par DLL) : mutualise la lecture de requête robuste (boucle recv + terminaison avant strstr + corps Content-Length + timeout 5 s), les réponses HTTP à longueur bornée, l'en-tête WAV et la conversion float→PCM16 — les 3 plugins HTTP (webserver, REST API, UPnP) l'utilisent, un correctif ne se porte plus sur 3 copies
+- **strstr prématuré corrigé dans `plugin_upnp.c` et `plugin_restapi.c`** (les copies de la boucle recv avaient le même défaut que le webserver : `req` non terminé avant le strstr) — via `http_read_request`
+- Anti-CSRF mutualisé (`http_post_is_json`) ; tampons WAV/PCM16 des flux via helpers communs
+
 ## [2026.08.036-c8] — 2026-08-04
 
 ### Fixed (revue de code — 3e passe)

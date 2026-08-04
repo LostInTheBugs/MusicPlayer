@@ -26,7 +26,8 @@
 #include <libavutil/channel_layout.h>
 #include <libswresample/swresample.h>
 
-#include "plugin.h"
+#include "../src/plugin.h"
+#include "http_util.h"
 
 static const mp_host_api* g_h = NULL;
 static volatile LONG g_running = 0;
@@ -35,38 +36,8 @@ static int    g_n_listens = 0;
 
 /* ------------------------------------------------------------------ */
 /* Helpers réseau                                                      */
+/* (http_read_request / http_response* / WAV / PCM16 : http_util.h)    */
 /* ------------------------------------------------------------------ */
-static void send_all(SOCKET s, const char* data, int len)
-{
-    int off = 0;
-    while (off < len) {
-        int n = send(s, data + off, len - off, 0);
-        if (n <= 0) return;
-        off += n;
-    }
-}
-
-static void http_response_len(SOCKET s, const char* status, const char* type,
-                              const char* body, size_t body_len)
-{
-    char hdr[512];
-    int hl = snprintf(hdr, sizeof(hdr),
-        "HTTP/1.1 %s\r\nContent-Type: %s\r\n"
-        "Content-Length: %d\r\nCache-Control: no-cache\r\n"
-        "Connection: close\r\n\r\n",
-        status, type, (int)body_len);
-    if (hl < 0) hl = 0;
-    if (hl >= (int)sizeof(hdr)) hl = (int)sizeof(hdr) - 1;
-    send_all(s, hdr, hl);
-    send_all(s, body, (int)body_len);
-}
-
-static void http_response(SOCKET s, const char* status, const char* type,
-                          const char* body)
-{
-    http_response_len(s, status, type, body, strlen(body));
-}
-
 static void json_escape(const wchar_t* in, char* out, int out_chars)
 {
     char utf8[512];
@@ -159,7 +130,7 @@ static void api_state(SOCKET s)
     /* snprintf termine toujours par \0 ; on borne la longueur envoyée */
     if (bl < 0) bl = 0;
     if (bl >= (int)sizeof(body)) bl = (int)sizeof(body) - 1;
-    http_response_len(s, "200 OK", "application/json", body, (size_t)bl);
+    http_response_len(s, 200, "application/json", body, (size_t)bl);
 }
 
 static void api_cmd(SOCKET s, const char* cmd)
@@ -177,7 +148,7 @@ static void api_cmd(SOCKET s, const char* cmd)
         g_h->plist_play(atoi(cmd + 8));
     else if (!strcmp(cmd, "shuffle"))   g_h->shuffle_toggle();
     else if (!strcmp(cmd, "dj") && g_h->dj_toggle) g_h->dj_toggle();
-    http_response(s, "200 OK", "text/plain", "ok");
+    http_response(s, 200, "text/plain", "ok");
 }
 
 /* ------------------------------------------------------------------ */
@@ -418,14 +389,14 @@ static DWORD WINAPI dj_stream_thread(void* arg)
     const char* hdr =
         "HTTP/1.1 200 OK\r\nContent-Type: audio/wav\r\n"
         "Cache-Control: no-cache\r\nConnection: close\r\n\r\n";
-    send_all(c, hdr, (int)strlen(hdr));
+    http_send_all(c, hdr, (int)strlen(hdr));
     uint8_t wav[44] = {
         'R','I','F','F', 0xff,0xff,0xff,0x7f, 'W','A','V','E',
         'f','m','t',' ', 16,0,0,0, 1,0, 2,0,
         0x44,0xac,0,0, 0x10,0xb1,0x02,0, 4,0, 16,0,
         'd','a','t','a', 0xff,0xff,0xff,0x7f
     };
-    send_all(c, (const char*)wav, 44);
+    http_send_all(c, (const char*)wav, 44);
     /* tampons propres à CE thread : la page DJ ouvre /dj/streamA et
      * /dj/streamB simultanément (2 threads, mêmes buffers → corruption
      * si statiques) */
@@ -570,7 +541,7 @@ static DWORD WINAPI stream_thread(void* arg)
     const char* hdr =
         "HTTP/1.1 200 OK\r\nContent-Type: audio/wav\r\n"
         "Cache-Control: no-cache\r\nConnection: close\r\n\r\n";
-    send_all(c, hdr, (int)strlen(hdr));
+    http_send_all(c, hdr, (int)strlen(hdr));
 
     uint8_t wav[44] = {
         'R','I','F','F', 0xff,0xff,0xff,0x7f, 'W','A','V','E',
@@ -578,7 +549,7 @@ static DWORD WINAPI stream_thread(void* arg)
         0x44,0xac,0,0, 0x10,0xb1,0x02,0, 4,0, 16,0,
         'd','a','t','a', 0xff,0xff,0xff,0x7f
     };
-    send_all(c, (const char*)wav, 44);
+    http_send_all(c, (const char*)wav, 44);
 
     /* tampons propres à CE thread : un thread par connexion → jamais
      * de static partagé (deux clients se corrompraient) */
@@ -633,32 +604,8 @@ static void dispatch(SOCKET c)
     /* lit la requête en boucle jusqu'à la fin des en-têtes (un seul
      * recv() peut ne ramener qu'une partie de la requête) */
     char req[8192];
-    int rn = 0;
-    while (rn < (int)sizeof(req) - 1) {
-        int r = recv(c, req + rn, (int)sizeof(req) - 1 - rn, 0);
-        if (r <= 0) break;
-        rn += r;
-        req[rn] = 0;                 /* termine AVANT strstr (jamais
-                                        de lecture au-delà de rn) */
-        if (strstr(req, "\r\n\r\n")) break;   /* en-têtes complets */
-    }
+    int rn = http_read_request(c, req, sizeof(req));
     if (rn <= 0) { closesocket(c); return; }
-
-    /* si un corps est annoncé (Content-Length), l'attendre en entier */
-    const char* hdr_end = strstr(req, "\r\n\r\n");
-    if (hdr_end) {
-        const char* cl = strstr(req, "Content-Length:");
-        if (cl) {
-            int need = atoi(cl + 15);
-            int body_off = (int)(hdr_end + 4 - req);
-            while (rn - body_off < need && rn < (int)sizeof(req) - 1) {
-                int r = recv(c, req + rn, (int)sizeof(req) - 1 - rn, 0);
-                if (r <= 0) break;
-                rn += r;
-            }
-            req[rn] = 0;
-        }
-    }
 
     char method[8], path[512];
     if (sscanf(req, "%7s %511s", method, path) != 2) {
@@ -669,15 +616,14 @@ static void dispatch(SOCKET c)
         /* CSRF : une requête « simple » (sans Content-Type JSON ni
          * header custom) peut être envoyée par n'importe quel site
          * sans CORS — on refuse tout POST non marqué */
-        const char* ct = strstr(req, "Content-Type:");
-        if (!ct || !strstr(ct, "application/json")) {
-            http_response(c, "403 Forbidden", "text/plain", "forbidden");
+        if (!http_post_is_json(req)) {
+            http_response(c, 403, "text/plain", "forbidden");
             closesocket(c);
             return;
         }
     }
     if (!strcmp(path, "/")) {
-        http_response(c, "200 OK", "text/html; charset=utf-8", PAGE_HTML);
+        http_response(c, 200, "text/html; charset=utf-8", PAGE_HTML);
         closesocket(c);
     } else if (!strcmp(path, "/api/state")) {
         api_state(c);
@@ -689,7 +635,7 @@ static void dispatch(SOCKET c)
         api_cmd(c, body);
         closesocket(c);
     } else if (!strcmp(path, "/dj")) {
-        http_response(c, "200 OK", "text/html; charset=utf-8", PAGE_DJ);
+        http_response(c, 200, "text/html; charset=utf-8", PAGE_DJ);
         closesocket(c);
     } else if (!strncmp(path, "/dj/streamA", 11) ||
                !strncmp(path, "/dj/streamB", 11)) {
@@ -738,14 +684,14 @@ static void dispatch(SOCKET c)
                 "Connection: close\r\n\r\n", ct, (int)clen);
             if (hl < 0) hl = 0;
             if (hl >= (int)sizeof(hdr)) hl = (int)sizeof(hdr) - 1;
-            send_all(c, hdr, hl);
-            send_all(c, (const char*)cdata, (int)clen);
+            http_send_all(c, hdr, hl);
+            http_send_all(c, (const char*)cdata, (int)clen);
         } else {
-            http_response(c, "404 Not Found", "text/plain", "no cover");
+            http_response(c, 404, "text/plain", "no cover");
         }
         closesocket(c);
     } else {
-        http_response(c, "404 Not Found", "text/plain", "not found");
+        http_response(c, 404, "text/plain", "not found");
         closesocket(c);
     }
 }

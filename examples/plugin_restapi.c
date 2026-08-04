@@ -31,6 +31,7 @@
 #include <string.h>
 
 #include "../src/plugin.h"
+#include "http_util.h"
 
 #define REST_PORT 8080
 
@@ -85,7 +86,7 @@ static void http_headers(SOCKET c, int code, const char* ctype, int len)
         "\r\n",
         code, code == 200 ? "OK" : "Not Found",
         ctype ? ctype : "application/json", len);
-    send(c, hdr, (int)strlen(hdr), 0);
+    http_send_all(c, hdr, (int)strlen(hdr));
 }
 
 static void send_body(SOCKET c, const char* body, const char* ctype)
@@ -223,22 +224,9 @@ static void api_cmd(SOCKET c, const char* cmd)
 
 static void api_stream(SOCKET c)
 {
-    /* en-tête WAV 44,1 kHz stéréo 16 bits */
-    unsigned char hdr[44] = { 0 };
-    unsigned rate = 44100;
-    memcpy(hdr, "RIFF", 4);
-    memcpy(hdr + 8, "WAVEfmt ", 8);
-    hdr[16] = 16;                 /* fmt chunk size */
-    hdr[20] = 1; hdr[21] = 0;     /* PCM */
-    hdr[22] = 2; hdr[23] = 0;     /* canaux */
-    hdr[24] = rate & 0xff; hdr[25] = (rate >> 8) & 0xff;
-    hdr[26] = (rate >> 16) & 0xff; hdr[27] = (rate >> 24) & 0xff;
-    unsigned bps = rate * 4;      /* octets/s */
-    hdr[28] = bps & 0xff; hdr[29] = (bps >> 8) & 0xff;
-    hdr[30] = (bps >> 16) & 0xff; hdr[31] = (bps >> 24) & 0xff;
-    hdr[32] = 4;                  /* octets par frame */
-    hdr[34] = 16;                 /* bits */
-    memcpy(hdr + 36, "data", 4);
+    /* en-tête WAV 44,1 kHz stéréo 16 bits (http_util.h) */
+    unsigned char hdr[44];
+    http_wav_header44k(hdr);
     http_headers(c, 200, "audio/wav", -1);
     char hlen[64];
     snprintf(hlen, sizeof(hlen), "%d", 44);
@@ -260,13 +248,7 @@ static void api_stream(SOCKET c)
     while (g_running) {
         uint32_t n = g_h->web_read(fbuf, 1024);
         if (!n) { Sleep(20); continue; }
-        for (uint32_t i = 0; i < n * 2; i++) {
-            float v = fbuf[i];
-            if (v > 1.0f) v = 1.0f; else if (v < -1.0f) v = -1.0f;
-            short s16 = (short)(v * 32767.0f);
-            obuf[i * 2] = (unsigned char)(s16 & 0xff);
-            obuf[i * 2 + 1] = (unsigned char)((s16 >> 8) & 0xff);
-        }
+        http_f32_to_s16(fbuf, obuf, n, 1.0f);
         if (send(c, (const char*)obuf, (int)(n * 4), 0) <= 0) break;
     }
     free(fbuf);
@@ -277,15 +259,7 @@ static void api_stream(SOCKET c)
 static void handle_client(SOCKET c)
 {
     char req[8192];
-    int got = 0;
-    while (got < (int)sizeof(req) - 1) {
-        int n = recv(c, req + got, sizeof(req) - 1 - got, 0);
-        if (n <= 0) break;
-        got += n;
-        if (strstr(req, "\r\n\r\n")) break;
-        if (strstr(req, "\n\n")) break;
-    }
-    req[got] = 0;
+    int got = http_read_request(c, req, sizeof(req));
     if (got < 8) { closesocket(c); return; }
     char method[16] = "", path[1024] = "";
     sscanf(req, "%15s %1023s", method, path);
@@ -294,8 +268,7 @@ static void handle_client(SOCKET c)
     } else if (!strcmp(method, "POST")) {
         /* CSRF : un POST « simple » (sans Content-Type JSON) peut être
          * envoyé par n'importe quel site sans CORS → refusé */
-        const char* ct = strstr(req, "Content-Type:");
-        if (!ct || !strstr(ct, "application/json")) {
+        if (!http_post_is_json(req)) {
             send_body(c, "{\"error\":\"forbidden\"}", "application/json");
         } else if (!strcmp(path, "/api/cmd")) {
             const char* body = strstr(req, "\r\n\r\n");

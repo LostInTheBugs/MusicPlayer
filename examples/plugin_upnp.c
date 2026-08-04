@@ -19,6 +19,7 @@
 #include <string.h>
 
 #include "../src/plugin.h"
+#include "http_util.h"
 
 #define UPnP_PORT 8081
 #define UDN       "uuid:6f1a2b3c-4d5e-4f60-9a1b-2c3d4e5f6071"
@@ -255,13 +256,7 @@ static void media_stream(SOCKET c, int idx)
     while (g_running) {
         uint32_t n = g_h->web_read(fbuf, 1024);
         if (!n) { Sleep(20); continue; }
-        for (uint32_t i = 0; i < n * 2; i++) {
-            float v = fbuf[i];
-            if (v > 1.0f) v = 1.0f; else if (v < -1.0f) v = -1.0f;
-            short s16 = (short)(v * 32767.0f);
-            obuf[i * 2] = (unsigned char)(s16 & 0xff);
-            obuf[i * 2 + 1] = (unsigned char)((s16 >> 8) & 0xff);
-        }
+        http_f32_to_s16(fbuf, obuf, n, 1.0f);
         char lenstr[32];
         snprintf(lenstr, sizeof(lenstr), "%x\r\n", (int)(n * 4));
         send(c, lenstr, (int)strlen(lenstr), 0);
@@ -276,14 +271,7 @@ static void media_stream(SOCKET c, int idx)
 static void handle_client(SOCKET c)
 {
     char req[8192];
-    int got = 0;
-    while (got < (int)sizeof(req) - 1) {
-        int n = recv(c, req + got, sizeof(req) - 1 - got, 0);
-        if (n <= 0) break;
-        got += n;
-        if (strstr(req, "\r\n\r\n") || strstr(req, "\n\n")) break;
-    }
-    req[got] = 0;
+    int got = http_read_request(c, req, sizeof(req));
     if (got < 8) { closesocket(c); return; }
     char method[16] = "", path[1024] = "";
     sscanf(req, "%15s %1023s", method, path);
