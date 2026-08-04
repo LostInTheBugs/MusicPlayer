@@ -2,6 +2,16 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.037] — 2026-08-04
+
+### Changed (skins « fenêtre entière » — refonte)
+- **API plugins v3** : nouveau point d'entrée hôte `skin_set_window_size(w, h, fixed)` et `skin_set_layout` étendu (menu, contrôles, **barre d'état**)
+- **Séparation des deux rectangles** : `get_content_rect` (surface de l'image de fond, des contrôles et de la progression) ≠ zone du visualiseur (celle du skin, convertie en coordonnées locales) — le fond n'est plus écrasé dans la zone du visualiseur
+- **Rendu 1:1 de l'image de fond** (taille native, plus d'étirement) : les skins « fenêtre entière » imposent la **taille exacte de l'artwork** (640×300), fenêtre **non redimensionnable** (WM_GETMINMAXINFO borné, bord non étirable, agrandir grisé), barre d'état masquée
+- **État du skin réinitialisé entre deux skins** (image, zone visuelle, layout, taille) : passer de « Vintage radio » à « Clean » retrouve menu visible, barre d'état et fenêtre redimensionnable
+- **Skins mis à jour** : Vintage radio (cadran 222,202,196,36), Winamp (analyseur 30,212,580,54, contrôles dans le bandeau) ; les 9 skins palette inchangés
+- Testé sous Wine : radio = fenêtre **640×300 exacte**, artwork 1:1 (pixels bois présents), spectre dans le cadran ; Clean = 632×266, menu visible, état par défaut
+
 ## [2026.08.036-c10] — 2026-08-04
 
 ### Fixed (revue de code — 5e passe)

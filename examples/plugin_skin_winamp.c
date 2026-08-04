@@ -39,6 +39,15 @@ static void pl_apply_skin(mp_plugin* self, void* hwnd)
         0x00E000   /* prog_border */
     };
     if (g_h && g_h->skin_set_colors) g_h->skin_set_colors(&c);
+    /* disposition d'abord (menu caché, contrôles dans le bandeau du
+     * haut, barre d'état masquée), PUIS la taille */
+    if (g_h && g_h->skin_set_layout)
+        g_h->skin_set_layout(0, 1, 0);
+    /* fenêtre à la taille native de l'artwork, non redimensionnable */
+    if (g_h && g_h->skin_set_window_size) g_h->skin_set_window_size(640, 300, 1);
+    /* analyseur de spectre dans le cadre du bas */
+    if (g_h && g_h->skin_set_visual_rect)
+        g_h->skin_set_visual_rect(30, 212, 580, 54);
     /* texture façon Winamp (à côté de la DLL) */
     if (g_h && g_h->skin_set_bg) {
         wchar_t dir[MAX_PATH];

@@ -433,6 +433,14 @@ const char* mp_plugins_get_metadata(const char* path, const char* field)
 void mp_plugins_apply_skins(void* hwnd)
 {
     int applied = 0;
+    /* remise à zéro : sans cela, un skin hérite des réglages du
+     * précédent (zone visuelle, image de fond, menu caché…) */
+    if (g_host) {
+        if (g_host->skin_set_bg)          g_host->skin_set_bg("");
+        if (g_host->skin_set_visual_rect) g_host->skin_set_visual_rect(-1, -1, 0, 0);
+        if (g_host->skin_set_layout)      g_host->skin_set_layout(1, 0, 1);
+        if (g_host->skin_set_window_size) g_host->skin_set_window_size(0, 0, 0);
+    }
     for (int i = 0; i < g_count; i++) {
         mp_plugin* p = &g_plugins[i];
         if (!p->enabled || !p->api) continue;
@@ -458,9 +466,11 @@ void mp_plugins_apply_skins(void* hwnd)
     }
     if (!applied && g_host && g_host->skin_set_bg) g_host->skin_set_bg("");
     if (!applied && g_host && g_host->skin_set_layout)
-        g_host->skin_set_layout(1, 0);
+        g_host->skin_set_layout(1, 0, 1);
     if (!applied && g_host && g_host->skin_set_visual_rect)
         g_host->skin_set_visual_rect(-1, -1, -1, -1);
+    if (!applied && g_host && g_host->skin_set_window_size)
+        g_host->skin_set_window_size(0, 0, 0);
 }
 
 void mp_plugins_audio_process(float* samples, unsigned frames,

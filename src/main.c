@@ -398,6 +398,10 @@ static GpImage* g_skin_bg = NULL;      /* image de fond du skin */
 static RECT g_skin_vis = { -1, -1, -1, -1 };  /* zone du visualiseur (skin) */
 static int g_skin_menu_visible = 1;    /* barre de menus affichée ? */
 static int g_skin_ctrl_top = 0;        /* contrôles en haut (skin) ? */
+static int g_skin_status_visible = 1;  /* barre d'état affichée ? */
+static int g_skin_win_w = 0;           /* taille client imposée par le skin */
+static int g_skin_win_h = 0;
+static int g_skin_win_fixed = 0;       /* fenêtre non redimensionnable ? */
 static HMENU g_menu_bar = NULL;        /* barre de menus (cachable) */
 
 /* ------------------------------------------------------------------ */
@@ -486,10 +490,16 @@ static void host_skin_set_bg(const char* path_utf8)
 /* Zone du visualiseur imposée par le skin (ex. haut-parleur de la radio) */
 static void host_skin_set_visual_rect(int x, int y, int w, int h)
 {
-    g_skin_vis.left = x;
-    g_skin_vis.top = y;
-    g_skin_vis.right = x + w;
-    g_skin_vis.bottom = y + h;
+    if (x < 0 || y < 0 || w <= 0 || h <= 0) {
+        /* réinitialisation : zone du visualiseur par défaut */
+        g_skin_vis.left = g_skin_vis.top = -1;
+        g_skin_vis.right = g_skin_vis.bottom = -1;
+    } else {
+        g_skin_vis.left = x;
+        g_skin_vis.top = y;
+        g_skin_vis.right = x + w;
+        g_skin_vis.bottom = y + h;
+    }
     if (g_hwnd) InvalidateRect(g_hwnd, NULL, FALSE);
 }
 
@@ -507,16 +517,54 @@ static void apply_menu_visibility(void)
     DrawMenuBar(g_hwnd);
 }
 
-/* Disposition imposée par le skin : menu caché, contrôles en haut... */
-static void host_skin_set_layout(int menu_visible, int ctrl_top)
+/* Disposition imposée par le skin : menu caché, contrôles en haut,
+ * barre d'état masquée... */
+static void host_skin_set_layout(int menu_visible, int ctrl_top,
+                                 int status_visible)
 {
     g_skin_menu_visible = menu_visible ? 1 : 0;
     g_skin_ctrl_top = ctrl_top ? 1 : 0;
+    g_skin_status_visible = status_visible ? 1 : 0;
     if (g_hwnd) {
         apply_menu_visibility();
+        if (g_status && !g_fullscreen)
+            ShowWindow(g_status, g_skin_status_visible ? SW_SHOW : SW_HIDE);
         InvalidateRect(g_hwnd, NULL, FALSE);
         status_update();
     }
+}
+
+/* Taille de la zone client imposée par le skin. fixed = 1 : fenêtre non
+ * redimensionnable (skin « fenêtre entière », rendu pixel-perfect). */
+static void host_skin_set_window_size(int w, int h, int fixed)
+{
+    g_skin_win_w = w;
+    g_skin_win_h = h;
+    g_skin_win_fixed = (w > 0 && h > 0 && fixed) ? 1 : 0;
+    if (!g_hwnd || g_fullscreen) return;
+
+    LONG style = GetWindowLongW(g_hwnd, GWL_STYLE);
+    if (g_skin_win_fixed) style &= ~(WS_THICKFRAME | WS_MAXIMIZEBOX);
+    else                  style |= (WS_THICKFRAME | WS_MAXIMIZEBOX);
+    SetWindowLongW(g_hwnd, GWL_STYLE, style);
+
+    if (w > 0 && h > 0) {
+        int ch = h;
+        if (g_status && g_skin_status_visible) {
+            RECT sr;
+            GetWindowRect(g_status, &sr);
+            ch += (sr.bottom - sr.top);
+        }
+        RECT wr = { 0, 0, w, ch };
+        AdjustWindowRectEx(&wr, style, g_skin_menu_visible ? TRUE : FALSE,
+                           GetWindowLongW(g_hwnd, GWL_EXSTYLE));
+        SetWindowPos(g_hwnd, NULL, 0, 0, wr.right - wr.left, wr.bottom - wr.top,
+                     SWP_NOMOVE | SWP_NOZORDER | SWP_FRAMECHANGED);
+    } else {
+        SetWindowPos(g_hwnd, NULL, 0, 0, 0, 0,
+                     SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
+    }
+    InvalidateRect(g_hwnd, NULL, FALSE);
 }
 
 /* Fond de la barre de menus avec la couleur du skin */
@@ -643,7 +691,8 @@ static const mp_host_api g_host = {
     host_skin_set_visual_rect,
     host_skin_set_layout,
     host_get_metadata, host_get_cover, host_plist_path,
-    host_get_skin_colors
+    host_get_skin_colors,
+    host_skin_set_window_size
 };
 
 /* ------------------------------------------------------------------ */
@@ -2109,23 +2158,23 @@ static void vol_from_mouse(int x)
 /* ------------------------------------------------------------------ */
 /* Zone centrale (WM_PAINT)                                            */
 /* ------------------------------------------------------------------ */
-static void get_center_rect(HWND hwnd, RECT* rc)
+/* Zone de contenu : toute la zone client, moins la barre d'état si
+ * elle est visible. C'est la surface de l'image de fond, de la barre de
+ * progression et des contrôles. */
+static void get_content_rect(HWND hwnd, RECT* rc)
 {
     GetClientRect(hwnd, rc);
-    if (g_skin_vis.left >= 0) {
-        /* zone du visualiseur imposée par le skin */
-        rc->left = g_skin_vis.left;
-        rc->top = g_skin_vis.top;
-        rc->right = g_skin_vis.right;
-        rc->bottom = g_skin_vis.bottom;
-        return;
-    }
-    if (g_status) {
+    if (g_status && IsWindowVisible(g_status)) {
         RECT sr;
         GetWindowRect(g_status, &sr);
         rc->bottom -= (sr.bottom - sr.top);
     }
 }
+
+/* Zone du visualiseur, en coordonnées client. Par défaut = zone de
+ * contenu ; un skin peut la restreindre (skin_set_visual_rect).
+ * (Le calcul du vis_rc dans paint_center fait la conversion en
+ * coordonnées locales du DC mémoire.) */
 
 #define PROGRESS_H 16   /* hauteur de la barre de progression */
 
@@ -2458,6 +2507,18 @@ static void paint_center(HDC hdc, RECT* rc)
         bar_rc.bottom = ctrl_rc.top;
         vis_rc = *rc;
         vis_rc.bottom = bar_rc.top - 2;
+    }
+
+    /* zone du visualiseur : imposée par le skin (coordonnées client
+     * converties en coordonnées locales du DC mémoire), sinon zone de
+     * contenu */
+    if (g_skin_vis.left >= 0) {
+        RECT cont;
+        get_content_rect(g_hwnd, &cont);
+        vis_rc.left   = g_skin_vis.left   - cont.left;
+        vis_rc.top    = g_skin_vis.top    - cont.top;
+        vis_rc.right  = g_skin_vis.right  - cont.left;
+        vis_rc.bottom = g_skin_vis.bottom - cont.top;
     }
 
     /* mode DJ : console de mixage locale (synchro avec la page web) —
@@ -2946,7 +3007,7 @@ static void mouse_down(HWND hwnd, int x, int y)
 {
     if (g_fullscreen) return;
     RECT rc;
-    get_center_rect(hwnd, &rc);
+    get_content_rect(hwnd, &rc);
     layout_controls(&rc);
 
     /* mode DJ : boutons des platines, sliders, sélection des pistes */
@@ -3301,7 +3362,7 @@ static LRESULT CALLBACK wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
                est actif (sinon le timer ne fait presque rien) */
             if (mp_plugins_has_visual()) {
                 RECT rc;
-                get_center_rect(hwnd, &rc);
+                get_content_rect(hwnd, &rc);
                 InvalidateRect(hwnd, &rc, FALSE);
             }
             return 0;
@@ -3388,7 +3449,7 @@ static LRESULT CALLBACK wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         PAINTSTRUCT ps;
         HDC hdc = BeginPaint(hwnd, &ps);
         RECT rc;
-        get_center_rect(hwnd, &rc);
+        get_content_rect(hwnd, &rc);
         int w = rc.right - rc.left, h = rc.bottom - rc.top;
         if (w > 0 && h > 0) {
             /* double buffer : dessin hors écran puis un seul BitBlt
@@ -3396,11 +3457,25 @@ static LRESULT CALLBACK wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
             HDC mem = CreateCompatibleDC(hdc);
             HBITMAP bmp = CreateCompatibleBitmap(hdc, w, h);
             HBITMAP oldbmp = (HBITMAP)SelectObject(mem, bmp);
-            /* fond de la zone : image du skin si présente, sinon bg */
             if (g_skin_bg) {
+                /* fond du skin dessiné à sa taille native (1:1) : avec
+                 * skin_set_window_size la fenêtre fait exactement cette
+                 * taille, donc aucune déformation */
+                UINT iw = 0, ih = 0;
+                GdipGetImageWidth(g_skin_bg, &iw);
+                GdipGetImageHeight(g_skin_bg, &ih);
+                if (iw == 0 || ih == 0) { iw = (UINT)w; ih = (UINT)h; }
                 GpGraphics* g = NULL;
                 if (GdipCreateFromHDC(mem, &g) == Ok) {
-                    GdipDrawImageRectI(g, g_skin_bg, 0, 0, w, h);
+                    /* si l'image est plus petite que la zone, combler
+                     * d'abord avec la couleur de fond du skin */
+                    if ((int)iw < w || (int)ih < h) {
+                        RECT rf = { 0, 0, w, h };
+                        HBRUSH wb = CreateSolidBrush(g_skin.bg);
+                        FillRect(mem, &rf, wb);
+                        DeleteObject(wb);
+                    }
+                    GdipDrawImageRectI(g, g_skin_bg, 0, 0, (INT)iw, (INT)ih);
                     GdipDeleteGraphics(g);
                 }
             } else {
@@ -3426,8 +3501,24 @@ static LRESULT CALLBACK wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         return 1;
     case WM_GETMINMAXINFO: {
         MINMAXINFO* mmi = (MINMAXINFO*)lp;
-        mmi->ptMinTrackSize.x = 420;
-        mmi->ptMinTrackSize.y = 260;
+        if (g_skin_win_fixed && !g_fullscreen) {
+            /* skin à taille fixe : borne haute = borne basse */
+            int ch = g_skin_win_h;
+            if (g_status && g_skin_status_visible) {
+                RECT sr;
+                GetWindowRect(g_status, &sr);
+                ch += (sr.bottom - sr.top);
+            }
+            RECT wr = { 0, 0, g_skin_win_w, ch };
+            AdjustWindowRectEx(&wr, GetWindowLongW(hwnd, GWL_STYLE),
+                               g_skin_menu_visible ? TRUE : FALSE,
+                               GetWindowLongW(hwnd, GWL_EXSTYLE));
+            mmi->ptMinTrackSize.x = mmi->ptMaxTrackSize.x = wr.right - wr.left;
+            mmi->ptMinTrackSize.y = mmi->ptMaxTrackSize.y = wr.bottom - wr.top;
+        } else {
+            mmi->ptMinTrackSize.x = 420;
+            mmi->ptMinTrackSize.y = 260;
+        }
         return 0;
     }
     case WM_SIZE: {

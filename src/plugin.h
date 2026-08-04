@@ -29,7 +29,7 @@
 #endif
 
 /* API plugins MusicPlayer — version 2 */
-#define MP_PLUGIN_API_VERSION 2
+#define MP_PLUGIN_API_VERSION 3
 
 typedef enum {
     MP_PLUGIN_SKIN         = 1 << 0,
@@ -136,8 +136,9 @@ typedef struct mp_host_api {
      * menu_visible : 1 = barre de menus en haut (défaut), 0 = cachée
      *   (menu accessible par clic droit).
      * ctrl_top : 1 = boutons de contrôle en haut (à la place du menu),
-     *   0 = en bas (défaut). */
-    void (*skin_set_layout)(int menu_visible, int ctrl_top);
+     *   0 = en bas (défaut).
+     * status_visible : 1 = barre d'état en bas (défaut), 0 = masquée. */
+    void (*skin_set_layout)(int menu_visible, int ctrl_top, int status_visible);
 
     /* --- métadonnées & jaquette des fichiers (plugins SERVICE) --- */
     const char* (*get_metadata)(const char* path, const char* field);
@@ -148,6 +149,13 @@ typedef struct mp_host_api {
      * Renvoie la palette du skin actif (pour les fenêtres liées au
      * thème, ex. l'equalizer). NULL si indisponible. */
     const mp_skin_colors* (*get_skin_colors)(void);
+
+    /* --- skins : taille de la fenêtre ---
+     * w, h = taille voulue de la zone client, en pixels (typiquement la
+     * taille native de l'image de fond). fixed = 1 : la fenêtre n'est plus
+     * redimensionnable et la barre d'état est masquée (skin « fenêtre
+     * entière »). w <= 0 ou h <= 0 : retour au comportement libre. */
+    void (*skin_set_window_size)(int w, int h, int fixed);
 } mp_host_api;
 
 /*

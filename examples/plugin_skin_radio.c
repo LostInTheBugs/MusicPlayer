@@ -39,12 +39,15 @@ static void pl_apply_skin(mp_plugin* self, void* hwnd)
         0xD4A017   /* prog_border */
     };
     if (g_h && g_h->skin_set_colors) g_h->skin_set_colors(&c);
-    /* le visualiseur se joue dans le haut-parleur de la radio */
-    if (g_h && g_h->skin_set_visual_rect)
-        g_h->skin_set_visual_rect(36, 165, 568, 80);
-    /* disposition : menu caché, boutons de contrôle en haut */
+    /* disposition d'abord (menu caché, contrôles en haut, barre d'état
+     * masquée), PUIS la taille : le calcul du frame en dépend */
     if (g_h && g_h->skin_set_layout)
-        g_h->skin_set_layout(0, 1);
+        g_h->skin_set_layout(0, 1, 0);
+    /* fenêtre à la taille native de l'artwork, non redimensionnable */
+    if (g_h && g_h->skin_set_window_size) g_h->skin_set_window_size(640, 300, 1);
+    /* le visualiseur s'anime dans le cadran de la radio */
+    if (g_h && g_h->skin_set_visual_rect)
+        g_h->skin_set_visual_rect(222, 202, 196, 36);
     /* texture de la radio (à côté de la DLL) */
     if (g_h && g_h->skin_set_bg) {
         wchar_t dir[MAX_PATH];
