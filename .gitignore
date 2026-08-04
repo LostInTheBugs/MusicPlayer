@@ -19,3 +19,6 @@ selftest.log
 vendor/miniaudio.h
 vendor/ffmpeg/
 vendor/*.zip
+
+# objets et dépendances du build
+build/
