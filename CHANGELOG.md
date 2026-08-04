@@ -2,6 +2,15 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.036-c6] — 2026-08-04
+
+### Fixed (build, robustesse, CI)
+- **Makefile : dépendances d'en-têtes** (`-MMD -MP` + `-include *.d`) — modifier `player.h` déclenche la recompilation des .c concernés
+- **Durcissement du binaire** : `-fstack-protector-strong` + `-D_FORTIFY_SOURCE=2` (le code parse du réseau et des tags ID3)
+- **`%APPDATA%` absent : plus de buffer non initialisé** — `GetEnvironmentVariableW` testé partout (config.c, plugin_loader.c) avec repli sur le dossier de l'exe
+- **update.c : buffer de réponse GitHub passé à 64 Ko** — le JSON (tag_name) n'est plus tronqué par construction
+- **CI GitHub Actions ajoutée** (`.github/workflows/build.yml`) : toolchain MinGW-w64 + Wine, `make setup` (vendor), build zéro warning, plugins, **selftest sous Wine**, zip — exécutée à chaque push/PR
+
 ## [2026.08.036-c5] — 2026-08-04
 
 ### Fixed (sécurité & robustesse HTTP)

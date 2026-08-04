@@ -13,7 +13,7 @@
 #   make clean
 # ======================================================================
 
-VERSION := 2026.08.036-c5
+VERSION := 2026.08.036-c6
 
 CROSS    := x86_64-w64-mingw32-
 CC       := $(CROSS)gcc
@@ -22,6 +22,8 @@ CFLAGS   := -O2 -Wall -Wextra -std=c11 \
             -DUNICODE -D_UNICODE \
             -D_WIN32_WINNT=0x0601 \
             -DMP_VERSION=\"$(VERSION)\" \
+            -fstack-protector-strong -D_FORTIFY_SOURCE=2 \
+            -MMD -MP \
             -Ivendor -Ivendor/ffmpeg/include
 LDFLAGS  := -Lvendor/ffmpeg/lib \
             -lavformat -lavcodec -lavutil -lswresample \
@@ -53,6 +55,24 @@ src/musicplayer_res.o: src/musicplayer.rc src/musicplayer.ico
 
 %.o: %.c
 	$(CC) $(CFLAGS) -c -o $@ $<
+
+# dépendances d'en-têtes générées par -MMD -MP : modifier player.h
+# (ou tout autre .h) déclenche la recompilation des .c concernés
+-include $(OBJ:.o=.d)
+
+# ----------------------------------------------------------------------
+# Dépendances vendor (miniaudio + FFmpeg LGPL) — utilisé par la CI
+# ----------------------------------------------------------------------
+setup: dirs
+	@test -f vendor/miniaudio.h || (echo "==> miniaudio 0.11.25"; \
+	 curl -L -o vendor/miniaudio.h https://raw.githubusercontent.com/mackron/miniaudio/0.11.25/miniaudio.h)
+	@test -d vendor/ffmpeg/bin || (echo "==> FFmpeg n8.1 win64-lgpl-shared (BtbN)"; \
+	 mkdir -p vendor/ffmpeg; \
+	 curl -L -o /tmp/ffmpeg.zip https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n8.1-latest-win64-lgpl-shared-8.1.zip && \
+	 unzip -q /tmp/ffmpeg.zip -d /tmp/ff && \
+	 cp -r /tmp/ff/ffmpeg-*/bin /tmp/ff/ffmpeg-*/lib /tmp/ff/ffmpeg-*/include vendor/ffmpeg/ && \
+	 cp /tmp/ff/ffmpeg-*/LICENSE.txt vendor/ffmpeg/ && \
+	 rm -rf /tmp/ff /tmp/ffmpeg.zip)
 
 # ----------------------------------------------------------------------
 # Fichiers de test (générés avec ffmpeg Linux)
@@ -118,7 +138,7 @@ zip: all plugins-examples dirs
 	cd .. && echo "Archive : dist/MusicPlayer-$(VERSION)-win64.zip"
 
 clean:
-	rm -f $(OBJ) bin/*.exe bin/*.dll bin/*.log
+	rm -f $(OBJ) $(OBJ:.o=.d) bin/*.exe bin/*.dll bin/*.log
 	@echo "Note : dist/*.zip (livrables) n'est pas supprimé ; utilisez 'make distclean' si besoin."
 
-.PHONY: all dirs plugins-examples test-samples test zip clean
+.PHONY: all dirs setup plugins-examples test-samples test zip clean

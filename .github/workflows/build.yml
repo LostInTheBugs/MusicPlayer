@@ -1,0 +1,41 @@
+name: build-test
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install toolchain (MinGW-w64 + Wine + zip)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            gcc-mingw-w64-x86-64 binutils-mingw-w64-x86-64 \
+            wine64 xvfb zip curl ffmpeg
+
+      - name: Fetch vendor (miniaudio + FFmpeg LGPL)
+        run: make setup
+
+      - name: Build (zero warning)
+        run: |
+          make 2>&1 | tee /tmp/build.log
+          grep -E "error|warning" /tmp/build.log && exit 1 || true
+          test -f bin/MusicPlayer.exe
+
+      - name: Build example plugins (zero warning)
+        run: |
+          make plugins-examples 2>&1 | tee /tmp/plugins.log
+          grep -E "error|warning" /tmp/plugins.log && exit 1 || true
+
+      - name: Selftest under Wine
+        run: |
+          xvfb-run -a make test 2>&1 | tee /tmp/test.log
+          grep -q "SELFTEST PASS" /tmp/test.log
+
+      - name: Package (zip)
+        run: make zip && test -f dist/MusicPlayer-$(grep -oP 'VERSION := \K.*' Makefile)-win64.zip

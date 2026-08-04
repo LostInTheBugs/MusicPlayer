@@ -12,11 +12,24 @@
 
 app_config g_cfg;
 
-static void config_path(wchar_t* out, int chars)
+/* Répertoire de configuration (%APPDATA%\MusicPlayer).
+ * Si %APPDATA% est absent ou trop long : repli sur le dossier de l'exe. */
+static void appdata_dir(wchar_t* out, int chars)
 {
-    GetEnvironmentVariableW(L"APPDATA", out, chars);
+    out[0] = 0;
+    DWORD n = GetEnvironmentVariableW(L"APPDATA", out, (DWORD)chars);
+    if (n == 0 || n >= (DWORD)chars) {
+        GetModuleFileNameW(NULL, out, (DWORD)chars);
+        wchar_t* slash = wcsrchr(out, L'\\');
+        if (slash) *slash = 0;
+    }
     wcscat(out, L"\\MusicPlayer");
     CreateDirectoryW(out, NULL);
+}
+
+static void config_path(wchar_t* out, int chars)
+{
+    appdata_dir(out, chars);
     wcscat(out, L"\\config.yml");
 }
 
@@ -83,9 +96,7 @@ void config_load(void)
 
     /* migration : l'ancien web.txt (pré-config.yml) */
     wchar_t wpath[MAX_PATH];
-    GetEnvironmentVariableW(L"APPDATA", wpath, MAX_PATH);
-    wcscat(wpath, L"\\MusicPlayer");
-    CreateDirectoryW(wpath, NULL);
+    appdata_dir(wpath, MAX_PATH);
     wcscat(wpath, L"\\web.txt");
     HANDLE h = CreateFileW(wpath, GENERIC_READ, FILE_SHARE_READ, NULL,
                            OPEN_EXISTING, 0, NULL);

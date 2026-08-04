@@ -185,7 +185,9 @@ static DWORD WINAPI upd_thread(LPVOID arg)
                                          INTERNET_FLAG_NO_CACHE_WRITE |
                                          INTERNET_FLAG_SECURE, 0);
         if (url) {
-            char  buf[16384];
+            /* 64 Ko : la réponse JSON de l'API GitHub (avec le
+             * tag_name en tête) ne doit jamais être tronquée */
+            char  buf[65536];
             DWORD got = 0, total = 0;
             while (total < (DWORD)sizeof(buf) - 1 &&
                    InternetReadFile(url, buf + total,

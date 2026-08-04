@@ -27,7 +27,14 @@ static void name_to_utf8(const wchar_t* in, char* out, int out_bytes)
 /* ------------------------------------------------------------------ */
 static void cfg_path(wchar_t* out, int chars)
 {
-    GetEnvironmentVariableW(L"APPDATA", out, chars);
+    out[0] = 0;
+    DWORD n = GetEnvironmentVariableW(L"APPDATA", out, (DWORD)chars);
+    if (n == 0 || n >= (DWORD)chars) {
+        /* %APPDATA% absent : repli sur le dossier de l'exe */
+        GetModuleFileNameW(NULL, out, (DWORD)chars);
+        wchar_t* slash = wcsrchr(out, L'\\');
+        if (slash) *slash = 0;
+    }
     wcscat(out, L"\\MusicPlayer");
     CreateDirectoryW(out, NULL);
     wcscat(out, L"\\plugins.ini");
