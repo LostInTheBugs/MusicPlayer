@@ -2,6 +2,18 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.036-c4] — 2026-08-04
+
+### Fixed (revue de code)
+- **Position de lecture exacte** : elle compte désormais les frames réellement **jouées** (callback, après resampling → taux du périphérique) au lieu des frames décodées — plus d'avance (8,8 % à 48 kHz, ×2 en vitesse 2×, ~6 s de ring)
+- **Deck A du mixeur web réparé** : l'URL `/dj/streamA` chargeait la platine B (mauvais index `path[4]` → `path[10]`)
+- **Platine B du mode DJ local : plus de décodage dans le callback audio** — décodage déplacé dans un **thread dédié + ring buffer SPSC** (comme la platine A), fin des dropouts sur I/O disque lente ; tampon de mix par blocs de 4096
+- **Use-after-free éliminé** : `mp_dj_b_close` arrête le thread (interrupt_callback) et **attend sa fin** avant de libérer les contextes FFmpeg
+- **`/stream` : tampons par connexion** (plus de static partagé entre threads — deux clients se corrompaient)
+- **`snprintf` partout** (terminaison garantie) + longueurs bornées dans les réponses HTTP (`http_response_len`) — plus de `strlen` hors bornes sur troncature
+- **Ring buffers avec barrières mémoire** (`__atomic` RELEASE/ACQUIRE au lieu de `volatile`) : visibilité des données garantie sous GCC
+- **Fuites FFmpeg sur chemins d'erreur** : `mp_dj_b_open` et `dj_open` libèrent proprement (fmt/codec/swr) via `goto done`
+
 ## [2026.08.036-c3] — 2026-08-03
 
 ### Changed

@@ -33,6 +33,8 @@ static uint32_t g_device_rate = 44100; /* taux du périph (défini plus bas) */
 
 /* ------------------------------------------------------------------ */
 /* Mode DJ local : platine B (2e décodeur FFmpeg) mixé dans le device  */
+/* Décodage dans un thread dédié + ring buffer SPSC (comme la platine  */
+/* A : aucune I/O bloquante dans le callback audio).                   */
 /* ------------------------------------------------------------------ */
 static AVFormatContext* g_dj_fmt = NULL;
 static AVCodecContext*  g_dj_codec = NULL;
@@ -41,55 +43,179 @@ static int              g_dj_stream = -1;
 static volatile LONG    g_dj_active = 0;   /* platine B en lecture */
 static volatile LONG    g_dj_eof = 0;
 static volatile LONG    g_dj_paused = 0;
+static volatile LONG    g_dj_stop = 0;     /* arrêt demandé du thread */
+static HANDLE           g_dj_thread = NULL;
 static volatile float   g_dj_vol_a = 1.0f; /* volumes des platines */
 static volatile float   g_dj_vol_b = 1.0f;
 static volatile float   g_dj_xf = 0.5f;    /* crossfader 0 = A, 1 = B */
-static float            g_dj_buf[4096 * 2];/* tampon de décodage B */
-static LONG             g_dj_buf_n = 0;
-static LONG             g_dj_buf_pos = 0;
+
+/* Ring SPSC de la platine B : 2^16 frames stéréo f32 ≈ 1,5 s à 44,1 kHz */
+#define DJB_RING_FRAMES (1u << 16)
+#define DJB_RING_MASK   (DJB_RING_FRAMES - 1)
+static float            g_djb_ring[DJB_RING_FRAMES * 2];
+static LONG             g_djb_head = 0;    /* écrit par le thread décodeur */
+static LONG             g_djb_tail = 0;    /* lu par le callback audio */
+
+static void dj_ring_write(const float* data, uint32_t frames)
+{
+    LONG h = g_djb_head;
+    LONG t = __atomic_load_n(&g_djb_tail, __ATOMIC_ACQUIRE);
+    uint32_t filled = (uint32_t)h - (uint32_t)t;
+    uint32_t space = DJB_RING_FRAMES - filled;
+    if (frames > space) frames = space;
+    if (frames == 0) return;
+    uint32_t wpos = (uint32_t)h & DJB_RING_MASK;
+    uint32_t n1 = frames;
+    if (n1 > DJB_RING_FRAMES - wpos) n1 = DJB_RING_FRAMES - wpos;
+    memcpy(g_djb_ring + (size_t)wpos * 2, data, (size_t)n1 * 2 * sizeof(float));
+    if (n1 < frames)
+        memcpy(g_djb_ring, data + (size_t)n1 * 2,
+               (size_t)(frames - n1) * 2 * sizeof(float));
+    __atomic_store_n(&g_djb_head, (LONG)((uint32_t)h + frames),
+                     __ATOMIC_RELEASE);
+}
+
+static uint32_t dj_ring_read(float* dst, uint32_t frames)
+{
+    LONG h = __atomic_load_n(&g_djb_head, __ATOMIC_ACQUIRE);
+    LONG t = g_djb_tail;
+    uint32_t filled = (uint32_t)h - (uint32_t)t;
+    if (frames > filled) frames = filled;
+    if (frames == 0) return 0;
+    uint32_t rpos = (uint32_t)t & DJB_RING_MASK;
+    uint32_t n1 = frames;
+    if (n1 > DJB_RING_FRAMES - rpos) n1 = DJB_RING_FRAMES - rpos;
+    memcpy(dst, g_djb_ring + (size_t)rpos * 2, (size_t)n1 * 2 * sizeof(float));
+    if (n1 < frames)
+        memcpy(dst + (size_t)n1 * 2, g_djb_ring,
+               (size_t)(frames - n1) * 2 * sizeof(float));
+    __atomic_store_n(&g_djb_tail, (LONG)((uint32_t)t + frames),
+                     __ATOMIC_RELEASE);
+    return frames;
+}
+
+/* interruption de av_read_frame : arrêt rapide du thread de décodage */
+static int dj_interrupt_cb(void* opaque)
+{
+    (void)opaque;
+    return g_dj_stop ? 1 : 0;
+}
+
+/* Thread de décodage de la platine B */
+static DWORD WINAPI dj_decode_thread(LPVOID arg)
+{
+    (void)arg;
+    while (!g_dj_stop) {
+        if (!g_dj_active || g_dj_paused || !g_dj_fmt || !g_dj_codec) {
+            Sleep(5);
+            continue;
+        }
+        uint32_t filled = (uint32_t)g_djb_head - (uint32_t)g_djb_tail;
+        if (DJB_RING_FRAMES - filled < 512) { Sleep(5); continue; }
+
+        AVPacket* pkt = av_packet_alloc();
+        AVFrame* fr = av_frame_alloc();
+        float buf[8192 * 2];
+        int got = 0;
+        while (!got && !g_dj_stop && g_dj_active && !g_dj_eof) {
+            int r = av_read_frame(g_dj_fmt, pkt);
+            if (r < 0) { g_dj_eof = 1; break; }
+            if (pkt->stream_index != g_dj_stream) {
+                av_packet_unref(pkt);
+                continue;
+            }
+            if (avcodec_send_packet(g_dj_codec, pkt) == 0) {
+                while (!got && avcodec_receive_frame(g_dj_codec, fr) == 0) {
+                    if (g_dj_swr) {
+                        uint8_t* out_ptrs[1] = { (uint8_t*)buf };
+                        int n = swr_convert(g_dj_swr, out_ptrs, 8192,
+                                            (const uint8_t**)fr->extended_data,
+                                            fr->nb_samples);
+                        if (n > 0) got = n;
+                    }
+                    av_frame_unref(fr);
+                }
+            }
+            av_packet_unref(pkt);
+        }
+        av_frame_free(&fr);
+        av_packet_free(&pkt);
+        if (got > 0)
+            dj_ring_write(buf, (uint32_t)got);
+        else
+            Sleep(10);   /* fin de piste ou rien à décoder : évite le spin */
+    }
+    return 0;
+}
 
 int mp_dj_b_open(const char* path)
 {
     mp_dj_b_close();
-    if (avformat_open_input(&g_dj_fmt, path, NULL, NULL) != 0) return -1;
-    if (avformat_find_stream_info(g_dj_fmt, NULL) < 0) return -1;
-    for (unsigned i = 0; i < g_dj_fmt->nb_streams; i++) {
-        AVCodecParameters* p = g_dj_fmt->streams[i]->codecpar;
+    int ret = -1;
+    int stream = -1;
+    AVFormatContext* fmt = NULL;
+    AVCodecContext*  codec = NULL;
+    SwrContext*      swr = NULL;
+
+    if (avformat_open_input(&fmt, path, NULL, NULL) != 0) goto done;
+    fmt->interrupt_callback.callback = dj_interrupt_cb;
+    if (avformat_find_stream_info(fmt, NULL) < 0) goto done;
+    for (unsigned i = 0; i < fmt->nb_streams; i++) {
+        AVCodecParameters* p = fmt->streams[i]->codecpar;
         if (p->codec_type != AVMEDIA_TYPE_AUDIO) continue;
-        const AVCodec* codec = avcodec_find_decoder(p->codec_id);
-        if (!codec) return -1;
-        g_dj_codec = avcodec_alloc_context3(codec);
-        if (!g_dj_codec) return -1;
-        if (avcodec_parameters_to_context(g_dj_codec, p) < 0) return -1;
-        if (avcodec_open2(g_dj_codec, codec, NULL) < 0) return -1;
+        const AVCodec* dec = avcodec_find_decoder(p->codec_id);
+        if (!dec) goto done;
+        codec = avcodec_alloc_context3(dec);
+        if (!codec) goto done;
+        if (avcodec_parameters_to_context(codec, p) < 0) goto done;
+        if (avcodec_open2(codec, dec, NULL) < 0) goto done;
         AVChannelLayout out_layout = AV_CHANNEL_LAYOUT_STEREO;
-        if (swr_alloc_set_opts2(&g_dj_swr, &out_layout, AV_SAMPLE_FMT_FLT,
+        if (swr_alloc_set_opts2(&swr, &out_layout, AV_SAMPLE_FMT_FLT,
                                 (int)g_device_rate,
-                                &g_dj_codec->ch_layout, g_dj_codec->sample_fmt,
-                                g_dj_codec->sample_rate, 0, NULL) == 0 &&
-            g_dj_swr)
-            swr_init(g_dj_swr);
-        g_dj_stream = (int)i;
+                                &codec->ch_layout, codec->sample_fmt,
+                                codec->sample_rate, 0, NULL) == 0 && swr)
+            swr_init(swr);
+        stream = (int)i;
         break;
     }
-    if (!g_dj_codec) return -1;
+    if (!codec || stream < 0) goto done;
+
+    g_dj_fmt = fmt; g_dj_codec = codec; g_dj_swr = swr; g_dj_stream = stream;
+    fmt = NULL; codec = NULL; swr = NULL;   /* transférés au global */
     g_dj_eof = 0;
     g_dj_paused = 0;
-    g_dj_buf_n = 0;
-    g_dj_buf_pos = 0;
+    g_djb_head = 0;
+    g_djb_tail = 0;
     InterlockedExchange(&g_dj_active, 1);
-    return 0;
+    g_dj_stop = 0;
+    g_dj_thread = CreateThread(NULL, 0, dj_decode_thread, NULL, 0, NULL);
+    ret = 0;
+done:
+    /* chemins d'erreur : libérer proprement (pas de fuite) */
+    if (swr) { swr_free(&swr); swr = NULL; }
+    if (codec) { avcodec_free_context(&codec); codec = NULL; }
+    if (fmt) { avformat_close_input(&fmt); fmt = NULL; }
+    return ret;
 }
 
 void mp_dj_b_close(void)
 {
     InterlockedExchange(&g_dj_active, 0);
+    InterlockedExchange(&g_dj_stop, 1);
+    if (g_dj_thread) {
+        /* l'interrupt_callback fait sortir av_read_frame : le thread
+         * se termine vite, puis on libère les contextes en sécurité */
+        WaitForSingleObject(g_dj_thread, 3000);
+        CloseHandle(g_dj_thread);
+        g_dj_thread = NULL;
+    }
+    g_dj_stop = 0;
     if (g_dj_swr) { swr_free(&g_dj_swr); g_dj_swr = NULL; }
     if (g_dj_codec) { avcodec_free_context(&g_dj_codec); g_dj_codec = NULL; }
     if (g_dj_fmt) { avformat_close_input(&g_dj_fmt); g_dj_fmt = NULL; }
     g_dj_stream = -1;
-    g_dj_buf_n = 0;
-    g_dj_buf_pos = 0;
+    g_djb_head = 0;
+    g_djb_tail = 0;
 }
 
 int mp_dj_b_active(void) { return (int)g_dj_active; }
@@ -114,58 +240,6 @@ void mp_dj_set_xf(float x)
 }
 float mp_dj_get_xf(void) { return g_dj_xf; }
 
-/* Remplit dst (frames stéréo) avec le décodage de la platine B. */
-static uint32_t dj_b_fill(float* dst, uint32_t frames)
-{
-    uint32_t out = 0;
-    while (out < frames) {
-        if (g_dj_buf_pos < g_dj_buf_n) {
-            uint32_t n = (uint32_t)(g_dj_buf_n - g_dj_buf_pos);
-            if (n > frames - out) n = frames - out;
-            memcpy(dst + (size_t)out * 2,
-                   g_dj_buf + (size_t)g_dj_buf_pos * 2,
-                   (size_t)n * 2 * sizeof(float));
-            g_dj_buf_pos += (LONG)n;
-            out += n;
-            continue;
-        }
-        if (g_dj_eof) break;
-        AVPacket* pkt = av_packet_alloc();
-        AVFrame* fr = av_frame_alloc();
-        int got_any = 0;
-        while (!got_any && !g_dj_eof) {
-            int r = av_read_frame(g_dj_fmt, pkt);
-            if (r < 0) { g_dj_eof = 1; break; }
-            if (pkt->stream_index != g_dj_stream) {
-                av_packet_unref(pkt);
-                continue;
-            }
-            if (avcodec_send_packet(g_dj_codec, pkt) == 0) {
-                while (avcodec_receive_frame(g_dj_codec, fr) == 0) {
-                    if (g_dj_swr) {
-                        uint8_t* out_ptrs[1] = { (uint8_t*)g_dj_buf };
-                        int got = swr_convert(g_dj_swr, out_ptrs, 4096,
-                                              (const uint8_t**)fr->extended_data,
-                                              fr->nb_samples);
-                        if (got > 0) {
-                            g_dj_buf_n = got;
-                            g_dj_buf_pos = 0;
-                            got_any = 1;
-                        }
-                    }
-                    av_frame_unref(fr);
-                    if (got_any) break;
-                }
-            }
-            av_packet_unref(pkt);
-        }
-        av_frame_free(&fr);
-        av_packet_free(&pkt);
-        if (!got_any) break;
-    }
-    return out;
-}
-
 /* Lecture de la platine B (appelé par le callback du device). */
 uint32_t mp_dj_b_read(float* dst, uint32_t frames)
 {
@@ -173,7 +247,7 @@ uint32_t mp_dj_b_read(float* dst, uint32_t frames)
         memset(dst, 0, (size_t)frames * 2 * sizeof(float));
         return frames;
     }
-    uint32_t n = dj_b_fill(dst, frames);
+    uint32_t n = dj_ring_read(dst, frames);
     if (n < frames)
         memset(dst + (size_t)n * 2, 0, (size_t)(frames - n) * 2 * sizeof(float));
     return frames;
@@ -187,13 +261,21 @@ void mp_dj_mix_into(float* dst, uint32_t frames)
             dst[i] *= g_dj_vol_a;
         return;
     }
-    float tmp[4096 * 2];
-    mp_dj_b_read(tmp, frames);
-    for (uint32_t i = 0; i < frames * 2; i++) {
-        float v = dst[i] * g_dj_vol_a * (1.0f - g_dj_xf) +
-                  tmp[i] * g_dj_vol_b * g_dj_xf;
-        if (v > 1.0f) v = 1.0f; else if (v < -1.0f) v = -1.0f;
-        dst[i] = v;
+    /* par blocs de 4096 : pas de gros tampon fixe sur la pile du
+     * callback (frames peut dépasser 4096 sur certains périphs) */
+    uint32_t off = 0;
+    while (off < frames) {
+        uint32_t chunk = frames - off;
+        if (chunk > 4096) chunk = 4096;
+        float tmp[4096 * 2];
+        mp_dj_b_read(tmp, chunk);
+        for (uint32_t i = 0; i < chunk * 2; i++) {
+            float v = dst[off * 2 + i] * g_dj_vol_a * (1.0f - g_dj_xf) +
+                      tmp[i] * g_dj_vol_b * g_dj_xf;
+            if (v > 1.0f) v = 1.0f; else if (v < -1.0f) v = -1.0f;
+            dst[off * 2 + i] = v;
+        }
+        off += chunk;
     }
 }
 
@@ -206,8 +288,8 @@ void mp_dj_mix_into(float* dst, uint32_t frames)
 
 typedef struct {
     float* buf;
-    volatile LONG head;             /* écrit par le décodeur */
-    volatile LONG tail;             /* lu par le callback audio */
+    LONG head;             /* écrit par le décodeur (store RELEASE) */
+    LONG tail;             /* lu par le callback audio (store RELEASE) */
 } ring_t;
 
 static void ring_init(ring_t* r)
@@ -217,51 +299,49 @@ static void ring_init(ring_t* r)
     r->tail = 0;
 }
 
-static uint32_t ring_filled(const ring_t* r)
-{
-    return (uint32_t)r->head - (uint32_t)r->tail;
-}
-
-static uint32_t ring_space(const ring_t* r)
-{
-    return RING_FRAMES - ring_filled(r);
-}
-
+/* barrières mémoire explicites : la visibilité des données écrites
+ * avant le store RELEASE est garantie pour le load ACQUIRE de l'autre
+ * thread (contrairement à volatile seul sous GCC) */
 static void ring_clear(ring_t* r)
 {
-    r->head = 0;
-    r->tail = 0;
+    __atomic_store_n(&r->head, 0, __ATOMIC_RELAXED);
+    __atomic_store_n(&r->tail, 0, __ATOMIC_RELAXED);
 }
 
 static uint32_t ring_write(ring_t* r, const float* data, uint32_t frames)
 {
-    uint32_t space = ring_space(r);
+    LONG t = __atomic_load_n(&r->tail, __ATOMIC_ACQUIRE);
+    LONG h = r->head;   /* seul le producteur écrit head */
+    uint32_t filled = (uint32_t)h - (uint32_t)t;
+    uint32_t space = RING_FRAMES - filled;
     if (frames > space) frames = space;
     if (frames == 0) return 0;
 
-    uint32_t h = (uint32_t)r->head & RING_MASK;
+    uint32_t hp = (uint32_t)h & RING_MASK;
     uint32_t n1 = frames;
-    if (n1 > RING_FRAMES - h) n1 = RING_FRAMES - h;
-    memcpy(r->buf + h * 2, data, (size_t)n1 * 2 * sizeof(float));
+    if (n1 > RING_FRAMES - hp) n1 = RING_FRAMES - hp;
+    memcpy(r->buf + hp * 2, data, (size_t)n1 * 2 * sizeof(float));
     memcpy(r->buf, data + (size_t)n1 * 2, (size_t)(frames - n1) * 2 * sizeof(float));
 
-    r->head = (LONG)((uint32_t)r->head + frames);
+    __atomic_store_n(&r->head, (LONG)((uint32_t)h + frames), __ATOMIC_RELEASE);
     return frames;
 }
 
 static uint32_t ring_read(ring_t* r, float* dst, uint32_t frames)
 {
-    uint32_t filled = ring_filled(r);
+    LONG h = __atomic_load_n(&r->head, __ATOMIC_ACQUIRE);
+    LONG t = r->tail;   /* seul le consommateur écrit tail */
+    uint32_t filled = (uint32_t)h - (uint32_t)t;
     if (frames > filled) frames = filled;
     if (frames == 0) return 0;
 
-    uint32_t t = (uint32_t)r->tail & RING_MASK;
+    uint32_t tp = (uint32_t)t & RING_MASK;
     uint32_t n1 = frames;
-    if (n1 > RING_FRAMES - t) n1 = RING_FRAMES - t;
-    memcpy(dst, r->buf + t * 2, (size_t)n1 * 2 * sizeof(float));
+    if (n1 > RING_FRAMES - tp) n1 = RING_FRAMES - tp;
+    memcpy(dst, r->buf + tp * 2, (size_t)n1 * 2 * sizeof(float));
     memcpy(dst + (size_t)n1 * 2, r->buf, (size_t)(frames - n1) * 2 * sizeof(float));
 
-    r->tail = (LONG)((uint32_t)r->tail + frames);
+    __atomic_store_n(&r->tail, (LONG)((uint32_t)t + frames), __ATOMIC_RELEASE);
     return frames;
 }
 
@@ -292,8 +372,9 @@ static volatile LONG  g_wake = 0;             /* signal "décode !" */
 static volatile LONG  g_decoding = 0;         /* le thread est dans la boucle */
 static volatile LONG  g_volume_pct = 80;      /* 0..100 */
 static volatile float g_speed = 1.0f;
-static volatile LONG64 g_samples_decoded = 0; /* frames poussées dans le ring */
-static volatile LONG  g_audio_out = 0;        /* 0 = PC, 1 = téléphone, 2 = les deux */
+static LONG64         g_played = 0;      /* frames réellement jouées
+                                            (comptées dans le callback) */
+static volatile LONG  g_audio_out = 0;   /* 0 = PC, 1 = téléphone, 2 = les deux */
 
 /* ------------------------------------------------------------------ */
 /* Ring de diffusion web (téléphone) — best effort                     */
@@ -301,15 +382,17 @@ static volatile LONG  g_audio_out = 0;        /* 0 = PC, 1 = téléphone, 2 = le
 #define WEB_RING_FRAMES (1 << 15)   /* 32768 frames ≈ 0,74 s */
 #define WEB_RING_MASK   (WEB_RING_FRAMES - 1)
 static float          g_web_ring[WEB_RING_FRAMES * 2];
-static volatile LONG  g_web_head = 0;
-static volatile LONG  g_web_tail = 0;
+static LONG           g_web_head = 0;
+static LONG           g_web_tail = 0;
 
 /* Écrit les frames décodées (float stéréo, déjà à la vitesse choisie).
  * Non bloquant : si le ring est plein, les données les plus anciennes
- * sont jetées (personne n'écoute → on ne ralentit pas la lecture). */
+ * sont jetées (personne n'écoute → on ne ralentit pas la lecture).
+ * Accès SPSC avec barrières mémoire explicites (__atomic). */
 static void web_ring_write(const float* data, uint32_t frames)
 {
-    LONG h = g_web_head, t = g_web_tail;
+    LONG h = g_web_head;
+    LONG t = __atomic_load_n(&g_web_tail, __ATOMIC_ACQUIRE);
     uint32_t used = (uint32_t)(t - h) & WEB_RING_MASK;
     if (used + frames > WEB_RING_FRAMES) {
         uint32_t drop = used + frames - WEB_RING_FRAMES;
@@ -322,12 +405,14 @@ static void web_ring_write(const float* data, uint32_t frames)
     if (n1 < frames)
         memcpy(g_web_ring, data + (size_t)n1 * 2,
                (size_t)(frames - n1) * 2 * sizeof(float));
-    InterlockedExchange(&g_web_tail, (LONG)((uint32_t)t + frames));
+    __atomic_store_n(&g_web_tail, (LONG)((uint32_t)t + frames),
+                     __ATOMIC_RELEASE);
 }
 
 uint32_t mp_web_read(float* dst, uint32_t frames)
 {
-    LONG h = g_web_head, t = g_web_tail;
+    LONG h = __atomic_load_n(&g_web_head, __ATOMIC_ACQUIRE);
+    LONG t = g_web_tail;
     uint32_t used = (uint32_t)(t - h) & WEB_RING_MASK;
     if (used == 0) return 0;
     if (frames > used) frames = used;
@@ -338,7 +423,8 @@ uint32_t mp_web_read(float* dst, uint32_t frames)
     if (n1 < frames)
         memcpy(dst + (size_t)n1 * 2, g_web_ring,
                (size_t)(frames - n1) * 2 * sizeof(float));
-    InterlockedExchange(&g_web_head, (LONG)((uint32_t)h + frames));
+    __atomic_store_n(&g_web_head, (LONG)((uint32_t)h + frames),
+                     __ATOMIC_RELEASE);
     return frames;
 }
 
@@ -448,7 +534,6 @@ static DWORD WINAPI decode_thread(LPVOID unused)
                                                     (uint32_t)got - pushed);
                             web_ring_write(out_buf + (size_t)pushed * 2, w);
                             pushed += w;
-                            g_samples_decoded += w;
                             if (pushed < (uint32_t)got) Sleep(5);
                         }
                         if (g_state != MP_STATE_PLAYING || g_interrupt || g_shutdown) break;
@@ -477,6 +562,8 @@ static void data_cb(ma_device* dev, void* out, const void* in, ma_uint32 frames)
 
     if (g_state == MP_STATE_PLAYING) {
         uint32_t got = ring_read(&g_ring, dst, frames);
+        if (got > 0)
+            __atomic_add_fetch(&g_played, (LONG64)got, __ATOMIC_RELAXED);
         if (got < frames) {
             /* sous-remplissage : silence + détection de fin */
             memset(dst + (size_t)got * 2, 0, (size_t)(frames - got) * 2 * sizeof(float));
@@ -588,7 +675,7 @@ int mp_open(const char* path)
     ring_clear(&g_ring);
     g_eof = 0;
     g_interrupt = 0;
-    g_samples_decoded = 0;
+    g_played = 0;
     g_state = MP_STATE_PLAYING;
     g_wake = 1;
     return 0;
@@ -608,7 +695,7 @@ void mp_close(void)
     g_stream_idx = -1;
     g_duration = 0.0;
     g_eof = 0;
-    g_samples_decoded = 0;
+    g_played = 0;
     ring_clear(&g_ring);
     g_state = MP_STATE_STOPPED;
 }
@@ -626,7 +713,7 @@ void mp_play(void)
                 avcodec_flush_buffers(g_codec);
                 ring_clear(&g_ring);
                 g_eof = 0;
-                g_samples_decoded = 0;
+                g_played = 0;
             }
             g_state = MP_STATE_PLAYING;
             g_wake = 1;
@@ -660,7 +747,7 @@ void mp_stop(void)
     }
     ring_clear(&g_ring);
     g_eof = 0;
-    g_samples_decoded = 0;
+    g_played = 0;
     g_state = MP_STATE_STOPPED;
 }
 
@@ -681,7 +768,8 @@ void mp_seek(double seconds)
     if (g_codec) avcodec_flush_buffers(g_codec);
     ring_clear(&g_ring);
     g_eof = 0;
-    g_samples_decoded = (LONG64)(seconds * g_src_rate);
+    __atomic_store_n(&g_played, (LONG64)(seconds * (double)g_device_rate),
+                     __ATOMIC_RELAXED);
 
     if (g_state == MP_STATE_FINISHED) g_state = MP_STATE_PAUSED;
     if (g_state == MP_STATE_PLAYING) g_wake = 1;
@@ -712,7 +800,14 @@ int mp_audio_device_ok(void) { return g_device_ok; }
 
 mp_state mp_get_state(void) { return (mp_state)g_state; }
 
-double mp_get_position(void) { return (double)g_samples_decoded / g_src_rate; }
+/* Position de lecture : frames réellement jouées (comptées à la sortie
+ * du callback, après resampling → device_rate) divisées par le taux du
+ * périphérique. Indépendant du speed et du remplissage du ring. */
+double mp_get_position(void)
+{
+    return (double)__atomic_load_n(&g_played, __ATOMIC_ACQUIRE) /
+           (double)g_device_rate;
+}
 
 double mp_get_duration(void) { return g_duration; }
 

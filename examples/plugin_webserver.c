@@ -46,17 +46,25 @@ static void send_all(SOCKET s, const char* data, int len)
     }
 }
 
-static void http_response(SOCKET s, const char* status, const char* type,
-                          const char* body)
+static void http_response_len(SOCKET s, const char* status, const char* type,
+                              const char* body, size_t body_len)
 {
     char hdr[512];
-    int hl = _snprintf(hdr, sizeof(hdr),
+    int hl = snprintf(hdr, sizeof(hdr),
         "HTTP/1.1 %s\r\nContent-Type: %s\r\n"
         "Content-Length: %d\r\nCache-Control: no-cache\r\n"
         "Connection: close\r\n\r\n",
-        status, type, (int)strlen(body));
+        status, type, (int)body_len);
+    if (hl < 0) hl = 0;
+    if (hl >= (int)sizeof(hdr)) hl = (int)sizeof(hdr) - 1;
     send_all(s, hdr, hl);
-    send_all(s, body, (int)strlen(body));
+    send_all(s, body, (int)body_len);
+}
+
+static void http_response(SOCKET s, const char* status, const char* type,
+                          const char* body)
+{
+    http_response_len(s, status, type, body, strlen(body));
 }
 
 static void json_escape(const wchar_t* in, char* out, int out_chars)
@@ -111,7 +119,7 @@ static void api_state(SOCKET s)
         if (title && title[0]) json_escape_u8(title, name, sizeof(name));
         else json_escape(g_h->plist_name(i), name, sizeof(name));
         char tmp[700];
-        _snprintf(tmp, sizeof(tmp), "%s\"%s\"", i ? "," : "", name);
+        snprintf(tmp, sizeof(tmp), "%s\"%s\"", i ? "," : "", name);
         if (strlen(items) + strlen(tmp) < sizeof(items) - 4) strcat(items, tmp);
     }
     const char* st = "stopped";
@@ -139,7 +147,7 @@ static void api_state(SOCKET s)
             if (yr && yr[0]) json_escape_u8(yr, year, sizeof(year));
         }
     }
-    _snprintf(body, sizeof(body),
+    int bl = snprintf(body, sizeof(body),
         "{\"state\":\"%s\",\"pos\":%.1f,\"dur\":%.1f,\"idx\":%d,\"count\":%d,"
         "\"vol\":%.2f,\"speed\":%.2f,"
         "\"audio\":\"%s\",\"shuffle\":%d,\"dj\":%d,\"name\":\"%s\","
@@ -148,7 +156,10 @@ static void api_state(SOCKET s)
         g_h->get_volume(), g_h->get_speed(), ao, g_h->get_shuffle(),
         g_h->get_dj_mode ? g_h->get_dj_mode() : 0,
         name, title, artist, album, year, items);
-    http_response(s, "200 OK", "application/json", body);
+    /* snprintf termine toujours par \0 ; on borne la longueur envoyée */
+    if (bl < 0) bl = 0;
+    if (bl >= (int)sizeof(body)) bl = (int)sizeof(body) - 1;
+    http_response_len(s, "200 OK", "application/json", body, (size_t)bl);
 }
 
 static void api_cmd(SOCKET s, const char* cmd)
@@ -316,30 +327,45 @@ static void dj_close(dj_deck* d)
 static int dj_open(dj_deck* d, const char* path)
 {
     dj_close(d);
-    if (avformat_open_input(&d->fmt, path, NULL, NULL) != 0) return -1;
-    if (avformat_find_stream_info(d->fmt, NULL) < 0) return -1;
-    for (unsigned i = 0; i < d->fmt->nb_streams; i++) {
-        AVCodecParameters* p = d->fmt->streams[i]->codecpar;
+    int ret = -1;
+    int stream = -1;
+    AVFormatContext* fmt = NULL;
+    AVCodecContext*  dec = NULL;
+    SwrContext*      swr = NULL;
+
+    if (avformat_open_input(&fmt, path, NULL, NULL) != 0) goto done;
+    if (avformat_find_stream_info(fmt, NULL) < 0) goto done;
+    for (unsigned i = 0; i < fmt->nb_streams; i++) {
+        AVCodecParameters* p = fmt->streams[i]->codecpar;
         if (p->codec_type != AVMEDIA_TYPE_AUDIO) continue;
         const AVCodec* codec = avcodec_find_decoder(p->codec_id);
-        if (!codec) return -1;
-        d->dec = avcodec_alloc_context3(codec);
-        if (!d->dec) return -1;
-        if (avcodec_parameters_to_context(d->dec, p) < 0) return -1;
-        if (avcodec_open2(d->dec, codec, NULL) < 0) return -1;
+        if (!codec) goto done;
+        dec = avcodec_alloc_context3(codec);
+        if (!dec) goto done;
+        if (avcodec_parameters_to_context(dec, p) < 0) goto done;
+        if (avcodec_open2(dec, codec, NULL) < 0) goto done;
         AVChannelLayout out_layout = AV_CHANNEL_LAYOUT_STEREO;
-        if (swr_alloc_set_opts2(&d->swr, &out_layout, AV_SAMPLE_FMT_FLT, 44100,
-                                &d->dec->ch_layout, d->dec->sample_fmt,
-                                d->dec->sample_rate, 0, NULL) == 0 && d->swr)
-            swr_init(d->swr);
-        d->stream = (int)i;
+        if (swr_alloc_set_opts2(&swr, &out_layout, AV_SAMPLE_FMT_FLT, 44100,
+                                &dec->ch_layout, dec->sample_fmt,
+                                dec->sample_rate, 0, NULL) == 0 && swr)
+            swr_init(swr);
+        stream = (int)i;
         break;
     }
-    if (!d->dec) return -1;
+    if (!dec || stream < 0) goto done;
+
+    d->fmt = fmt; d->dec = dec; d->swr = swr; d->stream = stream;
+    fmt = NULL; dec = NULL; swr = NULL;
     d->opened = 1;
     d->eof = 0;
     d->paused = 0;
-    return 0;
+    ret = 0;
+done:
+    /* chemins d'erreur : libérer proprement (pas de fuite) */
+    if (swr) { swr_free(&swr); swr = NULL; }
+    if (dec) { avcodec_free_context(&dec); dec = NULL; }
+    if (fmt) { avformat_close_input(&fmt); fmt = NULL; }
+    return ret;
 }
 
 /* Remplit fbuf (frames stéréo 44,1 kHz) ; retourne le nombre de frames. */
@@ -543,16 +569,24 @@ static DWORD WINAPI stream_thread(void* arg)
     };
     send_all(c, (const char*)wav, 44);
 
-    static float fbuf[1024 * 2];
-    static uint8_t obuf[4096];
+    /* tampons propres à CE thread : un thread par connexion → jamais
+     * de static partagé (deux clients se corrompraient) */
+    float* fbuf = (float*)malloc(1024 * 2 * sizeof(float));
+    uint8_t* obuf = (uint8_t*)malloc(4096);
+    if (!fbuf || !obuf) {
+        free(fbuf);
+        free(obuf);
+        closesocket(c);
+        return 0;
+    }
     uint32_t idle = 0;
     float vol = 1.0f;
     while (g_running) {
         uint32_t n = g_h->web_read(fbuf, 1024);
         if (n == 0) {
             if (++idle > 50) {
-                memset(obuf, 0, sizeof(obuf));
-                if (send(c, (const char*)obuf, sizeof(obuf), 0) <= 0) break;
+                memset(obuf, 0, 4096);
+                if (send(c, (const char*)obuf, 4096, 0) <= 0) break;
                 idle = 0;
             }
             Sleep(20);
@@ -570,6 +604,8 @@ static DWORD WINAPI stream_thread(void* arg)
         if (send(c, (const char*)obuf, (int)(n * 4), 0) <= 0) break;
     }
     closesocket(c);
+    free(fbuf);
+    free(obuf);
     return 0;
 }
 
@@ -604,8 +640,9 @@ static void dispatch(SOCKET c)
         closesocket(c);
     } else if (!strncmp(path, "/dj/streamA", 11) ||
                !strncmp(path, "/dj/streamB", 11)) {
-        /* table de mixage : platine A ou B (le deck est indiqué par l'URL) */
-        int deck = path[4] == 'A' ? 0 : 1;
+        /* table de mixage : platine A ou B.
+         * path = "/dj/streamA?idx=…" → le deck est à path[10] */
+        int deck = path[10] == 'A' ? 0 : 1;
         const char* q = strchr(path, '=');
         int idx = q ? atoi(q + 1) : -1;
         if (idx >= 0 && idx < g_h->plist_count()) {
@@ -642,10 +679,12 @@ static void dispatch(SOCKET c)
                 cdata[2] == 'N' && cdata[3] == 'G')
                 ct = "image/png";
             char hdr[256];
-            int hl = _snprintf(hdr, sizeof(hdr),
+            int hl = snprintf(hdr, sizeof(hdr),
                 "HTTP/1.1 200 OK\r\nContent-Type: %s\r\n"
                 "Content-Length: %d\r\nCache-Control: no-cache\r\n"
                 "Connection: close\r\n\r\n", ct, (int)clen);
+            if (hl < 0) hl = 0;
+            if (hl >= (int)sizeof(hdr)) hl = (int)sizeof(hdr) - 1;
             send_all(c, hdr, hl);
             send_all(c, (const char*)cdata, (int)clen);
         } else {
@@ -756,7 +795,7 @@ static void pl_service(mp_plugin* self, int event, void* data)
     if (g_h->web_enabled && g_h->web_enabled()) {
         if (server_start(g_h->web_port(), g_h->web_ips()) == 0) {
             char msg[256];
-            _snprintf(msg, sizeof(msg), "Web server listening on port %d",
+            snprintf(msg, sizeof(msg), "Web server listening on port %d",
                       g_h->web_port());
             if (g_h->log) g_h->log(msg);
         } else if (g_h->log) {
