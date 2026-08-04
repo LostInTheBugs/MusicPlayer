@@ -261,7 +261,7 @@ static const mp_host_api g_host = {
 /* ------------------------------------------------------------------ */
 static void load_plugins(void)
 {
-    mp_plugins_scan(g_plugins_dir, NULL, &g_host);
+    mp_plugins_scan(g_plugins_dir, NULL, &g_host, 1);
 }
 
 /* ------------------------------------------------------------------ */

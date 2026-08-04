@@ -23,6 +23,8 @@
 #include <libavutil/avutil.h>
 
 #include "player.h"
+#include "client_core.h"
+#include "stream_player.h"
 #include "plugin.h"
 #include "plugin_loader.h"
 #include "lang.h"
@@ -110,9 +112,9 @@ static void playlist_win_highlight(void);
 /* Playlist : lecture d'un dossier (avec ses sous-dossiers)            */
 /* ------------------------------------------------------------------ */
 #define PLAYLIST_MAX 4096
-static wchar_t* g_plist[PLAYLIST_MAX];
-static int      g_plist_n = 0;
-static int      g_plist_idx = -1;
+wchar_t* g_plist[PLAYLIST_MAX];
+int      g_plist_n = 0;
+int      g_plist_idx = -1;
 static wchar_t  g_plist_dir[MAX_PATH] = { 0 };   /* dossier de la playlist */
 
 static void playlist_clear(void)
@@ -133,67 +135,32 @@ static void playlist_add(const wchar_t* path, int owned)
     if (g_plist[g_plist_n]) g_plist_n++;
 }
 
-static void playlist_scan(const wchar_t* dir)
-{
-    wchar_t pat[MAX_PATH];
-    swprintf(pat, MAX_PATH, L"%ls\\*", dir);
-    WIN32_FIND_DATAW fd;
-    HANDLE h = FindFirstFileW(pat, &fd);
-    if (h == INVALID_HANDLE_VALUE) return;
-    do {
-        if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
-            if (wcscmp(fd.cFileName, L".") != 0 && wcscmp(fd.cFileName, L"..") != 0) {
-                wchar_t sub[MAX_PATH];
-                swprintf(sub, MAX_PATH, L"%ls\\%ls", dir, fd.cFileName);
-                playlist_scan(sub);
-            }
-        } else {
-            const wchar_t* e = wcsrchr(fd.cFileName, L'.');
-            if (e && (!_wcsicmp(e, L".mp3") || !_wcsicmp(e, L".mp4")) &&
-                g_plist_n < PLAYLIST_MAX) {
-                size_t cap = wcslen(dir) + wcslen(fd.cFileName) + 2;
-                wchar_t* full = (wchar_t*)malloc(cap * sizeof(wchar_t));
-                if (full) {
-                    swprintf(full, cap, L"%ls\\%ls", dir, fd.cFileName);
-                    g_plist[g_plist_n++] = full;
-                }
-            }
-        }
-    } while (FindNextFileW(h, &fd));
-    FindClose(h);
-}
-
-static int playlist_cmp(const void* a, const void* b)
-{
-    return _wcsicmp(*(const wchar_t* const*)a, *(const wchar_t* const*)b);
-}
-
 static int playlist_play_index(int i)
 {
     if (i < 0 || i >= g_plist_n) return -1;
     g_plist_idx = i;
     if (g_cd_mode) {
-        /* CD audio : la piste i+1 via MCI */
+        /* CD audio : la piste i+1 via MCI (local au client) */
         cd_play(i + 1);
         status_update();
         return 0;
     }
-    char utf8[MAX_PATH * 3];
-    wide_to_utf8(g_plist[i], utf8, sizeof(utf8));
-    int rc = mp_open(utf8);
+    /* client/serveur : le moteur joue l'index de SA playlist */
+    cc_cmd_val("playidx", i);
     playlist_win_highlight();
-    return rc;
+    return 0;
 }
 
-/* Ouvre un dossier en playlist : scan récursif + tri + lecture du premier */
+/* Ouvre un dossier en playlist : le moteur scanne (SA playlist), le
+ * client synchronise la sienne via /api/plist. */
 static int playlist_open_folder(const wchar_t* dir)
 {
     wcscpy(g_plist_dir, dir);
-    playlist_clear();
-    playlist_scan(dir);
-    if (g_plist_n == 0) return -1;
-    qsort(g_plist, g_plist_n, sizeof(wchar_t*), playlist_cmp);
-    return playlist_play_index(0);
+    char utf8[MAX_PATH * 3];
+    wide_to_utf8(dir, utf8, sizeof(utf8));
+    cc_cmd_path("open", utf8);
+    cc_plist_refresh();
+    return 0;
 }
 
 /* Passe au morceau suivant ; en mode aléatoire : index au hasard ;
@@ -220,7 +187,7 @@ static void playlist_next(void)
     }
     if (g_plist_idx + 1 >= g_plist_n) {
         g_plist_idx = g_plist_n;       /* marque la fin de la playlist */
-        mp_stop();
+        cc_cmd("stop");
     } else if (playlist_play_index(g_plist_idx + 1) != 0) {
         g_plist_idx++;                 /* fichier illisible : on saute */
         playlist_next();
@@ -228,13 +195,7 @@ static void playlist_next(void)
     status_update();
 }
 
-/* Appelé par le timer : enchaîne automatiquement à la fin d'un morceau */
-static void playlist_tick(void)
-{
-    if (g_plist_n > 0 && g_plist_idx >= 0 && g_plist_idx < g_plist_n &&
-        mp_get_state() == MP_STATE_FINISHED)
-        playlist_next();
-}
+/* (l'enchaînement des morceaux est géré par le CORE — playlist_tick) */
 
 /* Passe au morceau précédent (boucle sur la fin de la playlist) */
 static void playlist_prev(void)
@@ -314,17 +275,17 @@ static int find_free_port(void)
 /* ------------------------------------------------------------------ */
 /* API hôte exposée aux plugins                                        */
 /* ------------------------------------------------------------------ */
-static const char* host_file_name(void) { return mp_get_file_name(); }
-static int         host_get_state(void) { return (int)mp_get_state(); }
-static double      host_get_position(void) { return mp_get_position(); }
-static double      host_get_duration(void) { return mp_get_duration(); }
-static float       host_get_volume(void) { return mp_get_volume(); }
-static float       host_get_speed(void) { return mp_get_speed(); }
-static void        host_play_pause(void) { mp_play_pause(); }
-static void        host_stop(void) { mp_stop(); }
+static const char* host_file_name(void) { return cc_name(); }
+static int         host_get_state(void) { return (int)cc_st(); }
+static double      host_get_position(void) { return cc_pos(); }
+static double      host_get_duration(void) { return cc_dur(); }
+static float       host_get_volume(void) { return sp_get_volume(); }
+static float       host_get_speed(void) { return cc_speed(); }
+static void        host_play_pause(void) { cc_cmd("playpause"); }
+static void        host_stop(void) { cc_cmd("stop"); }
 static void        host_next(void) { playlist_next(); }
-static void        host_set_volume(float v) { mp_set_volume(v); }
-static void        host_set_speed(float s) { mp_set_speed(s); }
+static void        host_set_volume(float v) { sp_set_volume(v); }
+static void        host_set_speed(float s) { cc_cmd_val("speed", s); }
 static void        host_set_audio_out(int m) { mp_set_audio_out(m); }
 static int         host_get_audio_out(void) { return mp_get_audio_out(); }
 static void        host_shuffle_toggle(void)
@@ -383,7 +344,7 @@ static int         host_web_audio(void) { return g_web_audio; }
 static const char* host_web_ips(void) { return g_web_ips_cfg; }
 static int         host_web_find_free_port(void) { return find_free_port(); }
 static uint32_t    host_web_read(float* dst, uint32_t frames)
-{ return mp_web_read(dst, frames); }
+{ return sp_web_read(dst, frames); }
 
 /* ------------------------------------------------------------------ */
 /* Skins : palette de couleurs (modifiée par les plugins SKIN)         */
@@ -747,7 +708,7 @@ static void status_update(void)
     if (!g_status) return;
 
     wchar_t s1[280], s2[32], s3[32], s4[48];
-    const char* fn = mp_get_file_name();
+    const char* fn = cc_name();
     if (fn) {
         /* titre issu des métadonnées (plugin SERVICE) si disponible */
         const char* title = mp_plugins_get_title(fn);
@@ -767,14 +728,14 @@ static void status_update(void)
         swprintf(s1, 280, L"[%d/%d] %ls", g_plist_idx + 1, g_plist_n, tmp);
     }
 
-    double pos = mp_get_position(), dur = mp_get_duration();
+    double pos = cc_pos(), dur = cc_dur();
     wchar_t p[16], d[16];
     fmt_time(p, 16, pos);
     fmt_time(d, 16, dur);
     swprintf(s2, 32, L" %ls / %ls", p, d);
 
-    swprintf(s3, 32, L" x%.1f", mp_get_speed());
-    swprintf(s4, 48, lang_get("vol_show"), (int)(mp_get_volume() * 100.0f + 0.5f));
+    swprintf(s3, 32, L" x%.1f", cc_speed());
+    swprintf(s4, 48, lang_get("vol_show"), (int)(sp_get_volume() * 100.0f + 0.5f));
 
     SendMessageW(g_status, SB_SETTEXT, 0, (LPARAM)s1);
     SendMessageW(g_status, SB_SETTEXT, 1, (LPARAM)s2);
@@ -784,7 +745,7 @@ static void status_update(void)
     /* titre + état dans la zone centrale */
     static const char* state_keys[] = { "state_stopped", "state_playing", "state_paused", "state_finished" };
     wchar_t title[320];
-    swprintf(title, 320, L"%ls — %ls", APP_TITLE, lang_get(state_keys[mp_get_state()]));
+    swprintf(title, 320, L"%ls — %ls", APP_TITLE, lang_get(state_keys[cc_st()]));
     SetWindowTextW(g_hwnd, title);
     InvalidateRect(g_hwnd, NULL, FALSE);
 }
@@ -805,7 +766,7 @@ static HMENU build_speed_menu(void)
 
 static void refresh_speed_check(HMENU menu)
 {
-    float sp = mp_get_speed();
+    float sp = cc_speed();
     int idx = 1; /* défaut x1.0 */
     for (int i = 0; i < SPEED_COUNT; i++)
         if (SPEED_VALUES[i] == sp) idx = i;
@@ -1001,7 +962,7 @@ static void do_open_dialog(void)
     if (GetOpenFileNameW(&ofn)) {
         char path_utf8[MAX_PATH * 3];
         wide_to_utf8(path_w, path_utf8, sizeof(path_utf8));
-        if (mp_open(path_utf8) != 0) {
+        if (cc_open(path_utf8) != 0) {
             wchar_t msg[600];
             swprintf(msg, 600, lang_get("err_open"), path_w);
             MessageBoxW(g_hwnd, msg, APP_TITLE, MB_ICONERROR);
@@ -1779,14 +1740,14 @@ static void resume_last_session(void)
             }
         }
     } else {
-        mp_open(g_cfg.last_path);
+        cc_open(g_cfg.last_path);
     }
 }
 
 static void save_state(void)
 {
-    g_cfg.volume = (int)(mp_get_volume() * 100.0f + 0.5f);
-    g_cfg.speed = mp_get_speed();
+    g_cfg.volume = (int)(sp_get_volume() * 100.0f + 0.5f);
+    g_cfg.speed = cc_speed();
     g_cfg.shuffle = g_shuffle;
     g_cfg.web_enabled = g_web_enabled;
     g_cfg.web_port = g_web_port;
@@ -1800,8 +1761,8 @@ static void save_state(void)
                          sizeof(g_cfg.last_file));
         else
             g_cfg.last_file[0] = 0;
-    } else if (mp_get_file_name()) {
-        strncpy(g_cfg.last_path, mp_get_file_name(), sizeof(g_cfg.last_path) - 1);
+    } else if (cc_name()) {
+        strncpy(g_cfg.last_path, cc_name(), sizeof(g_cfg.last_path) - 1);
         g_cfg.last_path[sizeof(g_cfg.last_path) - 1] = 0;
         g_cfg.last_file[0] = 0;
     }
@@ -2100,7 +2061,7 @@ static void paint_controls(HDC hdc, const RECT* rc)
     DeleteObject(bplay);
     RECT gp = g_rc_play;
     gp.left += 3; gp.right -= 3; gp.top += 3; gp.bottom -= 3;
-    draw_glyph_play(hdc, &gp, mp_get_state() == MP_STATE_PLAYING);
+    draw_glyph_play(hdc, &gp, cc_st() == MP_STATE_PLAYING);
 
     /* bouton stop */
     HBRUSH bstop = CreateSolidBrush(g_skin.accent2);
@@ -2157,7 +2118,7 @@ static void paint_controls(HDC hdc, const RECT* rc)
     /* curseur de volume : 0..100% (bleu) puis boost 100..200% (orange) */
     draw_glyph_volume(hdc, g_rc_vol.left - 14, g_rc_vol.top);
     int vw = g_rc_vol.right - g_rc_vol.left;
-    float vol = mp_get_volume();
+    float vol = sp_get_volume();
     int fill = (int)(vol * 0.5f * vw);          /* position du curseur */
     int mid = vw / 2;                            /* marque 100 % */
     HBRUSH track = CreateSolidBrush(g_skin.track);
@@ -2201,7 +2162,7 @@ static void vol_from_mouse(int x)
     float v = (float)(x - g_rc_vol.left) / w * 2.0f;   /* 0..200 % */
     if (v < 0.0f) v = 0.0f;
     if (v > 2.0f) v = 2.0f;
-    mp_set_volume(v);
+    sp_set_volume(v);
     status_update();
 }
 
@@ -2283,8 +2244,8 @@ static void draw_progress_bar(HDC hdc, const RECT* rc)
     }
 
     /* remplissage */
-    double dur = mp_get_duration();
-    double pos = mp_get_position();
+    double dur = cc_dur();
+    double pos = cc_pos();
     if (dur > 0.0 && pos > 0.0) {
         double ratio = pos / dur;
         if (ratio > 1.0) ratio = 1.0;
@@ -2482,7 +2443,7 @@ static void paint_dj_console(HDC hdc, const RECT* rc)
         g_dj_spitch.right = r.right - 100;
         g_dj_spitch.top = r.bottom - 22;
         g_dj_spitch.bottom = g_dj_spitch.top + 10;
-        float sp = (mp_get_speed() - 0.5f) / 1.5f;
+        float sp = (cc_speed() - 0.5f) / 1.5f;
         if (sp < 0.0f) sp = 0.0f; else if (sp > 1.0f) sp = 1.0f;
         draw_dj_slider(hdc, &g_dj_spitch, sp, RGB(122, 162, 247));
         SetTextColor(hdc, RGB(232, 238, 244));
@@ -2505,7 +2466,7 @@ static void dj_drag_set(int which, POINT pt)
     if (which == 1)      mp_dj_a_set_vol(v);
     else if (which == 2) mp_dj_b_set_vol(v);
     else if (which == 3) mp_dj_set_xf(v);
-    else                 mp_set_speed(0.5f + v * 1.5f);
+    else                 cc_cmd_val("speed", 0.5f + v * 1.5f);
     InvalidateRect(g_hwnd, NULL, FALSE);
 }
 
@@ -2621,9 +2582,9 @@ static void paint_center(HDC hdc, RECT* rc)
         mp_plugins_visual_render(hdc, vis_rc.right - vis_rc.left, vis_rc.bottom - vis_rc.top);
     } else {
         SetBkMode(hdc, TRANSPARENT);
-        const char* fn = mp_get_file_name();
+        const char* fn = cc_name();
         static const char* state_keys[] = { "center_stopped", "center_playing", "center_paused", "center_finished" };
-        const wchar_t* st = lang_get(state_keys[mp_get_state()]);
+        const wchar_t* st = lang_get(state_keys[cc_st()]);
 
         HFONT big = CreateFontW(22, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
                                 DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
@@ -2667,7 +2628,7 @@ static void paint_center(HDC hdc, RECT* rc)
 /* ------------------------------------------------------------------ */
 static void fsview_paint_cover(HDC hdc, int w, int h)
 {
-    const char* name = mp_get_file_name();
+    const char* name = cc_name();
     if (!name) return;
     size_t len = 0;
     const unsigned char* img = host_get_cover(name, &len);
@@ -2747,7 +2708,7 @@ static void fsview_paint_lyrics(HDC hdc, int w, int h)
     RECT r = { 0, 0, w, h };
     FillRect(hdc, &r, bg);
     DeleteObject(bg);
-    const char* fn = mp_get_file_name();
+    const char* fn = cc_name();
     if (!fn) return;
     char lrc[MAX_PATH];
     _snprintf(lrc, sizeof(lrc), "%s", fn);
@@ -3080,9 +3041,9 @@ static void mouse_down(HWND hwnd, int x, int y)
             if (g_dj_track_a >= 0 && g_dj_track_a < g_plist_n)
                 playlist_play_index(g_dj_track_a);
         } else if (PtInRect(&g_dj_bpause_a, pt)) {
-            mp_play_pause();
+            cc_cmd("playpause");
         } else if (PtInRect(&g_dj_bstop_a, pt)) {
-            mp_stop();
+            cc_cmd("stop");
         } else if (PtInRect(&g_dj_bplay_b, pt)) {
             if (g_dj_track_b >= 0 && g_dj_track_b < g_plist_n) {
                 char utf8[MAX_PATH * 3];
@@ -3117,13 +3078,13 @@ static void mouse_down(HWND hwnd, int x, int y)
     /* clic sur la barre de progression : aller directement au moment
      * choisi (la barre est juste au-dessus de la rangée de boutons) */
     if (y >= rc.bottom - CTRL_H - PROGRESS_H && y < rc.bottom - CTRL_H) {
-        double dur = mp_get_duration();
+        double dur = cc_dur();
         int w = rc.right - rc.left;
         if (dur > 0.0 && w > 0) {
             double ratio = (double)(x - rc.left) / (double)w;
             if (ratio < 0.0) ratio = 0.0;
             if (ratio > 1.0) ratio = 1.0;
-            mp_seek(ratio * dur);
+            cc_cmd_val("seek", ratio * dur);
             status_update();
         }
         return;
@@ -3131,11 +3092,11 @@ static void mouse_down(HWND hwnd, int x, int y)
 
     if (x >= g_rc_play.left && x <= g_rc_play.right &&
         y >= g_rc_play.top && y <= g_rc_play.bottom) {
-        mp_play_pause();
+        cc_cmd("playpause");
         status_update();
     } else if (x >= g_rc_stop.left && x <= g_rc_stop.right &&
                y >= g_rc_stop.top && y <= g_rc_stop.bottom) {
-        mp_stop();
+        cc_cmd("stop");
         status_update();
     } else if (x >= g_rc_next.left && x <= g_rc_next.right &&
                y >= g_rc_next.top && y <= g_rc_next.bottom) {
@@ -3234,12 +3195,12 @@ static void on_command(int id, HMENU bar)
             else if (g_plist_idx >= 0) cd_play(g_plist_idx + 1);
             status_update();
         } else {
-            mp_play_pause();
+            cc_cmd("playpause");
         }
         break;
     case IDM_STOP:
         if (g_cd_mode) cd_stop();
-        else mp_stop();
+        else cc_cmd("stop");
         status_update();
         break;
     case IDM_NEXT:      playlist_next(); break;
@@ -3280,28 +3241,28 @@ static void on_command(int id, HMENU bar)
     case IDM_ABOUT:     do_about(); break;
 
     case IDM_VOL_UP: {
-        float v = mp_get_volume() + 0.05f;
+        float v = sp_get_volume() + 0.05f;
         if (v > 2.0f) v = 2.0f;
-        mp_set_volume(v);
+        sp_set_volume(v);
         status_update();
         break;
     }
     case IDM_VOL_DOWN: {
-        float v = mp_get_volume() - 0.05f;
+        float v = sp_get_volume() - 0.05f;
         if (v < 0.0f) v = 0.0f;
-        mp_set_volume(v);
+        sp_set_volume(v);
         status_update();
         break;
     }
     case IDM_PLUGIN_RELOAD:
-        mp_plugins_scan(g_plugins_dir, g_skins_dir, &g_host);
+        mp_plugins_scan(g_plugins_dir, g_skins_dir, &g_host, 0);
         mp_plugins_apply_skins(g_hwnd);
         rebuild_plugins_menu(menu_bar());
         break;
 
     default:
         if (id >= IDM_SPEED_BASE && id < IDM_SPEED_BASE + SPEED_COUNT) {
-            mp_set_speed(SPEED_VALUES[id - IDM_SPEED_BASE]);
+            cc_cmd_val("speed", SPEED_VALUES[id - IDM_SPEED_BASE]);
             refresh_speed_check(GetSubMenu(GetSubMenu(menu_bar(), 1), 0));
         } else if (id == IDM_PLUGIN_CFG) {
             do_plugins_dialog();
@@ -3379,7 +3340,7 @@ static LRESULT CALLBACK wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         } else {
             char path_utf8[MAX_PATH * 3];
             wide_to_utf8(path_w, path_utf8, sizeof(path_utf8));
-            if (mp_open(path_utf8) != 0) {
+            if (cc_open(path_utf8) != 0) {
                 wchar_t msg[600];
                 swprintf(msg, 600, lang_get("err_open"), path_w);
                 MessageBoxW(hwnd, msg, APP_TITLE, MB_ICONERROR);
@@ -3389,8 +3350,8 @@ static LRESULT CALLBACK wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
     }
     case WM_KEYDOWN:
         switch (wp) {
-        case VK_SPACE:   mp_play_pause(); break;
-        case 'S':        mp_stop(); break;
+        case VK_SPACE:   cc_cmd("playpause"); break;
+        case 'S':        cc_cmd("stop"); break;
         case 'N':        playlist_next(); break;
         case VK_UP:      SendMessageW(hwnd, WM_COMMAND, IDM_VOL_UP, 0); break;
         case VK_DOWN:    SendMessageW(hwnd, WM_COMMAND, IDM_VOL_DOWN, 0); break;
@@ -3450,8 +3411,11 @@ static LRESULT CALLBACK wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
             mp_update_check_async(hwnd, 0);
             return 0;
         }
-        if (wp == 1)
-            playlist_tick();       /* enchaîne à la fin d'un morceau */
+        if (wp == 1) {
+            /* état du moteur (client/serveur) ; l'enchaînement des
+             * morceaux est géré par le CORE (son playlist_tick) */
+            cc_poll();
+        }
         status_update();
         return 0;
 
@@ -3625,7 +3589,7 @@ static LRESULT CALLBACK wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
     case WM_CLOSE:
         save_state();
         mp_plugins_shutdown();
-        mp_shutdown();
+        sp_stop(); cc_stop();
         DestroyWindow(hwnd);
         return 0;
     case WM_DESTROY:
@@ -3751,12 +3715,13 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR lpCmdLine, int nCmdSh
     icc.dwICC = ICC_BAR_CLASSES;
     InitCommonControlsEx(&icc);
 
-    mp_init();
+    cc_start();
+    sp_start();   /* le client joue le flux du moteur (/stream) */
 
     /* configuration persistante : volume, vitesse, reprise de session */
     config_load();
-    mp_set_volume(g_cfg.volume / 100.0f);
-    mp_set_speed(g_cfg.speed);
+    sp_set_volume(g_cfg.volume / 100.0f);
+    cc_cmd_val("speed", g_cfg.speed);
     playlist_set_shuffle(g_cfg.shuffle);
     /* plein écran multi-écrans */
     g_fs_screens = g_cfg.fs_screens;
@@ -3771,7 +3736,7 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR lpCmdLine, int nCmdSh
         _snprintf(dbg, sizeof(dbg), "Plugins directory : %s", dir_utf8);
         log_line(dbg);
     }
-    mp_plugins_scan(g_plugins_dir, g_skins_dir, &g_host);
+    mp_plugins_scan(g_plugins_dir, g_skins_dir, &g_host, 0);
 
     /* vérification des mises à jour des plugins (manifeste plugins.json)
      * en arrière-plan : seul le plugin concerné est téléchargé */
@@ -3857,7 +3822,7 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR lpCmdLine, int nCmdSh
                 _snprintf(dbg, sizeof(dbg), "Command-line folder open failed : %s", file);
                 log_line(dbg);
             }
-        } else if (mp_open(file) != 0) {
+        } else if (cc_open(file) != 0) {
             char dbg[512];
             _snprintf(dbg, sizeof(dbg), "Command-line open failed : %s", file);
             log_line(dbg);

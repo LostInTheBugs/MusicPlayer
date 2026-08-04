@@ -193,9 +193,28 @@ static int load_one(const wchar_t* dir, const wchar_t* name, const mp_host_api* 
     return 0;
 }
 
+/* Plugins réseau (hébergés par le CORE dans core_plugins/) : le client
+ * ne doit pas les charger (double serveur, ports en conflit). */
+static const char* g_net_plugins[] = {
+    "webserver", "restapi", "upnp", "rtp", "multiroom", NULL
+};
+
+static int is_net_plugin(const wchar_t* dll_name)
+{
+    char b[64];
+    WideCharToMultiByte(CP_UTF8, 0, dll_name, -1, b, sizeof(b), NULL, NULL);
+    char* dot = strrchr(b, '.');
+    if (dot) *dot = 0;
+    for (int i = 0; g_net_plugins[i]; i++)
+        if (!_stricmp(b, g_net_plugins[i])) return 1;
+    return 0;
+}
+
 /* Analyse un répertoire <dir> (UTF-16) et charge chaque DLL exportant
- * mp_plugin_entry. */
-static void scan_dir(const wchar_t* dir, const mp_host_api* host)
+ * mp_plugin_entry. net_services = 0 : les plugins réseau sont ignorés
+ * (client) ; 1 : ils sont chargés (core). */
+static void scan_dir(const wchar_t* dir, const mp_host_api* host,
+                     int net_services)
 {
     wchar_t pattern[MAX_PATH];
     swprintf(pattern, MAX_PATH, L"%ls\\*.dll", dir);
@@ -207,13 +226,14 @@ static void scan_dir(const wchar_t* dir, const mp_host_api* host)
         return;
     }
     do {
+        if (!net_services && is_net_plugin(fd.cFileName)) continue;
         load_one(dir, fd.cFileName, host);
     } while (FindNextFileW(h, &fd));
     FindClose(h);
 }
 
 void mp_plugins_scan(const wchar_t* dir, const wchar_t* skins_dir,
-                     const mp_host_api* host)
+                     const mp_host_api* host, int net_services)
 {
     /* décharge tout d'abord */
     for (int i = 0; i < g_count; i++) unload(&g_plugins[i]);
@@ -222,9 +242,9 @@ void mp_plugins_scan(const wchar_t* dir, const wchar_t* skins_dir,
     wcsncpy(g_dir, dir, MAX_PATH - 1);
     g_dir[MAX_PATH - 1] = 0;
 
-    scan_dir(dir, host);                       /* plugins/ */
+    scan_dir(dir, host, net_services);         /* plugins/ */
     if (skins_dir && skins_dir[0])
-        scan_dir(skins_dir, host);             /* skins/ (à côté de l'exe) */
+        scan_dir(skins_dir, host, net_services); /* skins/ (à côté de l'exe) */
 }
 
 int mp_plugins_count(void) { return g_count; }

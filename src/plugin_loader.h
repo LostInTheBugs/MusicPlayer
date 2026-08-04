@@ -6,9 +6,11 @@
 
 /* Analyse le répertoire <dir> (UTF-16) et charge chaque DLL exportant
  * mp_plugin_entry, puis celles du dossier <skins_dir> (peut être NULL).
- * Les plugins déjà chargés sont déchargés d'abord. */
+ * Les plugins déjà chargés sont déchargés d'abord.
+ * net_services : 0 = les plugins réseau (webserver, restapi, upnp, rtp,
+ * multiroom) sont ignorés (client) ; 1 = chargés (core). */
 void mp_plugins_scan(const wchar_t* dir, const wchar_t* skins_dir,
-                     const mp_host_api* host);
+                     const mp_host_api* host, int net_services);
 
 /* Nombre de plugins chargés. */
 int mp_plugins_count(void);

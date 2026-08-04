@@ -2,6 +2,19 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.040] — 2026-08-04
+
+### Added (architecture client/serveur — phase 2 : client branché)
+- **Le client pilote le moteur** (`MusicPlayer.exe` → `musicplayer-core.exe`) :
+  - au démarrage, le client **lance le moteur** s'il ne tourne pas (et l'**arrête à la fermeture** : API shutdown + arrêt forcé en secours) ;
+  - toutes les commandes passent par l'API REST (play, pause, stop, next, prev, seek, speed, shuffle, open, playidx) ;
+  - l'état (position, durée, titre, métadonnées) arrive par **polling** `/api/state` (250 ms) ;
+  - la **playlist du client est synchronisée** via `/api/plist` (le moteur scanne, le client affiche)
+- **Lecteur de flux local** (`stream_player.c`) : le client reçoit le PCM du moteur (`/stream`) et le joue sur sa carte son — volume local, **effets plugins** (equalizer, sound quality), **mix DJ local** et **analyse des visuels** dans le callback
+- **TeamSpeak côté client** : le plugin diffuse le flux reçu (host `web_read` → flux local)
+- **Plugins réseau retirés du client** : webserver/restapi/upnp/rtp/multiroom ne sont chargés que par le **core** (`core_plugins/`) — plus de double serveur ni de conflit de ports (filtre dans le loader)
+- Testé sous Wine : le client lance le core, synchronise la playlist (3 morceaux), la lecture s'enchaîne et se termine sur le moteur, TeamSpeak démarre côté client
+
 ## [2026.08.039] — 2026-08-04
 
 ### Added (architecture client/serveur — phase 1 : moteur autonome)
