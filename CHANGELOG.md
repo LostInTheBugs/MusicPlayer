@@ -2,6 +2,16 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.042] — 2026-08-04
+
+### Added (architecture client/serveur — le mode DJ passe côté moteur)
+Décision d'architecture appliquée : **le mix DJ se fait dans le moteur**, pas sur le client.
+- **`musicplayer-core.exe`** : le flux diffusé (`/stream`, webserver, RTP, Multiroom…) contient désormais le **mix des platines A (flux principal) et B (2e décodeur du moteur)** avec volumes + crossfader
+- **API REST** : nouvelles commandes `dj_open_b` (path), `dj_play_b`, `dj_stop_b`, `dj_xf` (crossfader), `dj_vol_a`, `dj_vol_b`
+- **Client** : la console DJ pilote le moteur par l'API (le mix local est retiré — le flux reçu contient déjà le mix) ; les sliders affichent les valeurs envoyées
+- Conséquence : le mix DJ est identique sur **tous** les consommateurs (haut-parleur du client, téléphone, RTP, Multiroom)
+- Vérifié sous Wine : commandes DJ ok, flux /stream complet avec le DJ actif, SELFTEST PASS
+
 ## [2026.08.041-c2] — 2026-08-04
 
 ### Fixed (RTP et Multiroom se volaient les échantillons)

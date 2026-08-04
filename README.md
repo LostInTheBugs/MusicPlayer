@@ -11,7 +11,7 @@ cross-compiled from Linux with MinGW-w64.
 - **Folder playback**: File ▸ Open folder… (or drag & drop a folder, or pass it on the command line) — all MP3/MP4 are played in order, subfolders included, next track starts automatically
 - **CD audio playback**: File ▸ Open CD… (MCI) — tracks listed as “CD Track N”, auto-advance
 - **Web server (remote control)**: Settings ▸ Web server… — open the page from your phone/tablet: control playback, see metadata (title/artist/album/year), the cover, the playlist with the current track highlighted, and pick the audio output: this computer, phone, or both (WAV stream)
-- **DJ Mixing**: 2-deck mixer on the web page (volume, pitch ±12 %, 3-band EQ, crossfader, via Web Audio API) **and** on the computer itself (console with per-deck play/pause/stop, volumes, crossfader, pitch — deck B is a real second decoder mixed into the output); the mode is synchronized both ways (Settings ▸ DJ Mixing ⇄ web)
+- **DJ Mixing**: 2-deck mixer on the web page (volume, pitch ±12 %, 3-band EQ, crossfader, via Web Audio API) **and** on the computer itself (console with per-deck play/pause/stop, volumes, crossfader, pitch — deck B is a real second decoder **in the engine**, mixed into the stream and sent to every client); the mode is synchronized both ways (Settings ▸ DJ Mixing ⇄ web)
 - **Session persistence** (`config.yml` in `%APPDATA%\MusicPlayer`): volume, speed, last folder/file and web server config are saved on exit and restored on startup — playlists are rescanned (new files added, removed files dropped) and playback resumes on the current track
 - **True fullscreen** (F11 or the ⛶ button): covers the monitor under the cursor; **multi-screen fullscreen** configurable in Settings ▸ Interface… — number of screens used (auto-detected) and per-screen content: visual effect, playlist, lyrics or cover
 - **Playlist window** (Ctrl+L): numbered tracks, current track highlighted, double-click to play
@@ -28,7 +28,7 @@ cross-compiled from Linux with MinGW-w64.
 
 ## Version
 
-`2026.08.041-c2` — see [CHANGELOG.md](CHANGELOG.md)
+`2026.08.042` — see [CHANGELOG.md](CHANGELOG.md)
 
 ## Run on Windows 11
 

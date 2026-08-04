@@ -722,6 +722,12 @@ static DWORD WINAPI decode_thread(LPVOID unused)
                     av_frame_unref(frame);
 
                     if (got > 0) {
+#ifdef MP_CORE
+                        /* mix DJ côté MOTEUR : le flux diffusé contient
+                         * le mix des platines A (flux principal) et B
+                         * (deck local au moteur) + crossfader */
+                        mp_dj_mix_into(out_buf, (uint32_t)got);
+#endif
                         /* push avec backpressure (le callback consomme) */
                         uint32_t pushed = 0;
                         while (pushed < (uint32_t)got &&

@@ -208,8 +208,8 @@ static void data_cb(ma_device* dev, void* out, const void* in, ma_uint32 frames)
     if (got < frames)
         memset(dst + (size_t)got * 2, 0, (size_t)(frames - got) * 2 * sizeof(float));
 
-    /* platine B (mode DJ local) : mixée avec la platine A */
-    mp_dj_mix_into(dst, frames);
+    /* le mix DJ se fait côté MOTEUR (web_ring) : le flux reçu contient
+     * déjà le mix des platines A et B */
 
     /* effets audio des plugins (equalizer, sound quality…) */
     mp_plugins_audio_process(dst, frames, 2, g_dev_rate);

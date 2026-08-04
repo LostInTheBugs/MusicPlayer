@@ -89,6 +89,7 @@ static int  g_fs_win_count = 0; /* nb de fenêtres annexes ouvertes */
 static int  g_cd_mode = 0;        /* 1 = lecture CD audio (MCI) */
 static int  g_cd_was_playing = 0; /* détection fin de piste */
 static int  g_dj_mode = 0;        /* 1 = mode DJ Mixing (synchro web) */
+static float g_djv_a = 1.0f, g_djv_b = 1.0f, g_djxf = 0.5f;  /* affichage DJ (valeurs côté moteur) */
 static int  g_dj_track_a = -1;    /* piste choisie sur la platine A */
 static int  g_dj_track_b = -1;    /* piste choisie sur la platine B */
 static RECT g_dj_rc_a, g_dj_rc_b; /* platines de la console DJ locale */
@@ -344,11 +345,12 @@ static void        host_dj_toggle(void)
     if (g_dj_mode) {
         g_dj_track_a = g_plist_idx >= 0 ? g_plist_idx : 0;
         g_dj_track_b = (g_plist_idx + 1 < g_plist_n) ? g_plist_idx + 1 : 0;
-        mp_dj_a_set_vol(1.0f);
-        mp_dj_b_set_vol(1.0f);
-        mp_dj_set_xf(0.5f);
+        g_djv_a = 1.0f; g_djv_b = 1.0f; g_djxf = 0.5f;
+        cc_cmd_val("dj_vol_a", 1.0f);
+        cc_cmd_val("dj_vol_b", 1.0f);
+        cc_cmd_val("dj_xf", 0.5f);
     } else {
-        mp_dj_b_close();
+        cc_cmd("dj_stop_b");
     }
     if (g_hwnd) InvalidateRect(g_hwnd, NULL, FALSE);
     status_update();
@@ -2455,12 +2457,12 @@ static void paint_dj_console(HDC hdc, const RECT* rc)
     g_dj_svol_a.right = g_dj_rc_a.right - 8;
     g_dj_svol_a.top = g_dj_rc_a.top + 44;
     g_dj_svol_a.bottom = g_dj_svol_a.top + 10;
-    draw_dj_slider(hdc, &g_dj_svol_a, mp_dj_a_get_vol(), RGB(47, 111, 228));
+    draw_dj_slider(hdc, &g_dj_svol_a, g_djv_a, RGB(47, 111, 228));
     g_dj_svol_b.left = g_dj_rc_b.left + 8;
     g_dj_svol_b.right = g_dj_rc_b.right - 8;
     g_dj_svol_b.top = g_dj_rc_b.top + 44;
     g_dj_svol_b.bottom = g_dj_svol_b.top + 10;
-    draw_dj_slider(hdc, &g_dj_svol_b, mp_dj_b_get_vol(), RGB(47, 111, 228));
+    draw_dj_slider(hdc, &g_dj_svol_b, g_djv_b, RGB(47, 111, 228));
 
     /* boutons ▶ ⏸ ■ */
     int bw = (g_dj_rc_a.right - g_dj_rc_a.left - 28) / 3;
@@ -2503,7 +2505,7 @@ static void paint_dj_console(HDC hdc, const RECT* rc)
     g_dj_sxf.right = r.right - 100;
     g_dj_sxf.top = r.bottom - 42;
     g_dj_sxf.bottom = g_dj_sxf.top + 10;
-    draw_dj_slider(hdc, &g_dj_sxf, mp_dj_get_xf(), RGB(230, 126, 34));
+    draw_dj_slider(hdc, &g_dj_sxf, g_djxf, RGB(230, 126, 34));
     SetTextColor(hdc, RGB(232, 238, 244));
     RECT xa = { r.left + 8, g_dj_sxf.top - 3, r.left + 96, g_dj_sxf.bottom + 3 };
     DrawTextW(hdc, L"A", -1, &xa, DT_RIGHT | DT_VCENTER | DT_SINGLELINE);
@@ -2536,9 +2538,9 @@ static void dj_drag_set(int which, POINT pt)
     if (span <= 0) return;
     float v = (float)(pt.x - rc->left) / (float)span;
     if (v < 0.0f) v = 0.0f; else if (v > 1.0f) v = 1.0f;
-    if (which == 1)      mp_dj_a_set_vol(v);
-    else if (which == 2) mp_dj_b_set_vol(v);
-    else if (which == 3) mp_dj_set_xf(v);
+    if (which == 1)      { g_djv_a = v; cc_cmd_val("dj_vol_a", v); }
+    else if (which == 2) { g_djv_b = v; cc_cmd_val("dj_vol_b", v); }
+    else if (which == 3) { g_djxf = v;  cc_cmd_val("dj_xf", v); }
     else                 cc_cmd_val("speed", 0.5f + v * 1.5f);
     InvalidateRect(g_hwnd, NULL, FALSE);
 }
@@ -3121,13 +3123,12 @@ static void mouse_down(HWND hwnd, int x, int y)
             if (g_dj_track_b >= 0 && g_dj_track_b < g_plist_n) {
                 char utf8[MAX_PATH * 3];
                 wide_to_utf8(g_plist[g_dj_track_b], utf8, sizeof(utf8));
-                if (mp_dj_b_open(utf8) != 0)
-                    log_line("DJ deck B: open failed");
+                cc_cmd_path("dj_open_b", utf8);
             }
         } else if (PtInRect(&g_dj_bpause_b, pt)) {
-            mp_dj_b_pause();
+            cc_cmd("dj_play_b");
         } else if (PtInRect(&g_dj_bstop_b, pt)) {
-            mp_dj_b_close();
+            cc_cmd("dj_stop_b");
         } else if (PtInRect(&g_dj_svol_a, pt)) {
             g_dj_drag = 1;
             dj_drag_set(1, pt);
@@ -3292,11 +3293,12 @@ static void on_command(int id, HMENU bar)
         if (g_dj_mode) {
             g_dj_track_a = g_plist_idx >= 0 ? g_plist_idx : 0;
             g_dj_track_b = (g_plist_idx + 1 < g_plist_n) ? g_plist_idx + 1 : 0;
-            mp_dj_a_set_vol(1.0f);
-            mp_dj_b_set_vol(1.0f);
-            mp_dj_set_xf(0.5f);
+            g_djv_a = 1.0f; g_djv_b = 1.0f; g_djxf = 0.5f;
+            cc_cmd_val("dj_vol_a", 1.0f);
+            cc_cmd_val("dj_vol_b", 1.0f);
+            cc_cmd_val("dj_xf", 0.5f);
         } else {
-            mp_dj_b_close();
+            cc_cmd("dj_stop_b");
         }
         InvalidateRect(g_hwnd, NULL, FALSE);
         status_update();

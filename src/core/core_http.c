@@ -145,6 +145,20 @@ static void handle_cmd(SOCKET c, const char* body)
         core_plist_lock();
         core_plist_set_shuffle(!core_plist_get_shuffle());
         core_plist_unlock();
+    } else if (!strcmp(cmd, "dj_open_b")) {
+        char path[MAX_PATH * 2] = "";
+        json_str(body, "path", path, sizeof(path));
+        if (path[0]) mp_dj_b_open(path);
+    } else if (!strcmp(cmd, "dj_play_b")) {
+        mp_dj_b_pause();
+    } else if (!strcmp(cmd, "dj_stop_b")) {
+        mp_dj_b_close();
+    } else if (!strcmp(cmd, "dj_xf")) {
+        mp_dj_set_xf((float)json_num(body, "value", 0.5));
+    } else if (!strcmp(cmd, "dj_vol_a")) {
+        mp_dj_a_set_vol((float)json_num(body, "value", 1.0));
+    } else if (!strcmp(cmd, "dj_vol_b")) {
+        mp_dj_b_set_vol((float)json_num(body, "value", 1.0));
     } else if (!strcmp(cmd, "seek")) {
         mp_seek(json_num(body, "value", 0.0));
     } else if (!strcmp(cmd, "speed")) {
