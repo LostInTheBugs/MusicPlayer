@@ -45,6 +45,7 @@ enum {
     IDM_OPEN = 101, IDM_OPEN_FOLDER = 103, IDM_EXIT = 102,
     IDM_OPEN_CD = 104,
     IDM_PLAYPAUSE = 201, IDM_STOP = 202, IDM_NEXT = 203,
+    IDM_PREV = 204, IDM_SHUFFLE = 205,
     IDM_SPEED_BASE = 300,   /* +0 → 0.5x, +1 → 1.0x, +2 → 1.5x, +3 → 2.0x */
     IDM_VOL_UP = 401, IDM_VOL_DOWN = 402, IDM_VOL_SHOW = 403,
     IDM_PLUGIN_RELOAD = 501,
@@ -233,6 +234,19 @@ static void playlist_tick(void)
     if (g_plist_n > 0 && g_plist_idx >= 0 && g_plist_idx < g_plist_n &&
         mp_get_state() == MP_STATE_FINISHED)
         playlist_next();
+}
+
+/* Passe au morceau précédent (boucle sur la fin de la playlist) */
+static void playlist_prev(void)
+{
+    if (g_plist_n == 0) return;
+    int i = g_plist_idx - 1;
+    if (i < 0) i = g_plist_n - 1;
+    if (playlist_play_index(i) != 0) {
+        g_plist_idx = i;
+        playlist_prev();
+    }
+    status_update();
 }
 
 /* ------------------------------------------------------------------ */
@@ -870,6 +884,13 @@ static HMENU create_menus(void)
     AppendMenuW(mFile, MF_STRING, IDM_OPEN, lang_get("open"));
     AppendMenuW(mFile, MF_STRING, IDM_OPEN_FOLDER, lang_get("menu_open_folder"));
     AppendMenuW(mFile, MF_STRING, IDM_OPEN_CD, lang_get("menu_open_cd"));
+    AppendMenuW(mFile, MF_SEPARATOR, 0, NULL);
+    /* commandes de lecture */
+    AppendMenuW(mFile, MF_STRING, IDM_PLAYPAUSE, lang_get("menu_play"));
+    AppendMenuW(mFile, MF_STRING, IDM_STOP, lang_get("menu_stop"));
+    AppendMenuW(mFile, MF_STRING, IDM_NEXT, lang_get("menu_next"));
+    AppendMenuW(mFile, MF_STRING, IDM_PREV, lang_get("menu_prev"));
+    AppendMenuW(mFile, MF_STRING, IDM_SHUFFLE, lang_get("menu_shuffle"));
     AppendMenuW(mFile, MF_SEPARATOR, 0, NULL);
     AppendMenuW(mFile, MF_STRING, IDM_EXIT, lang_get("quit"));
     append_bar_item(bar, mFile, lang_get("menu_file"));
@@ -3216,6 +3237,13 @@ static void on_command(int id, HMENU bar)
         status_update();
         break;
     case IDM_NEXT:      playlist_next(); break;
+    case IDM_PREV:      playlist_prev(); break;
+    case IDM_SHUFFLE:
+        playlist_set_shuffle(!playlist_get_shuffle());
+        CheckMenuItem(GetSubMenu(menu_bar(), 0), IDM_SHUFFLE,
+                      MF_BYCOMMAND | (g_shuffle ? MF_CHECKED : MF_UNCHECKED));
+        status_update();
+        break;
     case IDM_FULLSCREEN: toggle_fullscreen(g_hwnd); break;
     case IDM_DJ_MODE:
         g_dj_mode = !g_dj_mode;
@@ -3470,6 +3498,11 @@ static LRESULT CALLBACK wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         }
         break;
     }
+    case WM_INITMENUPOPUP:
+        /* état de la commande Aléatoire dans le menu File */
+        CheckMenuItem((HMENU)wp, IDM_SHUFFLE,
+                      MF_BYCOMMAND | (g_shuffle ? MF_CHECKED : MF_UNCHECKED));
+        break;
     case WM_DRAWITEM: {
         DRAWITEMSTRUCT* di = (DRAWITEMSTRUCT*)lp;
         if (di->CtlType == ODT_MENU) {

@@ -2,6 +2,11 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.037-c2] — 2026-08-04
+
+### Added
+- **Commandes de lecture dans le menu File** : Play/Pause, Stop, Next, **Previous** (nouveau, boucle sur la playlist), **Shuffle** (case à cocher, état synchronisé à l'ouverture du menu) — accessibles aussi quand le menu est caché par un skin (clic droit)
+
 ## [2026.08.037-c1] — 2026-08-04
 
 ### Fixed (skins — 2e passe)
