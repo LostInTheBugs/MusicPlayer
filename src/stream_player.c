@@ -26,6 +26,15 @@
 static float* g_ring = NULL;
 static LONG   g_head = 0;   /* écrit par le thread réseau (RELEASE) */
 static LONG   g_tail = 0;   /* lu par le callback audio (RELEASE) */
+static LONG   g_peek_tail = 0;  /* curseur du lecteur "peek" (TS) :
+
+                                  le plugin TeamSpeak lit le flux via
+                                  web_read : s'il consommait le ring
+                                  (g_tail), le device principal ne
+                                  recevrait qu'une partie des échantillons
+                                  (son haché). Le peek avance son propre
+                                  curseur : le TS voit tout le flux SANS
+                                  voler les échantillons du device. */
 
 static void sp_ring_write(const float* data, uint32_t frames)
 {
@@ -67,7 +76,22 @@ static uint32_t sp_ring_read(float* dst, uint32_t frames)
 
 uint32_t sp_web_read(float* dst, uint32_t frames)
 {
-    return sp_ring_read(dst, frames);
+    /* LECTURE NON DESTRUCTIVE : le TS (ou tout lecteur web_read) voit
+     * le flux complet sans retirer les échantillons du device. */
+    LONG h = __atomic_load_n(&g_head, __ATOMIC_ACQUIRE);
+    LONG t = g_peek_tail;
+    uint32_t filled = (uint32_t)h - (uint32_t)t;
+    if (frames > filled) frames = filled;
+    if (frames == 0) return 0;
+    uint32_t rpos = (uint32_t)t & SP_RING_MASK;
+    uint32_t n1 = frames;
+    if (n1 > SP_RING_FRAMES - rpos) n1 = SP_RING_FRAMES - rpos;
+    memcpy(dst, g_ring + (size_t)rpos * 2, (size_t)n1 * 2 * sizeof(float));
+    if (n1 < frames)
+        memcpy(dst + (size_t)n1 * 2, g_ring,
+               (size_t)(frames - n1) * 2 * sizeof(float));
+    g_peek_tail = t + frames;   /* avance uniquement le curseur TS */
+    return frames;
 }
 
 /* ------------------------------------------------------------------ */
@@ -184,6 +208,11 @@ static DWORD WINAPI stream_thread(LPVOID arg)
         InternetSetOption(h, INTERNET_OPTION_RECEIVE_TIMEOUT, &rto, sizeof(rto));
         InternetSetOption(h, INTERNET_OPTION_CONNECT_TIMEOUT, &rto, sizeof(rto));
         if (HttpSendRequestA(h, NULL, 0, NULL, 0)) {
+            /* nouvelle connexion = nouveau flux : l'état du resample
+             * et le curseur TS repartent de zéro */
+            g_rsp = 0.0;
+            g_rsp_prev[0] = g_rsp_prev[1] = 0.0f;
+            g_peek_tail = g_tail;
             /* saute l'en-tête WAV (44 octets) */
             unsigned char wav[44];
             DWORD rd = 0;

@@ -2,6 +2,12 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.040-c2] — 2026-08-04
+
+### Fixed (son — cause racine)
+- **Le plugin TeamSpeak volait le flux audio du device principal** : il lisait le ring du flux via `web_read` de façon **destructive** — chaque échantillon n'était lu qu'une fois, soit par le haut-parleur, soit par le TS → son principal haché (la moitié des échantillons) et TS décalé. `sp_web_read` fait maintenant une **lecture non destructive** (curseur de lecture séparé) : le TS voit le flux complet sans retirer les échantillons du device
+- État du resample réinitialisé à chaque reconnexion au moteur
+
 ## [2026.08.040-c1] — 2026-08-04
 
 ### Fixed (son — régression 040)
