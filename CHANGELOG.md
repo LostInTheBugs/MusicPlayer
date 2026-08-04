@@ -2,6 +2,12 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.040-c1] — 2026-08-04
+
+### Fixed (son — régression 040)
+- **Désalignement L/R du flux** (le « son indescriptible ») : les lectures réseau (`InternetReadFile`) arrivent à des **tailles arbitraires** ; l'ancien code jetait les 1-3 octets restants à chaque lecture, désalignant progressivement les canaux gauche/droite (37 % des échantillons mélangés — mesuré). Le lecteur de flux conserve désormais les **octets résiduels** entre les lectures (buffer de report) : 0 échantillon désaligné sur 6 144 frames (testé)
+- **Pitch incorrect sur les cartes à 48 kHz** : le flux du moteur est à 44 100 Hz mais le device du client peut jouer à 48 000 — **resample linéaire** du flux vers le sample rate réel du device (position fractionnaire + interpolation, état conservé entre les blocs)
+
 ## [2026.08.040] — 2026-08-04
 
 ### Added (architecture client/serveur — phase 2 : client branché)

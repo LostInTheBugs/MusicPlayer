@@ -78,6 +78,53 @@ static int  g_device_ok = 0;
 static volatile LONG g_stop = 0;
 static HANDLE g_thread = NULL;
 static volatile LONG g_volume_pct = 80;   /* 0..100 (défaut config) */
+static uint32_t g_dev_rate = 44100;       /* sample rate réel du device */
+
+/* ------------------------------------------------------------------ */
+/* Resample linéaire 44 100 Hz (flux du moteur) → g_dev_rate.          */
+/* État conservé entre les blocs (position + dernier échantillon).     */
+/* ------------------------------------------------------------------ */
+static double g_rsp = 0.0;
+static float  g_rsp_prev[2] = { 0.0f, 0.0f };
+
+static uint32_t sp_resample(const float* in, uint32_t in_frames,
+                            float* out, uint32_t out_cap)
+{
+    if (g_dev_rate == 44100 || in_frames == 0) {
+        memcpy(out, in, in_frames * 2 * sizeof(float));
+        return in_frames;
+    }
+    double step = 44100.0 / (double)g_dev_rate;
+    double pos = g_rsp;
+    uint32_t idx = 0;
+    float cur_l = g_rsp_prev[0], cur_r = g_rsp_prev[1];
+    uint32_t produced = 0;
+    while (produced < out_cap && pos < (double)in_frames) {
+        uint32_t need = (uint32_t)pos;
+        while (idx <= need && idx < in_frames) {
+            cur_l = in[idx * 2];
+            cur_r = in[idx * 2 + 1];
+            idx++;
+        }
+        double frac = pos - (double)need;
+        float l, r;
+        if (need + 1 < in_frames) {
+            l = cur_l + (in[(need + 1) * 2] - cur_l) * (float)frac;
+            r = cur_r + (in[(need + 1) * 2 + 1] - cur_r) * (float)frac;
+        } else {
+            l = cur_l; r = cur_r;
+        }
+        out[produced * 2] = l;
+        out[produced * 2 + 1] = r;
+        produced++;
+        pos += step;
+    }
+    g_rsp = pos - (double)in_frames;
+    if (g_rsp < 0.0) g_rsp = 0.0;
+    g_rsp_prev[0] = cur_l;
+    g_rsp_prev[1] = cur_r;
+    return produced;
+}
 
 void sp_set_volume(float v)
 {
@@ -106,9 +153,9 @@ static void data_cb(ma_device* dev, void* out, const void* in, ma_uint32 frames)
     mp_dj_mix_into(dst, frames);
 
     /* effets audio des plugins (equalizer, sound quality…) */
-    mp_plugins_audio_process(dst, frames, 2, 44100);
+    mp_plugins_audio_process(dst, frames, 2, g_dev_rate);
     /* flux d'analyse pour les plugins visuels */
-    mp_plugins_audio_frames(dst, frames, 2, 44100);
+    mp_plugins_audio_frames(dst, frames, 2, g_dev_rate);
 }
 
 /* ------------------------------------------------------------------ */
@@ -145,23 +192,41 @@ static DWORD WINAPI stream_thread(LPVOID arg)
                 if (!InternetReadFile(h, wav + total, 44 - total, &rd) || rd == 0) break;
                 total += rd;
             }
-            /* boucle de réception : s16 → f32 → ring */
+            /* boucle de réception : s16 → f32 → resample → ring.
+             * Les lectures réseau arrivent à des tailles ARBITRAIRES :
+             * les octets résiduels (1-3) sont conservés entre les
+             * lectures, sinon les canaux L/R se désalignent (bruit). */
             unsigned char buf[8192];
+            unsigned char carry[3];
+            int carry_n = 0;
             float* fbuf = (float*)malloc(4096 * 2 * sizeof(float));
-            if (fbuf) {
+            float* obuf = (float*)malloc(8192 * 2 * sizeof(float));
+            if (fbuf && obuf) {
                 while (!g_stop) {
                     if (!InternetReadFile(h, buf, sizeof(buf), &rd) || rd == 0) break;
-                    if (rd % 4) rd -= rd % 4;
-                    for (DWORD i = 0; i + 3 < rd; i += 4) {
-                        short l = (short)((unsigned short)buf[i] | ((unsigned short)buf[i + 1] << 8));
-                        short r = (short)((unsigned short)buf[i + 2] | ((unsigned short)buf[i + 3] << 8));
+                    unsigned char full[8192 + 3];
+                    int fn = carry_n;
+                    memcpy(full, carry, (size_t)carry_n);
+                    memcpy(full + carry_n, buf, rd);
+                    fn += (int)rd;
+                    int usable = fn & ~3;          /* multiple de 4 */
+                    carry_n = fn - usable;
+                    memcpy(carry, full + usable, (size_t)carry_n);
+                    for (int i = 0; i < usable; i += 4) {
+                        short l = (short)((unsigned short)full[i] |
+                                          ((unsigned short)full[i + 1] << 8));
+                        short r = (short)((unsigned short)full[i + 2] |
+                                          ((unsigned short)full[i + 3] << 8));
                         fbuf[(i / 4) * 2]     = (float)l / 32768.0f;
                         fbuf[(i / 4) * 2 + 1] = (float)r / 32768.0f;
                     }
-                    sp_ring_write(fbuf, rd / 4);
+                    uint32_t got = sp_resample(fbuf, (uint32_t)(usable / 4),
+                                               obuf, 8192);
+                    if (got > 0) sp_ring_write(obuf, got);
                 }
-                free(fbuf);
             }
+            free(fbuf);
+            free(obuf);
         }
         InternetCloseHandle(h);
         InternetCloseHandle(conn);
@@ -188,6 +253,7 @@ int sp_start(void)
     if (ma_device_init(NULL, &cfg, &g_device) == MA_SUCCESS) {
         if (ma_device_start(&g_device) == MA_SUCCESS) {
             g_device_ok = 1;
+            if (g_device.sampleRate > 0) g_dev_rate = g_device.sampleRate;
             ma_device_set_master_volume(&g_device, sp_get_volume());
         } else {
             ma_device_uninit(&g_device);
