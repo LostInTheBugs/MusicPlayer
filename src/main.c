@@ -350,7 +350,7 @@ static void        host_dj_toggle(void)
     } else {
         mp_dj_b_close();
     }
-    if (g_hwnd) InvalidateRect(g_hwnd, NULL, TRUE);
+    if (g_hwnd) InvalidateRect(g_hwnd, NULL, FALSE);
     status_update();
 }
 static int         host_plist_count(void) { return g_plist_n; }
@@ -461,7 +461,7 @@ static void host_skin_set_colors(const mp_skin_colors* c)
     g_skin = *c;
     skin_reset_brushes();
     if (g_hwnd) {
-        InvalidateRect(g_hwnd, NULL, TRUE);
+        InvalidateRect(g_hwnd, NULL, FALSE);
         menu_bar_bg();
         status_update();
     }
@@ -480,7 +480,7 @@ static void host_skin_set_bg(const char* path_utf8)
         GpStatus st = GdipLoadImageFromFile(w, &g_skin_bg);
         (void)st;
     }
-    if (g_hwnd) InvalidateRect(g_hwnd, NULL, TRUE);
+    if (g_hwnd) InvalidateRect(g_hwnd, NULL, FALSE);
 }
 
 /* Zone du visualiseur imposée par le skin (ex. haut-parleur de la radio) */
@@ -490,7 +490,7 @@ static void host_skin_set_visual_rect(int x, int y, int w, int h)
     g_skin_vis.top = y;
     g_skin_vis.right = x + w;
     g_skin_vis.bottom = y + h;
-    if (g_hwnd) InvalidateRect(g_hwnd, NULL, TRUE);
+    if (g_hwnd) InvalidateRect(g_hwnd, NULL, FALSE);
 }
 
 /* Barre de menus courante (fonctionne même quand elle est cachée) */
@@ -514,7 +514,7 @@ static void host_skin_set_layout(int menu_visible, int ctrl_top)
     g_skin_ctrl_top = ctrl_top ? 1 : 0;
     if (g_hwnd) {
         apply_menu_visibility();
-        InvalidateRect(g_hwnd, NULL, TRUE);
+        InvalidateRect(g_hwnd, NULL, FALSE);
         status_update();
     }
 }
@@ -723,7 +723,7 @@ static void status_update(void)
     wchar_t title[320];
     swprintf(title, 320, L"%ls — %ls", APP_TITLE, lang_get(state_keys[mp_get_state()]));
     SetWindowTextW(g_hwnd, title);
-    InvalidateRect(g_hwnd, NULL, TRUE);
+    InvalidateRect(g_hwnd, NULL, FALSE);
 }
 
 /* ------------------------------------------------------------------ */
@@ -2394,7 +2394,7 @@ static void dj_drag_set(int which, POINT pt)
     else if (which == 2) mp_dj_b_set_vol(v);
     else if (which == 3) mp_dj_set_xf(v);
     else                 mp_set_speed(0.5f + v * 1.5f);
-    InvalidateRect(g_hwnd, NULL, TRUE);
+    InvalidateRect(g_hwnd, NULL, FALSE);
 }
 
 /* Sélecteur de piste d'une platine (menu popup façon "select") */
@@ -3131,7 +3131,7 @@ static void on_command(int id, HMENU bar)
         } else {
             mp_dj_b_close();
         }
-        InvalidateRect(g_hwnd, NULL, TRUE);
+        InvalidateRect(g_hwnd, NULL, FALSE);
         status_update();
         break;
     case IDM_INTERFACE:
@@ -3419,27 +3419,11 @@ static LRESULT CALLBACK wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         EndPaint(hwnd, &ps);
         return 0;
     }
-    case WM_ERASEBKGND: {
-        /* efface le fond (nécessaire au redimensionnement :
-         * les zones qui s'agrandissent doivent être repeintes) */
-        HDC hdc = (HDC)wp;
-        RECT rc;
-        GetClientRect(hwnd, &rc);
-        if (g_skin_bg) {
-            /* image de fond du skin, étirée sur toute la fenêtre */
-            GpGraphics* g = NULL;
-            if (GdipCreateFromHDC(hdc, &g) == Ok) {
-                GdipDrawImageRectI(g, g_skin_bg, 0, 0,
-                                   rc.right - rc.left, rc.bottom - rc.top);
-                GdipDeleteGraphics(g);
-            }
-        } else {
-            HBRUSH wb = CreateSolidBrush(g_skin.bg);
-            FillRect(hdc, &rc, wb);
-            DeleteObject(wb);
-        }
+    case WM_ERASEBKGND:
+        /* le double buffer du WM_PAINT couvre TOUTE la fenêtre (fond
+         * peint dans le mem DC) : ne rien effacer ici, sinon flash
+         * du fond à chaque frame (scintillement) */
         return 1;
-    }
     case WM_GETMINMAXINFO: {
         MINMAXINFO* mmi = (MINMAXINFO*)lp;
         mmi->ptMinTrackSize.x = 420;

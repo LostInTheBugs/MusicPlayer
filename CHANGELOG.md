@@ -2,6 +2,11 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.036-c2] — 2026-08-03
+
+### Fixed
+- **Scintillement de la fenêtre principale éliminé** : `WM_ERASEBKGND` ne redessine plus le fond directement sur l'écran à chaque frame (le double buffer du `WM_PAINT` couvre toute la fenêtre) et toutes les invalidations passent en mode non-effaçant — plus d'impression de « fenêtre qui se ferme et se rouvre » ; l'equalizer bénéficie du même traitement
+
 ## [2026.08.036-c1] — 2026-08-03
 
 ### Changed

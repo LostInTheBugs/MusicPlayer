@@ -300,13 +300,15 @@ static void eq_paint(HDC hdc)
 static LRESULT CALLBACK eq_proc(HWND h, UINT m, WPARAM w, LPARAM l)
 {
     switch (m) {
+    case WM_ERASEBKGND:
+        return 1;
     case WM_TIMER:
         eq_follow();
-        InvalidateRect(h, NULL, TRUE);   /* le skin peut avoir changé */
+        InvalidateRect(h, NULL, FALSE);   /* le skin peut avoir changé */
         return 0;
     case WM_SIZE:
         eq_layout();
-        InvalidateRect(h, NULL, TRUE);
+        InvalidateRect(h, NULL, FALSE);
         return 0;
     case WM_PAINT: {
         PAINTSTRUCT ps;
@@ -324,7 +326,7 @@ static LRESULT CALLBACK eq_proc(HWND h, UINT m, WPARAM w, LPARAM l)
         RECT xr = { W - 28, 6, W - 10, 20 };
         if (PtInRect(&on, pt)) {
             InterlockedExchange(&g_eq_on, !g_eq_on);
-            InvalidateRect(h, NULL, TRUE);
+            InvalidateRect(h, NULL, FALSE);
             return 0;
         }
         if (PtInRect(&xr, pt)) {
@@ -335,7 +337,7 @@ static LRESULT CALLBACK eq_proc(HWND h, UINT m, WPARAM w, LPARAM l)
             if (PtInRect(&g_sl[i], pt)) {
                 g_drag = i;
                 eq_drag(i, pt);
-                InvalidateRect(h, NULL, TRUE);
+                InvalidateRect(h, NULL, FALSE);
                 return 0;
             }
         }
@@ -345,7 +347,7 @@ static LRESULT CALLBACK eq_proc(HWND h, UINT m, WPARAM w, LPARAM l)
         if (g_drag >= 0) {
             POINT pt = { GET_X_LPARAM(l), GET_Y_LPARAM(l) };
             eq_drag(g_drag, pt);
-            InvalidateRect(h, NULL, TRUE);
+            InvalidateRect(h, NULL, FALSE);
             return 0;
         }
         break;
