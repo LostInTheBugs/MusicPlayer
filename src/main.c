@@ -2584,8 +2584,18 @@ static INT_PTR CALLBACK podcast_add_proc(HWND h, UINT m, WPARAM w, LPARAM l)
                     pod_json_str(resp, "title", title, sizeof(title));
                     pod_json_unescape(title);
                     if (!title[0]) {
-                        MessageBoxW(h, L"Invalid feed URL.", L"Podcasts",
-                                    MB_ICONERROR);
+                        char err[32];
+                        pod_json_str(resp, "error", err, sizeof(err));
+                        if (!strcmp(err, "network"))
+                            MessageBoxW(h,
+                                L"Network error while fetching the feed.\n"
+                                L"Check your connection and try again.",
+                                L"Podcasts", MB_ICONERROR);
+                        else
+                            MessageBoxW(h,
+                                L"Invalid feed URL (no RSS podcast feed "
+                                L"found at this address).",
+                                L"Podcasts", MB_ICONERROR);
                     } else {
                         wchar_t wtitle[512], msg[600];
                         MultiByteToWideChar(CP_UTF8, 0, title, -1, wtitle, 512);

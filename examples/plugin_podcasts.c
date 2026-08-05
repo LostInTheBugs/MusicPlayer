@@ -66,6 +66,7 @@ static int g_ep_n = 0;
 
 static void store_dir(wchar_t* out, int cap);
 static void strip_pipe(char* s);
+static void log_line(const char* msg);
 
 /* --- sources de podcasts (flux directs + annuaires de recherche) --- */
 #define MAX_SRC 16
@@ -236,45 +237,62 @@ static int fetch_url(const char* url, char** out, int* out_len)
 {
     wchar_t wurl[1024];
     MultiByteToWideChar(CP_UTF8, 0, url, -1, wurl, 1024);
-    HINTERNET inet = InternetOpenW(L"MusicPlayer-Podcasts",
-                                   INTERNET_OPEN_TYPE_DIRECT, NULL, NULL, 0);
-    if (!inet) return -1;
-    DWORD to = 20000;
-    InternetSetOptionW(inet, INTERNET_OPTION_CONNECT_TIMEOUT, &to, sizeof(to));
-    InternetSetOptionW(inet, INTERNET_OPTION_RECEIVE_TIMEOUT, &to, sizeof(to));
-    HINTERNET uh = InternetOpenUrlW(inet, wurl, NULL, 0,
-                                    INTERNET_FLAG_RELOAD |
-                                    INTERNET_FLAG_NO_CACHE_WRITE |
-                                    INTERNET_FLAG_SECURE, 0);
-    if (!uh) {
-        /* réessai sans le flag SECURE (http simple) */
-        uh = InternetOpenUrlW(inet, wurl, NULL, 0,
-                              INTERNET_FLAG_RELOAD |
-                              INTERNET_FLAG_NO_CACHE_WRITE, 0);
-    }
-    if (!uh) { InternetCloseHandle(inet); return -1; }
-    char buf[8192];
-    int cap = 16384, len = 0;
-    char* body = (char*)malloc(cap);
-    if (!body) { InternetCloseHandle(uh); InternetCloseHandle(inet); return -1; }
-    for (;;) {
-        DWORD got = 0;
-        if (!InternetReadFile(uh, buf, sizeof(buf), &got) || got == 0) break;
-        if (len + (int)got + 1 > cap) {
-            cap = (len + (int)got + 1) * 2;
-            char* nb = (char*)realloc(body, cap);
-            if (!nb) { free(body); InternetCloseHandle(uh); InternetCloseHandle(inet); return -1; }
-            body = nb;
+    /* 2 tentatives : les erreurs réseau sont souvent transitoires */
+    for (int attempt = 0; attempt < 2; attempt++) {
+        HINTERNET inet = InternetOpenW(L"MusicPlayer-Podcasts",
+                                       INTERNET_OPEN_TYPE_DIRECT, NULL, NULL, 0);
+        if (!inet) return -1;
+        DWORD to = 20000;
+        InternetSetOptionW(inet, INTERNET_OPTION_CONNECT_TIMEOUT, &to, sizeof(to));
+        InternetSetOptionW(inet, INTERNET_OPTION_RECEIVE_TIMEOUT, &to, sizeof(to));
+        HINTERNET uh = InternetOpenUrlW(inet, wurl, NULL, 0,
+                                        INTERNET_FLAG_RELOAD |
+                                        INTERNET_FLAG_NO_CACHE_WRITE |
+                                        INTERNET_FLAG_SECURE, 0);
+        if (!uh) {
+            /* réessai sans le flag SECURE (http simple) */
+            uh = InternetOpenUrlW(inet, wurl, NULL, 0,
+                                  INTERNET_FLAG_RELOAD |
+                                  INTERNET_FLAG_NO_CACHE_WRITE, 0);
         }
-        memcpy(body + len, buf, got);
-        len += (int)got;
+        if (!uh) {
+            InternetCloseHandle(inet);
+            if (attempt == 0) { Sleep(1500); continue; }
+            return -1;
+        }
+        char buf[8192];
+        int cap = 16384, len = 0;
+        char* body = (char*)malloc(cap);
+        if (!body) {
+            InternetCloseHandle(uh);
+            InternetCloseHandle(inet);
+            return -1;
+        }
+        int ok = 1;
+        for (;;) {
+            DWORD got = 0;
+            if (!InternetReadFile(uh, buf, sizeof(buf), &got) || got == 0) break;
+            if (len + (int)got + 1 > cap) {
+                cap = (len + (int)got + 1) * 2;
+                char* nb = (char*)realloc(body, cap);
+                if (!nb) { ok = 0; break; }
+                body = nb;
+            }
+            memcpy(body + len, buf, got);
+            len += (int)got;
+        }
+        InternetCloseHandle(uh);
+        InternetCloseHandle(inet);
+        if (ok && len > 0) {
+            body[len] = 0;
+            *out = body;
+            *out_len = len;
+            return 0;
+        }
+        free(body);
+        if (attempt == 0) Sleep(1500);
     }
-    InternetCloseHandle(uh);
-    InternetCloseHandle(inet);
-    body[len] = 0;
-    *out = body;
-    *out_len = len;
-    return 0;
+    return -1;
 }
 
 static void html_unescape(char* s)
@@ -454,13 +472,27 @@ static int add_subscription(const char* url, char* title_out, int title_sz,
 {
     char* xml = NULL;
     int len = 0;
-    if (fetch_url(url, &xml, &len) != 0) return -1;
+    if (fetch_url(url, &xml, &len) != 0) {
+        char m[320];
+        snprintf(m, sizeof(m), "Podcasts: fetch failed for %s", url);
+        log_line(m);
+        return -1;
+    }
     episode_t eps[MAX_EP];
     int n = 0;
     char title[256];
     parse_feed(xml, title, sizeof(title), eps, &n, MAX_EP, url);
+    {
+        char m[320];
+        snprintf(m, sizeof(m), "Podcasts: fetched %d o, %d episodes, title '%s'",
+                 len, n, title[0] ? title : "(none)");
+        log_line(m);
+    }
     free(xml);
-    if (n == 0 && !title[0]) return -1;   /* pas un flux RSS valide */
+    if (n == 0 && !title[0]) {
+        log_line("Podcasts: invalid feed (no title, no episodes)");
+        return -2;   /* pas un flux RSS valide */
+    }
 
     /* abonnement existant ? */
     int idx = -1;
@@ -888,7 +920,7 @@ static void handle_post(SOCKET c, const char* path, const char* body)
         int added = 0;
         int rc = add_subscription(url, title, sizeof(title), &added);
         if (rc == -1) {
-            send_json(c, 400, "{\"error\":\"invalid feed\"}");
+            send_json(c, 400, "{\"error\":\"network\"}");
         } else if (rc == -2) {
             send_json(c, 400, "{\"error\":\"too many subscriptions\"}");
         } else {

@@ -2,6 +2,12 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.045-c1] — 2026-08-05
+
+### Fixed (podcast « invalid feed » on a valid feed)
+- Feed fetch now retries once (network errors are often transient) — verified with `https://feeds.acast.com/public/shows/podcastscience`: **Podcast Science, 562 episodes** subscribed
+- **Distinct error messages**: « Network error while fetching the feed » (connection/DNS/TLS) vs « Invalid feed URL » (genuinely not an RSS podcast feed)
+
 ## [2026.08.045] — 2026-08-05
 
 ### Added (Podcasts: feed sources & search directories)
