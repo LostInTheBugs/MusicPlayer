@@ -2,7 +2,13 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
-## [2026.08.045-c1] — 2026-08-05
+## [2026.08.045-c3] — 2026-08-05
+
+### Added (plugin versions in Settings ▸ Plugins…)
+- New **Version** column in the plugins list (client plugins and engine plugins): each plugin now shows its build version
+- The podcasts plugin exposes its build version (`MP_BUILD_VERSION`) — check it reads `2026.08.045-c3` after downloading the plugin from the repository
+
+## [2026.08.045-c2] — 2026-08-05
 
 ### Fixed (podcast « invalid feed » on a valid feed)
 - Feed fetch now retries once (network errors are often transient) — verified with `https://feeds.acast.com/public/shows/podcastscience`: **Podcast Science, 562 episodes** subscribed
