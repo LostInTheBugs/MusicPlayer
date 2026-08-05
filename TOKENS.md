@@ -8,13 +8,13 @@ LLM token usage for this project, tallied session by session.
 |---|---|---|---|
 | Dev sessions (Hermes) | 1 | 1 | **2** |
 | Scripted agent sessions (API) | 0 | 0 | **0** |
-| Messages | 360 | 210 | **570** |
-| API calls | 2 159 | 94 | **2 253** |
-| Input tokens | 4 262 402 | 129 132 | **4 391 534** |
-| Output tokens | 2 649 463 | 38 529 | **2 687 992** |
-| **Subtotal (input + output)** | **6 911 865** | **167 661** | **7 079 526** |
-| Cache read (reused at reduced price) | 678 952 576 | 10 767 488 | **689 720 064** |
-| **Estimated cost** | **≈ 3.24 USD** | **≈ 0.13 USD** | **≈ 3.37 USD** |
+| Messages | 501 | 210 | **711** |
+| API calls | 2 222 | 94 | **2 316** |
+| Input tokens | 4 290 714 | 129 132 | **4 419 846** |
+| Output tokens | 2 705 868 | 38 529 | **2 744 397** |
+| **Subtotal (input + output)** | **6 996 582** | **167 661** | **7 164 243** |
+| Cache read (reused at reduced price) | 694 996 992 | 10 767 488 | **705 764 480** |
+| **Estimated cost** | **≈ 3.30 USD** | **≈ 0.13 USD** | **≈ 3.43 USD** |
 
 ## How to re-read the counter
 
@@ -38,4 +38,4 @@ After each dev session, copy the matching row into the table above.
   (audits, releases, background tasks) attached to this project.
 - `reasoning_tokens` is probably included in `output_tokens`
   (to be confirmed with the provider).
-- Tally updated on 2026-08-05 — 043-c5 (delete plugins).
+- Tally updated on 2026-08-05 — 044 (FFmpeg 9.0 runtime plugin).
