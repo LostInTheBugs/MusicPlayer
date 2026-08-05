@@ -64,6 +64,76 @@ static int g_pod_n = 0;
 static episode_t g_eps[MAX_EP];
 static int g_ep_n = 0;
 
+static void store_dir(wchar_t* out, int cap);
+static void strip_pipe(char* s);
+
+/* --- sources de podcasts (flux directs + annuaires de recherche) --- */
+#define MAX_SRC 16
+
+typedef struct {
+    char type[16];      /* "rss" (flux direct) ou "search" (annuaire) */
+    char name[128];
+    char url[512];      /* les annuaires contiennent {query} */
+} pod_source_t;
+
+static pod_source_t g_sources[MAX_SRC];
+static int g_src_n = 0;
+
+static void source_defaults(void)
+{
+    static const pod_source_t defs[] = {
+        { "search", "Apple Podcasts",
+          "https://itunes.apple.com/search?term={query}&media=podcast&limit=15" },
+    };
+    g_src_n = (int)(sizeof(defs) / sizeof(defs[0]));
+    for (int i = 0; i < g_src_n && i < MAX_SRC; i++)
+        g_sources[i] = defs[i];
+}
+
+static void source_load(void)
+{
+    wchar_t dir[MAX_PATH], path[MAX_PATH];
+    store_dir(dir, MAX_PATH);
+    swprintf(path, MAX_PATH, L"%ls\\sources.txt", dir);
+    FILE* f = _wfopen(path, L"r");
+    if (!f) { source_defaults(); return; }
+    g_src_n = 0;
+    char line[768];
+    while (g_src_n < MAX_SRC && fgets(line, sizeof(line), f)) {
+        /* type|name|url */
+        char* p1 = strchr(line, '|');
+        if (!p1) continue;
+        char* p2 = strchr(p1 + 1, '|');
+        if (!p2) continue;
+        *p1 = *p2 = 0;
+        char* url = p2 + 1;
+        url[strcspn(url, "\r\n")] = 0;
+        if (line[0] && url[0]) {
+            strncpy(g_sources[g_src_n].type, line, sizeof(g_sources[0].type) - 1);
+            strncpy(g_sources[g_src_n].name, p1 + 1, sizeof(g_sources[0].name) - 1);
+            strncpy(g_sources[g_src_n].url, url, sizeof(g_sources[0].url) - 1);
+            strip_pipe(g_sources[g_src_n].name);
+            g_src_n++;
+        }
+    }
+    fclose(f);
+    if (g_src_n == 0) source_defaults();
+}
+
+static void source_save(void)
+{
+    wchar_t dir[MAX_PATH], path[MAX_PATH];
+    store_dir(dir, MAX_PATH);
+    swprintf(path, MAX_PATH, L"%ls\\sources.txt", dir);
+    FILE* f = _wfopen(path, L"w");
+    if (f) {
+        for (int i = 0; i < g_src_n; i++)
+            fprintf(f, "%s|%s|%s\n", g_sources[i].type, g_sources[i].name,
+                    g_sources[i].url);
+        fclose(f);
+    }
+}
+
 static void store_dir(wchar_t* out, int cap)
 {
     if (SHGetFolderPathW(NULL, CSIDL_APPDATA, NULL, 0, out) == S_OK) {
@@ -533,9 +603,182 @@ static void send_json(SOCKET c, int code, const char* body)
     send(c, body, len, 0);
 }
 
+/* encode URL une chaîne (query string) */
+static void url_encode(const char* in, char* out, int outsz)
+{
+    int o = 0;
+    for (int i = 0; in[i] && o < outsz - 4; i++) {
+        unsigned char c = (unsigned char)in[i];
+        if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+            (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.' ||
+            c == '~') {
+            out[o++] = (char)c;
+        } else {
+            o += snprintf(out + o, outsz - o, "%%%02X", c);
+        }
+    }
+    out[o] = 0;
+}
+
+/* décode %XX d'une query string */
+static void url_decode(char* s)
+{
+    char* r = s;
+    char* w = s;
+    while (*r) {
+        if (*r == '%' && r[1] && r[2]) {
+            char h[3] = { r[1], r[2], 0 };
+            *w++ = (char)strtol(h, NULL, 16);
+            r += 3;
+        } else {
+            *w++ = *r++;
+        }
+    }
+    *w = 0;
+}
+
+/* recherche dans un annuaire : fetch + parse des 3 formats connus
+ * (iTunes/Apple, Listen Notes, Podcast Index) */
+static void handle_search(SOCKET c, const char* query)
+{
+    /* query: source=<url encodé>&query=<terme encodé> */
+    char src_url[512] = "", term[256] = "";
+    {
+        const char* p = strstr(query, "source=");
+        if (p) {
+            p += 7;
+            int n = 0;
+            while (p[n] && p[n] != '&' && n < (int)sizeof(src_url) - 1)
+                src_url[n++] = p[n];
+            src_url[n] = 0;
+        }
+        p = strstr(query, "query=");
+        if (p) {
+            p += 6;
+            int n = 0;
+            while (p[n] && p[n] != '&' && n < (int)sizeof(term) - 1)
+                term[n++] = p[n];
+            term[n] = 0;
+        }
+    }
+    url_decode(src_url);
+    url_decode(term);
+    if (!src_url[0] || !term[0]) {
+        send_json(c, 400, "{\"error\":\"source and query required\"}");
+        return;
+    }
+    /* remplace {query} par le terme encodé */
+    char enc[512];
+    url_encode(term, enc, sizeof(enc));
+    char url[1024] = "";
+    {
+        const char* ph = strstr(src_url, "{query}");
+        if (ph) {
+            int pre = (int)(ph - src_url);
+            if (pre > (int)sizeof(url) - 1) pre = (int)sizeof(url) - 1;
+            memcpy(url, src_url, pre);
+            url[pre] = 0;
+            strncat(url, enc, sizeof(url) - strlen(url) - 1);
+            strncat(url, ph + 7, sizeof(url) - strlen(url) - 1);
+        } else {
+            strncpy(url, src_url, sizeof(url) - 1);
+        }
+    }
+    char* body = NULL;
+    int len = 0;
+    if (fetch_url(url, &body, &len) != 0) {
+        send_json(c, 400, "{\"error\":\"search failed (network)\"}");
+        return;
+    }
+    /* parse les objets { ... } à la recherche des clés connues */
+    char resp[16384];
+    int o = snprintf(resp, sizeof(resp), "{\"results\":[");
+    int n = 0;
+    const char* p = body;
+    while ((p = strchr(p, '{')) != NULL) {
+        const char* end = strchr(p, '}');
+        if (!end) break;
+        if (end - p > 8 && end - p < 4000) {
+            char obj[4096];
+            int olen = (int)(end - p) + 1;
+            memcpy(obj, p, olen);
+            obj[olen] = 0;
+            /* le flux : feedUrl / rss / url */
+            char feed[512] = "", title[256] = "", author[256] = "";
+            char tmp[512];
+            json_str_val(obj, "feedUrl", tmp, sizeof(tmp));
+            if (tmp[0]) strncpy(feed, tmp, sizeof(feed) - 1);
+            if (!feed[0]) {
+                json_str_val(obj, "rss", tmp, sizeof(tmp));
+                if (tmp[0]) strncpy(feed, tmp, sizeof(feed) - 1);
+            }
+            if (!feed[0]) {
+                json_str_val(obj, "url", tmp, sizeof(tmp));
+                /* url peut être l'URL du site : on ne garde que si .rss/.xml */
+                if (tmp[0] && (strstr(tmp, ".rss") || strstr(tmp, ".xml") ||
+                               strstr(tmp, "feed") || strstr(tmp, "podcast")))
+                    strncpy(feed, tmp, sizeof(feed) - 1);
+            }
+            json_str_val(obj, "collectionName", tmp, sizeof(tmp));
+            if (tmp[0]) strncpy(title, tmp, sizeof(title) - 1);
+            if (!title[0]) {
+                json_str_val(obj, "title_original", tmp, sizeof(tmp));
+                if (tmp[0]) strncpy(title, tmp, sizeof(title) - 1);
+            }
+            if (!title[0]) {
+                json_str_val(obj, "title", tmp, sizeof(tmp));
+                if (tmp[0]) strncpy(title, tmp, sizeof(title) - 1);
+            }
+            json_str_val(obj, "artistName", tmp, sizeof(tmp));
+            if (tmp[0]) strncpy(author, tmp, sizeof(author) - 1);
+            if (!author[0]) {
+                json_str_val(obj, "publisher_original", tmp, sizeof(tmp));
+                if (tmp[0]) strncpy(author, tmp, sizeof(author) - 1);
+            }
+            if (!author[0]) {
+                json_str_val(obj, "author", tmp, sizeof(tmp));
+                if (tmp[0]) strncpy(author, tmp, sizeof(author) - 1);
+            }
+            if (feed[0] && strncmp(feed, "https", 5) == 0 &&
+                strncmp(feed, "http", 4) == 0) {
+                char efeed[1024], etitle[512], eauth[512];
+                json_escape_a(feed, efeed, sizeof(efeed));
+                json_escape_a(title, etitle, sizeof(etitle));
+                json_escape_a(author, eauth, sizeof(eauth));
+                o += snprintf(resp + o, sizeof(resp) - o,
+                              "%s{\"title\":\"%s\",\"author\":\"%s\","
+                              "\"feed\":\"%s\"}",
+                              n ? "," : "", etitle, eauth, efeed);
+                n++;
+                if (o > (int)sizeof(resp) - 256) break;
+            }
+        }
+        p = end + 1;
+    }
+    free(body);
+    snprintf(resp + o, sizeof(resp) - o, "]}");
+    send_json(c, 200, resp);
+}
+
 static void handle_get(SOCKET c, const char* path, const char* query)
 {
-    if (!strcmp(path, "/podcasts") || !strcmp(path, "/podcasts/")) {
+    if (!strcmp(path, "/podcasts/sources")) {
+        char body[8192];
+        int n = snprintf(body, sizeof(body), "{\"sources\":[");
+        for (int i = 0; i < g_src_n; i++) {
+            char ename[256], eurl[1024];
+            json_escape_a(g_sources[i].name, ename, sizeof(ename));
+            json_escape_a(g_sources[i].url, eurl, sizeof(eurl));
+            n += snprintf(body + n, sizeof(body) - n,
+                          "%s{\"type\":\"%s\",\"name\":\"%s\",\"url\":\"%s\"}",
+                          i ? "," : "", g_sources[i].type, ename, eurl);
+            if (n > (int)sizeof(body) - 256) break;
+        }
+        snprintf(body + n, sizeof(body) - n, "]}");
+        send_json(c, 200, body);
+    } else if (!strcmp(path, "/podcasts/search")) {
+        handle_search(c, query ? query : "");
+    } else if (!strcmp(path, "/podcasts") || !strcmp(path, "/podcasts/")) {
         char body[8192];
         int n = snprintf(body, sizeof(body), "{\"podcasts\":[");
         for (int i = 0; i < g_pod_n; i++) {
@@ -603,7 +846,41 @@ static void handle_get(SOCKET c, const char* path, const char* query)
 
 static void handle_post(SOCKET c, const char* path, const char* body)
 {
-    if (!strcmp(path, "/podcasts")) {
+    if (!strcmp(path, "/podcasts/sources")) {
+        char type[16], name[128], url[512];
+        json_str_val(body, "type", type, sizeof(type));
+        json_str_val(body, "name", name, sizeof(name));
+        json_str_val(body, "url", url, sizeof(url));
+        if (!url[0] || !name[0]) {
+            send_json(c, 400, "{\"error\":\"name and url required\"}");
+            return;
+        }
+        if (!type[0]) strcpy(type, "search");
+        if (g_src_n >= MAX_SRC) {
+            send_json(c, 400, "{\"error\":\"too many sources\"}");
+            return;
+        }
+        strncpy(g_sources[g_src_n].type, type, sizeof(g_sources[0].type) - 1);
+        strncpy(g_sources[g_src_n].name, name, sizeof(g_sources[0].name) - 1);
+        strncpy(g_sources[g_src_n].url, url, sizeof(g_sources[0].url) - 1);
+        g_src_n++;
+        source_save();
+        send_json(c, 200, "{\"ok\":1}");
+    } else if (!strcmp(path, "/podcasts/sources/del")) {
+        char url[512];
+        json_str_val(body, "url", url, sizeof(url));
+        for (int i = 0; i < g_src_n; i++) {
+            if (!strcmp(g_sources[i].url, url)) {
+                for (int j = i; j < g_src_n - 1; j++)
+                    g_sources[j] = g_sources[j + 1];
+                g_src_n--;
+                source_save();
+                send_json(c, 200, "{\"ok\":1}");
+                return;
+            }
+        }
+        send_json(c, 404, "{\"error\":\"not found\"}");
+    } else if (!strcmp(path, "/podcasts")) {
         char url[512];
         json_str_val(body, "url", url, sizeof(url));
         if (!url[0]) { send_json(c, 400, "{\"error\":\"url required\"}"); return; }
@@ -791,6 +1068,7 @@ static int pl_init(mp_plugin* self, const mp_host_api* host)
     (void)self;
     g_h = host;
     store_load();
+    source_load();
     return 0;
 }
 

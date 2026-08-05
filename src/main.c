@@ -39,6 +39,7 @@ static char* podcast_http(const char* method, const char* path,
                           const char* body, int* out_len);
 static void pod_json_str(const char* body, const char* key, char* out, int outsz);
 static void pod_json_unescape(char* s);
+static INT_PTR CALLBACK podcast_search_dlg_proc(HWND h, UINT m, WPARAM w, LPARAM l);
 
 /* 1 si le plugin podcasts du moteur est présent ET actif (le service
  * répond sur le port 8082). Résultat mis en cache. */
@@ -2225,6 +2226,7 @@ static void do_repo_dialog(void)
 #define IDC_POD_PLAY    2006
 #define IDC_POD_MARK    2007
 #define IDC_POD_DL      2008
+#define IDC_POD_SEARCH  2009
 
 #define PODCAST_PORT 8082
 
@@ -2657,6 +2659,18 @@ static INT_PTR CALLBACK podcast_dlg_proc(HWND h, UINT m, WPARAM w, LPARAM l)
                            MAKEINTRESOURCEW(IDD_PODCAST_ADD), h,
                            podcast_add_proc) == 1)
                 pod_refresh(h);
+        } else if (LOWORD(w) == IDC_POD_SEARCH) {
+            /* Search... : recherche dans les annuaires (sources) */
+            if (DialogBoxW(GetModuleHandleW(NULL),
+                           MAKEINTRESOURCEW(117), h,
+                           podcast_search_dlg_proc) == 1)
+                pod_refresh(h);
+        } else if (LOWORD(w) == IDC_POD_SEARCH) {
+            /* Search... : recherche dans les annuaires (sources) */
+            if (DialogBoxW(GetModuleHandleW(NULL),
+                           MAKEINTRESOURCEW(117), h,
+                           podcast_search_dlg_proc) == 1)
+                pod_refresh(h);
         } else if (LOWORD(w) == IDC_POD_DEL) {
             HWND subs = GetDlgItem(h, IDC_POD_SUBS);
             int sel = (int)SendMessageW(subs, LVM_GETNEXTITEM, (WPARAM)-1,
@@ -2735,6 +2749,288 @@ static INT_PTR CALLBACK podcast_dlg_proc(HWND h, UINT m, WPARAM w, LPARAM l)
                     MessageBoxW(h, L"Download failed.", L"Podcasts",
                                 MB_ICONERROR);
                 if (resp) free(resp);
+            }
+        } else if (LOWORD(w) == IDCANCEL) {
+            EndDialog(h, 0);
+        }
+        return TRUE;
+    case WM_CLOSE:
+        EndDialog(h, 0);
+        return TRUE;
+    }
+    return FALSE;
+}
+
+/* ------------------------------------------------------------------ */
+/* Dialog Search podcasts (117) + Add source (118)                      */
+/* ------------------------------------------------------------------ */
+#define IDC_SRC_COMBO   2001
+#define IDC_SRC_TERMS   2002
+#define IDC_SRC_SEARCH  2003
+#define IDC_SRC_RESULTS 2004
+#define IDC_SRC_SUB     2005
+#define IDC_SRC_ADD     2006
+
+/* dernier path de recherche (pour retrouver le feed du résultat) */
+static char g_last_search_path[1900] = "";
+
+/* liste des sources affichées (sélection du combo) */
+static int g_src_count = 0;
+static char g_src_urls[16][600];
+static char g_src_types[16][16];
+
+static void src_fill_combo(HWND h)
+{
+    HWND cb = GetDlgItem(h, IDC_SRC_COMBO);
+    SendMessageW(cb, CB_RESETCONTENT, 0, 0);
+    g_src_count = 0;
+    int len = 0;
+    char* resp = podcast_http("GET", "/podcasts/sources", NULL, &len);
+    if (!resp) return;
+    int cnt = 0;
+    const char* p = resp;
+    while ((p = strstr(p, "\"type\":")) != NULL) { cnt++; p += 7; }
+    p = resp;
+    for (int i = 0; i < cnt; i++) {
+        const char* obj = strstr(p, "{\"type\":");
+        if (!obj) break;
+        const char* end = strchr(obj, '}');
+        if (!end) break;
+        int olen = (int)(end - obj) + 1;
+        char tmp[2048];
+        if (olen > (int)sizeof(tmp) - 1) olen = (int)sizeof(tmp) - 1;
+        memcpy(tmp, obj, olen);
+        tmp[olen] = 0;
+        char ty[16], nm[128], ur[600];
+        pod_json_str(tmp, "type", ty, sizeof(ty));
+        pod_json_str(tmp, "name", nm, sizeof(nm));
+        pod_json_str(tmp, "url", ur, sizeof(ur));
+        pod_json_unescape(nm);
+        pod_json_unescape(ur);
+        wchar_t wnm[160];
+        utf8_to_wide(nm, wnm, 160);
+        SendMessageW(cb, CB_ADDSTRING, 0, (LPARAM)wnm);
+        if (g_src_count < 16) {
+            _snprintf(g_src_types[g_src_count], 16, "%s", ty);
+            _snprintf(g_src_urls[g_src_count], 600, "%s", ur);
+        }
+        g_src_count++;
+        p = end + 1;
+    }
+    free(resp);
+    SendMessageW(cb, CB_SETCURSEL, 0, 0);
+}
+
+static INT_PTR CALLBACK src_add_proc(HWND h, UINT m, WPARAM w, LPARAM l)
+{
+    (void)l;
+    switch (m) {
+    case WM_CTLCOLORDLG:
+    case WM_CTLCOLORSTATIC:
+        return dlg_skin_color(h, w, l);
+    case WM_INITDIALOG: {
+        HWND cb = GetDlgItem(h, 2001);
+        SendMessageW(cb, CB_ADDSTRING, 0, (LPARAM)L"Search directory");
+        SendMessageW(cb, CB_ADDSTRING, 0, (LPARAM)L"RSS feed (direct)");
+        SendMessageW(cb, CB_SETCURSEL, 0, 0);
+        return TRUE;
+    }
+    case WM_COMMAND:
+        if (LOWORD(w) == IDOK) {
+            int ty = (int)SendMessageW(GetDlgItem(h, 2001), CB_GETCURSEL, 0, 0);
+            wchar_t wname[160], wurl[600];
+            GetDlgItemTextW(h, 2002, wname, 160);
+            GetDlgItemTextW(h, 2003, wurl, 600);
+            if (!wname[0] || !wurl[0]) {
+                MessageBoxW(h, L"Name and URL are required.", L"Add source",
+                            MB_ICONWARNING);
+                break;
+            }
+            char name[240], url[800];
+            WideCharToMultiByte(CP_UTF8, 0, wname, -1, name, 240, NULL, NULL);
+            WideCharToMultiByte(CP_UTF8, 0, wurl, -1, url, 800, NULL, NULL);
+            char body[1100];
+            snprintf(body, sizeof(body),
+                     "{\"type\":\"%s\",\"name\":\"%s\",\"url\":\"%s\"}",
+                     ty == 1 ? "rss" : "search", name, url);
+            char* resp = podcast_http("POST", "/podcasts/sources", body, NULL);
+            if (resp) {
+                if (strstr(resp, "\"ok\":1")) {
+                    free(resp);
+                    EndDialog(h, 1);
+                } else {
+                    free(resp);
+                    MessageBoxW(h, L"Could not add the source.",
+                                L"Add source", MB_ICONERROR);
+                }
+            }
+        } else if (LOWORD(w) == IDCANCEL) {
+            EndDialog(h, 0);
+        }
+        return TRUE;
+    }
+    return FALSE;
+}
+
+static INT_PTR CALLBACK podcast_search_dlg_proc(HWND h, UINT m, WPARAM w,
+                                                LPARAM l)
+{
+    (void)l;
+    switch (m) {
+    case WM_CTLCOLORDLG:
+    case WM_CTLCOLORSTATIC:
+        return dlg_skin_color(h, w, l);
+    case WM_INITDIALOG: {
+        HWND lv = GetDlgItem(h, IDC_SRC_RESULTS);
+        LVCOLUMNW col;
+        memset(&col, 0, sizeof(col));
+        col.mask = LVCF_TEXT | LVCF_WIDTH;
+        col.cx = 300; col.pszText = L"Podcast";
+        SendMessageW(lv, LVM_INSERTCOLUMNW, 0, (LPARAM)&col);
+        col.cx = 150; col.pszText = L"Author";
+        SendMessageW(lv, LVM_INSERTCOLUMNW, 1, (LPARAM)&col);
+        src_fill_combo(h);
+        return TRUE;
+    }
+    case WM_COMMAND:
+        if (LOWORD(w) == IDC_SRC_ADD) {
+            if (DialogBoxW(GetModuleHandleW(NULL), MAKEINTRESOURCEW(118),
+                           h, src_add_proc) == 1)
+                src_fill_combo(h);
+        } else if (LOWORD(w) == IDC_SRC_SEARCH) {
+            int sel = (int)SendMessageW(GetDlgItem(h, IDC_SRC_COMBO),
+                                        CB_GETCURSEL, 0, 0);
+            if (sel < 0 || sel >= g_src_count) break;
+            wchar_t wterm[300];
+            GetDlgItemTextW(h, IDC_SRC_TERMS, wterm, 300);
+            if (!wterm[0]) break;
+            char term[400];
+            WideCharToMultiByte(CP_UTF8, 0, wterm, -1, term, 400, NULL, NULL);
+            char eq[1200], path[1900];
+            pod_urlencode(term, eq, sizeof(eq));
+            snprintf(path, sizeof(path), "/podcasts/search?query=%s", eq);
+            char sq[1500];
+            pod_urlencode(g_src_urls[sel], sq, sizeof(sq));
+            strncat(path, "&source=", sizeof(path) - strlen(path) - 1);
+            strncat(path, sq, sizeof(path) - strlen(path) - 1);
+            _snprintf(g_last_search_path, sizeof(g_last_search_path), "%s",
+                      path);
+            HWND lv = GetDlgItem(h, IDC_SRC_RESULTS);
+            SendMessageW(lv, LVM_DELETEALLITEMS, 0, 0);
+            int len = 0;
+            char* resp = podcast_http("GET", path, NULL, &len);
+            if (!resp) {
+                MessageBoxW(h, L"Search failed (service unavailable).",
+                            L"Search", MB_ICONERROR);
+                break;
+            }
+            if (strstr(resp, "\"error\"")) {
+                MessageBoxW(h, L"Search failed. Check the source URL and "
+                                L"your connection.",
+                            L"Search", MB_ICONERROR);
+                free(resp);
+                break;
+            }
+            int cnt = 0;
+            const char* p = resp;
+            while ((p = strstr(p, "\"feed\":")) != NULL) { cnt++; p += 7; }
+            p = resp;
+            for (int i = 0; i < cnt; i++) {
+                const char* obj = strstr(p, "{\"title\":");
+                if (!obj) break;
+                const char* end = strchr(obj, '}');
+                if (!end) break;
+                int olen = (int)(end - obj) + 1;
+                char tmp[4096];
+                if (olen > (int)sizeof(tmp) - 1) olen = (int)sizeof(tmp) - 1;
+                memcpy(tmp, obj, olen);
+                tmp[olen] = 0;
+                char ttl[256], aut[256], feed[600];
+                pod_json_str(tmp, "title", ttl, sizeof(ttl));
+                pod_json_str(tmp, "author", aut, sizeof(aut));
+                pod_json_str(tmp, "feed", feed, sizeof(feed));
+                pod_json_unescape(ttl);
+                pod_json_unescape(aut);
+                pod_json_unescape(feed);
+                wchar_t wttl[300], waut[300];
+                utf8_to_wide(ttl, wttl, 300);
+                utf8_to_wide(aut, waut, 300);
+                LVITEMW it;
+                memset(&it, 0, sizeof(it));
+                it.mask = LVIF_TEXT | LVIF_PARAM;
+                it.iItem = i;
+                it.pszText = wttl;
+                it.lParam = i;
+                int idx = (int)SendMessageW(lv, LVM_INSERTITEMW, 0, (LPARAM)&it);
+                it.iItem = idx;
+                it.mask = LVIF_TEXT;
+                it.iSubItem = 1;
+                it.pszText = waut;
+                SendMessageW(lv, LVM_SETITEMW, 0, (LPARAM)&it);
+                p = end + 1;
+            }
+            free(resp);
+        } else if (LOWORD(w) == IDC_SRC_SUB) {
+            HWND lv = GetDlgItem(h, IDC_SRC_RESULTS);
+            int sel = (int)SendMessageW(lv, LVM_GETNEXTITEM, (WPARAM)-1,
+                                        LVNI_SELECTED);
+            if (sel < 0) {
+                /* source RSS directe : s'abonner à l'URL de la source */
+                int ssel = (int)SendMessageW(GetDlgItem(h, IDC_SRC_COMBO),
+                                             CB_GETCURSEL, 0, 0);
+                if (ssel >= 0 && ssel < g_src_count &&
+                    !strcmp(g_src_types[ssel], "rss")) {
+                    char body[900];
+                    snprintf(body, sizeof(body),
+                             "{\"url\":\"%s\"}", g_src_urls[ssel]);
+                    char* resp = podcast_http("POST", "/podcasts", body, NULL);
+                    if (resp && strstr(resp, "\"ok\":")) {
+                        free(resp);
+                        EndDialog(h, 1);
+                        return TRUE;
+                    }
+                    if (resp) free(resp);
+                    MessageBoxW(h, L"Could not subscribe to this feed.",
+                                L"Search", MB_ICONERROR);
+                }
+                break;
+            }
+            /* re-fetch les résultats pour retrouver le feed sélectionné */
+            int len = 0;
+            char* resp = g_last_search_path[0]
+                ? podcast_http("GET", g_last_search_path, NULL, &len) : NULL;
+            if (!resp) break;
+            const char* p = resp;
+            char feed[600] = "";
+            for (int i = 0; i <= sel; i++) {
+                const char* obj = strstr(p, "{\"title\":");
+                if (!obj) break;
+                const char* end = strchr(obj, '}');
+                if (!end) break;
+                if (i == sel) {
+                    char tmp[4096];
+                    int olen = (int)(end - obj) + 1;
+                    if (olen > (int)sizeof(tmp) - 1) olen = (int)sizeof(tmp) - 1;
+                    memcpy(tmp, obj, olen);
+                    tmp[olen] = 0;
+                    pod_json_str(tmp, "feed", feed, sizeof(feed));
+                    pod_json_unescape(feed);
+                }
+                p = end + 1;
+            }
+            free(resp);
+            if (feed[0]) {
+                char body[900];
+                snprintf(body, sizeof(body), "{\"url\":\"%s\"}", feed);
+                char* r2 = podcast_http("POST", "/podcasts", body, NULL);
+                if (r2 && strstr(r2, "\"ok\":")) {
+                    free(r2);
+                    EndDialog(h, 1);
+                    return TRUE;
+                }
+                if (r2) free(r2);
+                MessageBoxW(h, L"Could not subscribe to this podcast.",
+                            L"Search", MB_ICONERROR);
             }
         } else if (LOWORD(w) == IDCANCEL) {
             EndDialog(h, 0);

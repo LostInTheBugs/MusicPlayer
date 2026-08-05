@@ -276,7 +276,7 @@
     {
       "name": "Podcasts (engine)",
       "type": "service",
-      "version": "2026.08.043",
+      "version": "2026.08.045",
       "file": "bin/core_plugins/podcasts.dll",
       "desc": "RSS podcast subscriptions: episodes, read/unread, resume, download (port 8082)",
       "url": "https://raw.githubusercontent.com/LostInTheBugs/MusicPlayer/master/repo/bin/core_plugins/podcasts.dll"

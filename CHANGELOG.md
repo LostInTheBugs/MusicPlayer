@@ -2,6 +2,16 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.045] — 2026-08-05
+
+### Added (Podcasts: feed sources & search directories)
+- **Podcast sources list** (like the plugin repositories): RSS feeds and search directories, persisted in `%APPDATA%\MusicPlayer\podcasts\sources.txt`
+- Default source: **Apple Podcasts** (iTunes Search API, no key required)
+- **Podcasts ▸ Search…**: pick a source, type search terms, results list (title + author), **Subscribe** adds the podcast (its RSS feed)
+- **Add source...**: type (search directory / direct RSS feed), name, URL — search directories use `{query}` as placeholder (e.g. `https://api.listennotes.com/api/v2/search?q={query}&type=podcast&token=…`, Podcast Index `…/search/byterm?q={query}`)
+- Direct RSS sources appear in the source list and can be subscribed with one click
+- Engine API: `GET /podcasts/sources`, `POST /podcasts/sources`, `POST /podcasts/sources/del`, `GET /podcasts/search?source=…&query=…` (parses iTunes/Apple, Listen Notes and Podcast Index result formats)
+
 ## [2026.08.044-c2] — 2026-08-05
 
 ### Fixed (update mismatch: the zip contained the previous version)

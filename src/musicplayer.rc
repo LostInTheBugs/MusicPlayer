@@ -197,6 +197,39 @@ BEGIN
     PUSHBUTTON "Cancel", IDCANCEL, 270, 76, 60, 18
 END
 
+/* Dialog "Search podcasts" (Podcasts ▸ Search…) — ID 117 */
+117 DIALOG 0, 0, 480, 330
+STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Search podcasts"
+FONT 8, "MS Shell Dlg"
+BEGIN
+    LTEXT "Source:", 1001, 12, 16, 40, 10
+    COMBOBOX 2001, 56, 14, 230, 120, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    PUSHBUTTON "Add source...", 2006, 292, 14, 92, 14
+    LTEXT "Search:", 1002, 12, 36, 40, 10
+    EDITTEXT 2002, 56, 34, 230, 14, ES_AUTOHSCROLL | WS_TABSTOP
+    PUSHBUTTON "Search", 2003, 292, 34, 60, 14
+    CONTROL "", 2004, "SysListView32", LVS_REPORT | LVS_SINGLESEL | WS_BORDER | WS_TABSTOP, 12, 54, 456, 216
+    PUSHBUTTON "Subscribe", 2005, 12, 276, 70, 16
+    DEFPUSHBUTTON "Close", IDCANCEL, 400, 276, 68, 18
+END
+
+/* Dialog "Add podcast source" — ID 118 */
+118 DIALOG 0, 0, 360, 118
+STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Add podcast source"
+FONT 8, "MS Shell Dlg"
+BEGIN
+    LTEXT "Type:", 1001, 12, 16, 40, 10
+    COMBOBOX 2001, 56, 14, 160, 80, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    LTEXT "Name:", 1002, 12, 36, 40, 10
+    EDITTEXT 2002, 56, 34, 220, 14, ES_AUTOHSCROLL | WS_TABSTOP
+    LTEXT "URL (use {query} for search directories):", 1003, 12, 56, 260, 10
+    EDITTEXT 2003, 12, 68, 336, 14, ES_AUTOHSCROLL | WS_TABSTOP
+    DEFPUSHBUTTON "OK", IDOK, 150, 92, 70, 18
+    PUSHBUTTON "Cancel", IDCANCEL, 230, 92, 70, 18
+END
+
 /* Métadonnées Windows (onglet Détails des propriétés du fichier) —
  * généré par tools/vergen.py depuis VERSION */
 #include "version_client.rc"

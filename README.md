@@ -10,7 +10,7 @@ cross-compiled from Linux with MinGW-w64.
 - **Play/Pause/Stop/Next buttons + volume slider** (0–100 % blue, 100–200 % orange boost) built into the window
 - **Folder playback**: File ▸ Open folder… (or drag & drop a folder, or pass it on the command line) — all MP3/MP4 are played in order, subfolders included, next track starts automatically
 - **CD audio playback**: File ▸ Open CD… (MCI) — tracks listed as “CD Track N”, auto-advance
-- **Podcasts**: File ▸ Podcasts… — subscribe to RSS feeds (episodes streamed directly from their URL by the engine, read/unread, resume position, offline download)
+- **Podcasts**: File ▸ Podcasts… — subscribe to RSS feeds (episodes streamed directly from their URL by the engine, read/unread, resume position, offline download); **Search…** finds podcasts in directories (Apple Podcasts by default — add more sources: Listen Notes, Podcast Index…, or direct RSS feeds, like the plugin repositories)
 - **FFmpeg 9.0 runtime as a base plugin**: the launcher (`MusicPlayer.exe`) downloads the decoding DLLs automatically on first run (LGPL, replaceable — see Settings ▸ Plugin repository…, entry “FFmpeg runtime”)
 - **Web server (remote control)**: Settings ▸ Web server… — open the page from your phone/tablet: control playback, see metadata (title/artist/album/year), the cover, the playlist with the current track highlighted, and pick the audio output: this computer, phone, or both (WAV stream)
 - **DJ Mixing**: 2-deck mixer on the web page (volume, pitch ±12 %, 3-band EQ, crossfader, via Web Audio API) **and** on the computer itself (console with per-deck play/pause/stop, volumes, crossfader, pitch — deck B is a real second decoder **in the engine**, mixed into the stream and sent to every client); the mode is synchronized both ways (Settings ▸ DJ Mixing ⇄ web)
@@ -30,7 +30,7 @@ cross-compiled from Linux with MinGW-w64.
 
 ## Version
 
-`2026.08.044-c2` — see [CHANGELOG.md](CHANGELOG.md)
+`2026.08.045` — see [CHANGELOG.md](CHANGELOG.md)
 
 ## Run on Windows 11
 
