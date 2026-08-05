@@ -171,12 +171,12 @@ This project was built entirely through AI-assisted sessions (Hermes Agent). Usa
 
 | Metric | deepseek-v4-flash | deepseek-v4-pro | **Total** |
 |---|---|---|---|
-| Input tokens | 4 323 796 | 129 132 | **4 452 928** |
-| Output tokens | 2 790 285 | 38 529 | **2 828 814** |
-| **Subtotal (input + output)** | **7 114 081** | **167 661** | **7 281 742** |
-| Cache read (reused at reduced price) | 722 130 304 | 10 767 488 | **732 897 792** |
-| API calls | 2 300 | 94 | **2 394** |
-| **Estimated cost** | **≈ 3.41 USD** | **≈ 0.13 USD** | **≈ 3.54 USD** |
+| Input tokens | 4 332 411 | 129 132 | **4 461 543** |
+| Output tokens | 2 807 413 | 38 529 | **2 845 942** |
+| **Subtotal (input + output)** | **7 139 824** | **167 661** | **7 307 485** |
+| Cache read (reused at reduced price) | 731 047 040 | 10 767 488 | **741 814 528** |
+| API calls | 2 322 | 94 | **2 416** |
+| **Estimated cost** | **≈ 3.44 USD** | **≈ 0.13 USD** | **≈ 3.57 USD** |
 
 Full breakdown: [TOKENS.md](TOKENS.md).
 
