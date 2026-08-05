@@ -3982,6 +3982,25 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR lpCmdLine, int nCmdSh
     icc.dwICC = ICC_BAR_CLASSES;
     InitCommonControlsEx(&icc);
 
+    /* résultat de la dernière mise à jour (updater.log écrit par le
+     * script de mise à jour) : un échec d'extraction s'affiche ici */
+    {
+        wchar_t ulog[MAX_PATH];
+        GetModuleFileNameW(NULL, ulog, MAX_PATH);
+        wchar_t* sl = wcsrchr(ulog, L'\\');
+        if (sl) wcscpy(sl + 1, L"updater.log");
+        FILE* uf = _wfopen(ulog, L"r");
+        if (uf) {
+            char buf[512] = "";
+            fgets(buf, sizeof(buf), uf);
+            fclose(uf);
+            DeleteFileW(ulog);
+            if (strncmp(buf, "FAIL", 4) == 0) {
+                MessageBoxA(NULL, buf, "MusicPlayer update", MB_ICONERROR);
+            }
+        }
+    }
+
     cc_start();
     sp_start();   /* le client joue le flux du moteur (/stream) */
 

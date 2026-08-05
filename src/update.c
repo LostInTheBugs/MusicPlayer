@@ -353,8 +353,11 @@ int mp_update_apply_and_restart(void)
     wcscat(zip_path, L"\\update.zip");
     if (mp_update_download(mp_update_latest(), zip_path) != 0) return -1;
 
-    /* script : attend la fermeture du programme, extrait le zip à côté
-     * de l'exe, relance, puis se supprime */
+    /* script : arrête le client ET le moteur (le moteur lancé au login
+     * verrouille les DLL des core_plugins et ferait échouer
+     * l'extraction), extrait le zip à côté de l'exe, relance, puis se
+     * supprime. Le résultat de l'extraction est noté dans updater.log
+     * (relu au démarrage suivant). */
     wchar_t bat[MAX_PATH];
     wcscpy(bat, appdir);
     wcscat(bat, L"\\updater.bat");
@@ -362,11 +365,15 @@ int mp_update_apply_and_restart(void)
     if (!f) return -1;
     fwprintf(f,
         L"@echo off\r\n"
-        L"timeout /t 3 /nobreak >nul\r\n"
+        L"taskkill /IM MusicPlayer.exe /F >nul 2>&1\r\n"
+        L"taskkill /IM musicplayer-core.exe /F >nul 2>&1\r\n"
+        L"timeout /t 2 /nobreak >nul\r\n"
         L"cd /d \"%~dp0\"\r\n"
-        L"powershell -NoProfile -Command \"Expand-Archive -Force -Path update.zip -DestinationPath .\"\r\n"
+        L"powershell -NoProfile -Command \"$e=''; try { Expand-Archive -Force -Path update.zip -DestinationPath . -ErrorAction Stop } catch { $e=$_.Exception.Message }; if ($e) { 'FAIL: '+$e | Out-File -Encoding ascii updater.log } else { 'OK' | Out-File -Encoding ascii updater.log }\"\r\n"
+        L"if exist updater.log goto done\r\n"
+        L":done\r\n"
         L"del update.zip\r\n"
-        L"start \"\" MusicPlayer.exe\r\n"
+        L"start \"\" \"%~dp0MusicPlayer.exe\"\r\n"
         L"del \"%~f0\"\r\n");
     fclose(f);
 

@@ -2,6 +2,15 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.042-c3] — 2026-08-04
+
+### Fixed (update applied but the old version stayed)
+The autonomous update relaunched the app without actually replacing the binaries. Causes fixed:
+- **The updater script now force-stops the client AND the engine before extracting** (`taskkill /IM MusicPlayer.exe /F` + `musicplayer-core.exe`): the engine started at login keeps the `core_plugins/*.dll` loaded, which made `Expand-Archive -Force` fail silently — the old binary stayed in place
+- **Extraction result logged** (`updater.log`): a failure is shown in a message box at the next start instead of failing silently
+- **The relaunch uses the full path** of the exe (`"%~dp0MusicPlayer.exe"`)
+- Release process: the zip asset is now uploaded **before** creating the release, so the update checker never downloads a missing/old asset
+
 ## [2026.08.042-c2] — 2026-08-04
 
 ### Added (plugin repository + third-party plugin guide)
