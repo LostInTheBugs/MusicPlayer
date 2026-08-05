@@ -37,9 +37,51 @@
  * prototype : défini plus bas, utilisé par le menu (create_menus). */
 static char* podcast_http(const char* method, const char* path,
                           const char* body, int* out_len);
+static void pod_json_str(const char* body, const char* key, char* out, int outsz);
+static void pod_json_unescape(char* s);
 
 /* 1 si le plugin podcasts du moteur est présent ET actif (le service
  * répond sur le port 8082). Résultat mis en cache. */
+/* GET brut vers le REST du moteur (8080) : retourne le corps (malloc) ou NULL */
+static char* engine_http_get(const char* path, int* out_len)
+{
+    wchar_t url[1200];
+    char upath[1024];
+    snprintf(upath, sizeof(upath), "http://127.0.0.1:8080%s", path);
+    MultiByteToWideChar(CP_UTF8, 0, upath, -1, url, 1200);
+    HINTERNET inet = InternetOpenW(L"MusicPlayer", INTERNET_OPEN_TYPE_DIRECT,
+                                   NULL, NULL, 0);
+    if (!inet) return NULL;
+    DWORD to = 15000;
+    InternetSetOptionW(inet, INTERNET_OPTION_CONNECT_TIMEOUT, &to, sizeof(to));
+    InternetSetOptionW(inet, INTERNET_OPTION_RECEIVE_TIMEOUT, &to, sizeof(to));
+    HINTERNET uh = InternetOpenUrlW(inet, url, NULL, 0,
+                                    INTERNET_FLAG_RELOAD |
+                                    INTERNET_FLAG_NO_CACHE_WRITE, 0);
+    if (!uh) { InternetCloseHandle(inet); return NULL; }
+    char buf[4096];
+    int cap = 8192, len = 0;
+    char* resp = (char*)malloc(cap);
+    if (!resp) { InternetCloseHandle(uh); InternetCloseHandle(inet); return NULL; }
+    for (;;) {
+        DWORD got = 0;
+        if (!InternetReadFile(uh, buf, sizeof(buf), &got) || got == 0) break;
+        if (len + (int)got + 1 > cap) {
+            cap = (len + (int)got + 1) * 2;
+            char* nb = (char*)realloc(resp, cap);
+            if (!nb) { free(resp); InternetCloseHandle(uh); InternetCloseHandle(inet); return NULL; }
+            resp = nb;
+        }
+        memcpy(resp + len, buf, got);
+        len += (int)got;
+    }
+    InternetCloseHandle(uh);
+    InternetCloseHandle(inet);
+    resp[len] = 0;
+    if (out_len) *out_len = len;
+    return resp;
+}
+
 static int podcasts_available(void)
 {
     static int cached = -1;
@@ -1136,6 +1178,7 @@ static void do_open_folder_dialog(void)
 #define IDC_ABT_L1      1006
 #define IDC_ABT_L2      1007
 #define IDC_PLG_LIST    2005
+static int g_engine_plugins_start = 0;   /* 1ère ligne "engine" du dialog Plugins */
 #define IDC_IF_SKIN     1013   /* dialog Interface : combo skin */
 #define IDC_IF_LANG     1014   /* dialog Interface : combo langue */
 #define IDC_IF_LBL_S    1015
@@ -1400,9 +1443,67 @@ static INT_PTR CALLBACK plugins_dlg_proc(HWND h, UINT m, WPARAM w, LPARAM l)
             ListView_SetCheckState(lv, row, p->visible ? TRUE : FALSE);
             row++;
         }
+        /* plugins du MOTEUR (core_plugins/) : GET /api/plugins, affichés
+         * avec la mention (engine) — case en lecture seule */
+        g_engine_plugins_start = row;
+        {
+            int elen = 0;
+            char* eresp = engine_http_get("/api/plugins", &elen);
+            if (eresp) {
+                int cnt = 0;
+                const char* pp = eresp;
+                while ((pp = strstr(pp, "\"name\":")) != NULL) { cnt++; pp += 7; }
+                pp = eresp;
+                for (int i = 0; i < cnt; i++) {
+                    const char* obj = strstr(pp, "{\"name\":");
+                    if (!obj) break;
+                    const char* end = strchr(obj, '}');
+                    if (!end) break;
+                    int olen = (int)(end - obj) + 1;
+                    char tmp[2048];
+                    if (olen > (int)sizeof(tmp) - 1) olen = (int)sizeof(tmp) - 1;
+                    memcpy(tmp, obj, olen);
+                    tmp[olen] = 0;
+                    char nm[160], ty[64], ds[240], en[8];
+                    pod_json_str(tmp, "name", nm, sizeof(nm));
+                    pod_json_str(tmp, "type", ty, sizeof(ty));
+                    pod_json_str(tmp, "desc", ds, sizeof(ds));
+                    pod_json_str(tmp, "enabled", en, sizeof(en));
+                    pod_json_unescape(nm);
+                    pod_json_unescape(ds);
+                    wchar_t name_w[200], desc_w[280], type_w[80];
+                    utf8_to_wide(nm, name_w, 200);
+                    swprintf(desc_w, 280, L"%hs (engine)", ds);
+                    utf8_to_wide(ty, type_w, 80);
+                    LVITEMW it;
+                    memset(&it, 0, sizeof(it));
+                    it.mask = LVIF_TEXT;
+                    it.iItem = row;
+                    it.pszText = name_w;
+                    ListView_InsertItem(lv, &it);
+                    ListView_SetItemText(lv, row, 1, type_w);
+                    ListView_SetItemText(lv, row, 2, desc_w);
+                    ListView_SetCheckState(lv, row, atoi(en) ? TRUE : FALSE);
+                    row++;
+                    pp = end + 1;
+                }
+                free(eresp);
+            }
+        }
         SetDlgItemTextW(h, IDC_PLG_LBL, lang_get("plugins_dlg_lbl"));
         SetWindowTextW(h, lang_get("plugins_dlg_title"));
         return TRUE;
+    }
+    case WM_NOTIFY: {
+        NMHDR* nm = (NMHDR*)l;
+        if (nm->idFrom == IDC_PLG_LIST && nm->code == LVN_ITEMCHANGING) {
+            NMLISTVIEW* nv = (NMLISTVIEW*)l;
+            if (nv->iItem >= g_engine_plugins_start) {
+                SetWindowLongPtrW(h, DWLP_MSGRESULT, TRUE);
+                return TRUE;
+            }
+        }
+        break;
     }
     case WM_COMMAND:
         if (LOWORD(w) == IDOK) {

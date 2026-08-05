@@ -306,6 +306,31 @@ static DWORD WINAPI client_thread(LPVOID arg)
         snprintf(js, sizeof(js), "{\"l\":%.4f,\"r\":%.4f}",
                  (float)g_lvl_l / 100000.0f, (float)g_lvl_r / 100000.0f);
         http_response(c, 200, "application/json", js);
+    } else if (!strcmp(method, "GET") && !strcmp(path, "/api/plugins")) {
+        /* liste des plugins chargés par le moteur (pour le dialog du
+         * client : "core_plugins/" avec la mention (engine)) */
+        char js[8192];
+        int n = mp_plugins_count();
+        int o = snprintf(js, sizeof(js), "{\"plugins\":[");
+        for (int i = 0; i < n; i++) {
+            mp_plugin* p = mp_plugins_get(i);
+            if (!p || !p->api) continue;
+            char nm[160], ds[240];
+            json_escape(p->api->name() ? p->api->name() : "?", nm, sizeof(nm));
+            json_escape(p->api->description() ? p->api->description() : "",
+                        ds, sizeof(ds));
+            const char* ty =
+                (p->api->type() & MP_PLUGIN_VISUAL) ? "Visual" :
+                (p->api->type() & MP_PLUGIN_AUDIO_EFFECT) ? "Audio effect" :
+                "Service";
+            o += snprintf(js + o, sizeof(js) - o,
+                          "%s{\"name\":\"%s\",\"type\":\"%s\",\"desc\":\"%s\","
+                          "\"enabled\":%d}",
+                          o > 12 ? "," : "", nm, ty, ds, p->enabled ? 1 : 0);
+            if (o > (int)sizeof(js) - 256) break;
+        }
+        snprintf(js + o, sizeof(js) - o, "]}");
+        http_response(c, 200, "application/json", js);
     } else if (!strcmp(method, "GET") && !strcmp(path, "/stream")) {
         stream_loop(c);
     } else if (!strcmp(method, "POST") && !strcmp(path, "/api/config")) {
