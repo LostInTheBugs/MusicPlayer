@@ -2,6 +2,14 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.043-c1] — 2026-08-05
+
+### Fixed (plugin repository: « Invalid repository index » on the default URL)
+- The default repository base points to `…/master/repo`, but `plugins.json` lived at the **repo root** → the fetch hit a 404 and reported « Invalid repository index »
+- **`plugins.json` moved into `repo/`** (next to the binaries), with a `url` field per plugin (raw GitHub URL) for the autonomous plugin update checker
+- The loader's manifest URL (`PLUGIN_MANIFEST_URL`) aligned to `…/master/repo/plugins.json`
+- Verified on GitHub: `repo/plugins.json` serves 34 plugins with working URLs
+
 ## [2026.08.043] — 2026-08-05
 
 ### Added (Podcasts)
