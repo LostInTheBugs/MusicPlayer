@@ -13,7 +13,7 @@
 #   make clean
 # ======================================================================
 
-VERSION := 2026.08.043-c5
+VERSION := 2026.08.044
 
 CROSS    := x86_64-w64-mingw32-
 CC       := $(CROSS)gcc
@@ -35,7 +35,9 @@ SRC := src/main.c src/player.c src/plugin_loader.c src/lang.c src/update.c src/c
        src/client_core.c src/stream_player.c src/svc.c src/repo.c
 OBJ := $(SRC:.c=.o)
 RES := src/musicplayer_res.o
-BIN := bin/MusicPlayer.exe
+BIN     := bin/MusicPlayer.exe       # lanceur (vérifie/télécharge le runtime FFmpeg)
+APP_BIN := bin/MusicPlayerApp.exe    # client (importe les DLL FFmpeg)
+LAUNCHER_OBJ := src/launcher.o src/repo.o build/launcher_res.o
 
 # ----------------------------------------------------------------------
 # Core (musicplayer-core.exe) — moteur sans UI, API REST publique.
@@ -55,12 +57,23 @@ all: dirs $(BIN)
 dirs:
 	mkdir -p bin/plugins bin/lang plugins test dist
 
-$(BIN): $(OBJ) $(RES)
+$(APP_BIN): $(OBJ) $(RES)
 	$(CC) $(CFLAGS) -o $@ $(OBJ) $(RES) $(LDFLAGS)
+
+$(BIN): $(APP_BIN) $(LAUNCHER_OBJ) bin/runtime
+	$(CC) $(CFLAGS) -o $@ $(LAUNCHER_OBJ) $(LDFLAGS)
+
+# runtime : DLL FFmpeg + licence + langues + VERSION à côté des exes
+bin/runtime:
 	cp $(addprefix vendor/ffmpeg/bin/,$(FFMPEG_DLLS)) bin/
 	cp vendor/ffmpeg/LICENSE.txt bin/LICENSE-FFmpeg.txt
 	cp lang/* bin/lang/
 	cp VERSION bin/VERSION
+	@touch bin/runtime
+
+build/launcher_res.o: src/version_client.rc
+	@mkdir -p build
+	$(WINDRES) -i src/version_client.rc -o $@
 
 src/musicplayer_res.o: src/musicplayer.rc src/musicplayer.ico src/version_client.rc
 	$(WINDRES) -i src/musicplayer.rc -o $@
@@ -194,7 +207,7 @@ test: all plugins-examples test-samples
 # depuis le téléphone fonctionne dès l'installation.
 # ----------------------------------------------------------------------
 zip: all plugins-examples dirs core
-	cd bin && zip -q ../dist/MusicPlayer-$(VERSION)-win64.zip MusicPlayer.exe musicplayer-core.exe LICENSE-FFmpeg.txt core_plugins/webserver.dll lang/*.lang VERSION && \
+	cd bin && zip -q ../dist/MusicPlayer-$(VERSION)-win64.zip MusicPlayer.exe MusicPlayerApp.exe musicplayer-core.exe LICENSE-FFmpeg.txt core_plugins/webserver.dll lang/*.lang VERSION && \
 	cd .. && echo "Archive : dist/MusicPlayer-$(VERSION)-win64.zip"
 
 # ----------------------------------------------------------------------

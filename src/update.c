@@ -389,6 +389,7 @@ int mp_update_apply_and_restart(void)
         L"@echo off\r\n"
         L"rem ===== MusicPlayer updater =====\r\n"
         L"taskkill /IM MusicPlayer.exe /F >nul 2>&1\r\n"
+        L"taskkill /IM MusicPlayerApp.exe /F >nul 2>&1\r\n"
         L"taskkill /IM musicplayer-core.exe /F >nul 2>&1\r\n"
         L"timeout /t 2 /nobreak >nul\r\n"
         L"cd /d \"%~dp0\"\r\n"

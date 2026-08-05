@@ -127,29 +127,6 @@ static char* engine_http_post(const char* path, const char* body, int* out_len)
     return resp;
 }
 
-/* FFmpeg runtime : les DLL de décodage sont un plugin de base
- * téléchargeable (repository). Si elles manquent, téléchargement
- * automatique depuis le repository par défaut. */
-static int ffmpeg_present(void)
-{
-    wchar_t exe[MAX_PATH];
-    GetModuleFileNameW(NULL, exe, MAX_PATH);
-    wchar_t* sl = wcsrchr(exe, L'\\');
-    if (sl) wcscpy(sl + 1, L"avcodec-63.dll");
-    return GetFileAttributesW(exe) != INVALID_FILE_ATTRIBUTES;
-}
-
-static int ffmpeg_ensure(void)
-{
-    if (ffmpeg_present()) return 0;
-    repo_plugin rp;
-    memset(&rp, 0, sizeof(rp));
-    strcpy(rp.file, "ffmpeg/ffmpeg-win64-lgpl-shared.zip");
-    if (repo_download(REPO_DEFAULT_BASE, &rp) == 0 && ffmpeg_present())
-        return 0;
-    return -1;
-}
-
 static int podcasts_available(void)
 {
     if (g_podcasts_cached >= 0) return g_podcasts_cached;
@@ -4979,15 +4956,6 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR lpCmdLine, int nCmdSh
     config_load();
     mp_set_log_level(g_cfg.log_level);
 
-    /* FFmpeg runtime (plugin de base) : téléchargement auto si absent */
-    if (ffmpeg_ensure() != 0) {
-        MessageBoxW(NULL,
-                    L"FFmpeg runtime (decoding engine) is missing.\n"
-                    L"Download it from Settings \u25b8 Plugin repository\u2026 "
-                    L"(FFmpeg runtime)\nor from the GitHub release page.",
-                    L"MusicPlayer", MB_ICONERROR);
-        return 1;
-    }
     sp_set_volume(g_cfg.volume / 100.0f);
     cc_cmd_val("speed", g_cfg.speed);
     playlist_set_shuffle(g_cfg.shuffle);

@@ -2,6 +2,15 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.044] — 2026-08-05
+
+### Changed (FFmpeg 9.0 + runtime as a base plugin)
+- **FFmpeg upgraded to 9.0 "Lei"** (released 2026-08-04): avcodec-63, avformat-63, avutil-61, swresample-7 (BtbN win64-lgpl-shared) — verified: playback, duration detection, selftest all pass
+- **FFmpeg is now a base plugin (runtime)**: the program zip no longer embeds the FFmpeg DLLs (≈ 33 MB saved); the DLLs are downloadable from the plugin repository — `repo/ffmpeg/ffmpeg-win64-lgpl-shared.zip` (DLLs + LGPL license), entry **"FFmpeg runtime (required)"** in `plugins.json`
+- **New launcher `MusicPlayer.exe`** (no FFmpeg imports): checks for the runtime DLLs at startup, downloads + extracts them automatically from the default repository if missing (native `tar.exe`), then starts the real client `MusicPlayerApp.exe` (exit code forwarded). The client cannot import the DLLs lazily — the Windows loader refuses to start without them
+- `Settings ▸ Plugin repository… ▸ Download selected` on the FFmpeg entry also installs the runtime (zip extraction into the exe folder)
+- The update script now also kills `MusicPlayerApp.exe` before extracting
+
 ## [2026.08.043-c5] — 2026-08-05
 
 ### Added (Settings ▸ Plugins… ▸ Delete selected...)
