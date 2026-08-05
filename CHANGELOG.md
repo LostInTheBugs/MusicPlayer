@@ -2,6 +2,13 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.042-c4] — 2026-08-04
+
+### Added (plugin repository: a LIST of repositories)
+- The repository window now manages a **list of repositories** (not a single URL): the project's own is there by default, **Add…** / **Remove** maintain the list, persisted in `%APPDATA%\MusicPlayer\repos.txt` (one URL per line)
+- Selecting a repository in the list **fetches its index automatically**; Fetch reloads it manually
+- Third-party repositories can be added the same way (any HTTP URL serving a `plugins.json` + files)
+
 ## [2026.08.042-c3] — 2026-08-04
 
 ### Fixed (update applied but the old version stayed)

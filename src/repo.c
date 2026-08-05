@@ -6,11 +6,63 @@
 
 #include <windows.h>
 #include <wininet.h>
+#include <shlobj.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include "repo.h"
+
+/* ------------------------------------------------------------------ */
+/* Liste des repositories (persistance)                               */
+/* ------------------------------------------------------------------ */
+static void repo_appdata_path(wchar_t* out, size_t cap, const wchar_t* file)
+{
+    if (SHGetFolderPathW(NULL, CSIDL_APPDATA, NULL, 0, out) == S_OK) {
+        wcscat_s(out, cap, L"\\MusicPlayer");
+        CreateDirectoryW(out, NULL);
+        wcscat_s(out, cap, file);
+    } else {
+        wcscpy_s(out, cap, file);
+    }
+}
+
+int repo_list_load(wchar_t urls[][512], int max)
+{
+    int n = 0;
+    wchar_t path[MAX_PATH];
+    repo_appdata_path(path, MAX_PATH, L"\\repos.txt");
+    FILE* f = _wfopen(path, L"r");
+    if (f) {
+        wchar_t line[600];
+        while (n < max && fgetws(line, 600, f)) {
+            wchar_t* p = line;
+            while (*p == L' ' || *p == L'\t' || *p == L'\r' || *p == L'\n') p++;
+            int len = (int)wcslen(p);
+            while (len > 0 && (p[len - 1] == L'\r' || p[len - 1] == L'\n' ||
+                               p[len - 1] == L' '))
+                p[--len] = 0;
+            if (len > 0) wcscpy(urls[n++], p);
+        }
+        fclose(f);
+    }
+    if (n == 0) {
+        wcscpy(urls[0], REPO_DEFAULT_BASE);
+        n = 1;
+    }
+    return n;
+}
+
+void repo_list_save(const wchar_t urls[][512], int n)
+{
+    wchar_t path[MAX_PATH];
+    repo_appdata_path(path, MAX_PATH, L"\\repos.txt");
+    FILE* f = _wfopen(path, L"w");
+    if (f) {
+        for (int i = 0; i < n; i++) fwprintf(f, L"%ls\n", urls[i]);
+        fclose(f);
+    }
+}
 
 /* ------------------------------------------------------------------ */
 /* HTTP helpers (WinINet, direct connection)                           */

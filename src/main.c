@@ -1714,7 +1714,6 @@ static INT_PTR CALLBACK interface_dlg_proc(HWND h, UINT m, WPARAM w, LPARAM l)
 /* Dialog Plugin repository (Settings ▸ Plugin repository…)           */
 /* ------------------------------------------------------------------ */
 #define IDD_REPO        112
-#define IDC_REPO_URL    2001
 #define IDC_REPO_FETCH  2002
 #define IDC_REPO_SEARCH 2003
 #define IDC_REPO_TYPE   2004
@@ -1723,7 +1722,9 @@ static INT_PTR CALLBACK interface_dlg_proc(HWND h, UINT m, WPARAM w, LPARAM l)
 
 static repo_plugin* g_repo_list = NULL;
 static int g_repo_n = 0;
-static wchar_t g_repo_base[512] = REPO_DEFAULT_BASE;
+static wchar_t g_repos[REPO_MAX_URLS][512];
+static int g_repo_count = 0;
+static wchar_t g_repo_base[512] = REPO_DEFAULT_BASE;   /* repo courant (téléchargements) */
 
 static void repo_fill_list(HWND h)
 {
@@ -1764,6 +1765,64 @@ static void repo_fill_list(HWND h)
     }
 }
 
+/* Remplit la liste des repositories et sélectionne le premier. */
+static void repo_refresh_listbox(HWND h)
+{
+    HWND lb = GetDlgItem(h, 2007);
+    SendMessageW(lb, LB_RESETCONTENT, 0, 0);
+    for (int i = 0; i < g_repo_count; i++)
+        SendMessageW(lb, LB_ADDSTRING, 0, (LPARAM)g_repos[i]);
+    SendMessageW(lb, LB_SETCURSEL, 0, 0);
+}
+
+/* Charge l'index du repository sélectionné dans la liste. */
+static void repo_fetch_current(HWND h)
+{
+    int sel = (int)SendMessageW(GetDlgItem(h, 2007), LB_GETCURSEL, 0, 0);
+    if (sel < 0 || sel >= g_repo_count) return;
+    wcscpy(g_repo_base, g_repos[sel]);
+    HCURSOR cur = SetCursor(LoadCursor(NULL, IDC_WAIT));
+    wchar_t json_url[1024];
+    swprintf(json_url, 1024, L"%ls/plugins.json", g_repo_base);
+    repo_free(g_repo_list, g_repo_n);
+    g_repo_list = NULL;
+    g_repo_n = 0;
+    int rc = repo_fetch(json_url, &g_repo_list, &g_repo_n);
+    SetCursor(cur);
+    if (rc != 0)
+        MessageBoxW(h, rc == -1 ? L"Network error (check the URL)."
+                                : L"Invalid repository index.",
+                    L"Plugin repository", MB_ICONERROR);
+    repo_fill_list(h);
+}
+
+/* Dialog Add repository (ID 113) : saisie d'une URL. */
+static INT_PTR CALLBACK repo_add_proc(HWND h, UINT m, WPARAM w, LPARAM l)
+{
+    (void)l;
+    switch (m) {
+    case WM_COMMAND:
+        if (LOWORD(w) == IDOK) {
+            wchar_t url[512];
+            GetDlgItemTextW(h, 2001, url, 512);
+            if (url[0]) {
+                if (g_repo_count < REPO_MAX_URLS) {
+                    wcscpy(g_repos[g_repo_count++], url);
+                    repo_list_save(g_repos, g_repo_count);
+                    EndDialog(h, 1);
+                } else {
+                    MessageBoxW(h, L"Too many repositories.", L"Add repository",
+                                MB_ICONERROR);
+                }
+            }
+        } else if (LOWORD(w) == IDCANCEL) {
+            EndDialog(h, 0);
+        }
+        return TRUE;
+    }
+    return FALSE;
+}
+
 static INT_PTR CALLBACK repo_dlg_proc(HWND h, UINT m, WPARAM w, LPARAM l)
 {
     (void)l;
@@ -1791,25 +1850,41 @@ static INT_PTR CALLBACK repo_dlg_proc(HWND h, UINT m, WPARAM w, LPARAM l)
         SendMessageW(cb, CB_ADDSTRING, 0, (LPARAM)L"Effect");
         SendMessageW(cb, CB_ADDSTRING, 0, (LPARAM)L"Service");
         SendMessageW(cb, CB_SETCURSEL, 0, 0);
-        SetDlgItemTextW(h, IDC_REPO_URL, g_repo_base);
+        /* liste des repositories (persistée) + fetch du premier */
+        g_repo_count = repo_list_load(g_repos, REPO_MAX_URLS);
+        repo_refresh_listbox(h);
+        repo_fetch_current(h);
         return TRUE;
     }
     case WM_COMMAND:
-        if (LOWORD(w) == IDC_REPO_FETCH) {
-            GetDlgItemTextW(h, IDC_REPO_URL, g_repo_base, 512);
-            HCURSOR cur = SetCursor(LoadCursor(NULL, IDC_WAIT));
-            wchar_t json_url[1024];
-            swprintf(json_url, 1024, L"%ls/plugins.json", g_repo_base);
-            repo_free(g_repo_list, g_repo_n);
-            g_repo_list = NULL;
-            g_repo_n = 0;
-            int rc = repo_fetch(json_url, &g_repo_list, &g_repo_n);
-            SetCursor(cur);
-            if (rc != 0)
-                MessageBoxW(h, rc == -1 ? L"Network error (check the URL)."
-                                        : L"Invalid repository index.",
-                            L"Plugin repository", MB_ICONERROR);
-            repo_fill_list(h);
+        if (LOWORD(w) == 2008) {          /* Add… */
+            if (DialogBoxW(GetModuleHandleW(NULL), MAKEINTRESOURCEW(113),
+                           h, repo_add_proc) == 1) {
+                repo_refresh_listbox(h);
+                SendMessageW(GetDlgItem(h, 2007), LB_SETCURSEL,
+                             g_repo_count - 1, 0);
+                repo_fetch_current(h);
+            }
+        } else if (LOWORD(w) == 2009) {   /* Remove */
+            int sel = (int)SendMessageW(GetDlgItem(h, 2007), LB_GETCURSEL, 0, 0);
+            if (sel >= 0 && sel < g_repo_count) {
+                for (int i = sel; i < g_repo_count - 1; i++)
+                    wcscpy(g_repos[i], g_repos[i + 1]);
+                g_repo_count--;
+                repo_list_save(g_repos, g_repo_count);
+                repo_refresh_listbox(h);
+                if (g_repo_count > 0) repo_fetch_current(h);
+                else {
+                    repo_free(g_repo_list, g_repo_n);
+                    g_repo_list = NULL;
+                    g_repo_n = 0;
+                    repo_fill_list(h);
+                }
+            }
+        } else if (LOWORD(w) == 2007) {   /* sélection d'un repository */
+            if (HIWORD(w) == LBN_SELCHANGE) repo_fetch_current(h);
+        } else if (LOWORD(w) == IDC_REPO_FETCH) {
+            repo_fetch_current(h);
         } else if (LOWORD(w) == IDC_REPO_DL) {
             HWND lv = GetDlgItem(h, IDC_REPO_LIST);
             int sel = (int)SendMessageW(lv, LVM_GETNEXTITEM, (WPARAM)-1,

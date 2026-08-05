@@ -20,6 +20,13 @@
     L"https://raw.githubusercontent.com/LostInTheBugs/MusicPlayer/master/repo"
 
 #define REPO_MAX_PLUGINS 128
+#define REPO_MAX_URLS 16
+
+/* Liste des repositories (persistée dans %APPDATA%\MusicPlayer\repos.txt,
+ * une URL par ligne). Le repository du projet est ajouté par défaut
+ * quand la liste est vide. */
+int  repo_list_load(wchar_t urls[][512], int max);
+void repo_list_save(const wchar_t urls[][512], int n);
 
 typedef struct repo_plugin {
     char name[64];
