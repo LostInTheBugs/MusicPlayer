@@ -2,6 +2,14 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.042-c5] — 2026-08-04
+
+### Fixed (autonomous update still not applying)
+- **Extraction now uses `tar.exe` (built into Windows 10/11) instead of PowerShell** — no execution-policy or profile dependencies; the result is checked (`errorlevel` + presence of `MusicPlayer.exe`) and logged to `updater.log`
+- **Download integrity check**: a response smaller than 1 MB (404, HTML error page…) is rejected before any deployment — the old code could extract a truncated/garbage file or silently fail
+- Download timeout raised to 60 s
+- The engine is force-stopped before extraction (its loaded `core_plugins/*.dll` used to lock the archive)
+
 ## [2026.08.042-c4] — 2026-08-04
 
 ### Added (plugin repository: a LIST of repositories)

@@ -186,7 +186,7 @@ int mp_update_download(const char* tag, const wchar_t* out_path)
     HINTERNET inet = InternetOpenW(L"MusicPlayer-Updater/1.0",
                                    INTERNET_OPEN_TYPE_PRECONFIG, NULL, NULL, 0);
     if (!inet) return -1;
-    DWORD to = 30000;
+    DWORD to = 60000;
     InternetSetOptionW(inet, INTERNET_OPTION_CONNECT_TIMEOUT, &to, sizeof(to));
     InternetSetOptionW(inet, INTERNET_OPTION_RECEIVE_TIMEOUT, &to, sizeof(to));
     HINTERNET url_h = InternetOpenUrlW(inet, url, NULL, 0,
@@ -199,12 +199,17 @@ int mp_update_download(const char* tag, const wchar_t* out_path)
         if (out != INVALID_HANDLE_VALUE) {
             char buf[16384];
             DWORD rd = 0;
+            DWORD total = 0;
             rc = 0;
             while (InternetReadFile(url_h, buf, sizeof(buf), &rd) && rd > 0) {
                 DWORD wr = 0;
                 WriteFile(out, buf, rd, &wr, NULL);
+                total += rd;
             }
             CloseHandle(out);
+            /* un zip valide fait ~40 Mo : une réponse plus petite est
+             * une erreur (404, page HTML…) → on ne déploie pas */
+            if (total < (1u << 20)) rc = -1;
         }
         InternetCloseHandle(url_h);
     }
@@ -355,9 +360,10 @@ int mp_update_apply_and_restart(void)
 
     /* script : arrête le client ET le moteur (le moteur lancé au login
      * verrouille les DLL des core_plugins et ferait échouer
-     * l'extraction), extrait le zip à côté de l'exe, relance, puis se
-     * supprime. Le résultat de l'extraction est noté dans updater.log
-     * (relu au démarrage suivant). */
+     * l'extraction), extrait le zip avec tar.exe (intégré à Windows 10+,
+     * pas de dépendance PowerShell), vérifie le résultat, relance, puis
+     * se supprime. Le résultat est noté dans updater.log (relu au
+     * démarrage suivant). */
     wchar_t bat[MAX_PATH];
     wcscpy(bat, appdir);
     wcscat(bat, L"\\updater.bat");
@@ -365,14 +371,24 @@ int mp_update_apply_and_restart(void)
     if (!f) return -1;
     fwprintf(f,
         L"@echo off\r\n"
+        L"rem ===== MusicPlayer updater =====\r\n"
         L"taskkill /IM MusicPlayer.exe /F >nul 2>&1\r\n"
         L"taskkill /IM musicplayer-core.exe /F >nul 2>&1\r\n"
         L"timeout /t 2 /nobreak >nul\r\n"
         L"cd /d \"%~dp0\"\r\n"
-        L"powershell -NoProfile -Command \"$e=''; try { Expand-Archive -Force -Path update.zip -DestinationPath . -ErrorAction Stop } catch { $e=$_.Exception.Message }; if ($e) { 'FAIL: '+$e | Out-File -Encoding ascii updater.log } else { 'OK' | Out-File -Encoding ascii updater.log }\"\r\n"
-        L"if exist updater.log goto done\r\n"
-        L":done\r\n"
-        L"del update.zip\r\n"
+        L"tar -xf update.zip >updater.err 2>&1\r\n"
+        L"if errorlevel 1 (\r\n"
+        L"  echo FAIL: tar errorlevel %errorlevel% > updater.log\r\n"
+        L"  type updater.err >> updater.log\r\n"
+        L") else (\r\n"
+        L"  if exist MusicPlayer.exe (\r\n"
+        L"    echo OK > updater.log\r\n"
+        L"  ) else (\r\n"
+        L"    echo FAIL: MusicPlayer.exe absent apres extraction >> updater.log\r\n"
+        L"  )\r\n"
+        L")\r\n"
+        L"del update.zip >nul 2>&1\r\n"
+        L"del updater.err >nul 2>&1\r\n"
         L"start \"\" \"%~dp0MusicPlayer.exe\"\r\n"
         L"del \"%~f0\"\r\n");
     fclose(f);
