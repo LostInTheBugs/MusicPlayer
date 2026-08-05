@@ -2,6 +2,14 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.042-c1] — 2026-08-04
+
+### Changed (Settings ▸ Interface… : boutons uniques + fenêtre compacte)
+- **Un seul bouton** « Enable autostart » / « Disable autostart » (le texte change selon l'état) — fini les deux boutons fixes
+- **Un seul bouton** « Start engine now » / « Stop engine » (idem)
+- **Ligne d'état supprimée** (l'accès au registre y causait des soucis, et un seul bouton suffit à connaître l'état)
+- **Le groupe Full screen s'adapte au nombre d'écrans** : les rangées masquées (écrans 3/4 absents) rétrécissent le groupe, les contrôles du bas remontent et la fenêtre se compacte — plus d'espace vide
+
 ## [2026.08.042] — 2026-08-04
 
 ### Added (architecture client/serveur — le mode DJ passe côté moteur)

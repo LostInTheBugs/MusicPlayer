@@ -1513,6 +1513,17 @@ static void do_net_dialog(void)
 /* ------------------------------------------------------------------ */
 /* Dialog Interface (Settings ▸ Interface…) : skin + langue            */
 /* ------------------------------------------------------------------ */
+
+/* Boutons uniques : le texte reflète l'état courant (pas de double
+ * bouton Enable/Disable — un seul, dont le libellé change). */
+static void refresh_svc_buttons(HWND h)
+{
+    SetDlgItemTextW(h, 1044, svc_installed() == 1 ? L"Disable autostart"
+                                                  : L"Enable autostart");
+    SetDlgItemTextW(h, 1046, svc_running() == 1 ? L"Stop engine"
+                                                : L"Start engine now");
+}
+
 static INT_PTR CALLBACK interface_dlg_proc(HWND h, UINT m, WPARAM w, LPARAM l)
 {
     (void)l;
@@ -1585,11 +1596,37 @@ static INT_PTR CALLBACK interface_dlg_proc(HWND h, UINT m, WPARAM w, LPARAM l)
                 }
             }
         }
-        /* statut du service Windows */
+        /* boutons uniques (texte selon l'état) */
+        refresh_svc_buttons(h);
+        /* le groupe Full screen s'adapte au nombre d'écrans : pas
+         * d'espace vide sous les rangées masquées */
         {
-            char st[160];
-            svc_status_text(st, sizeof(st));
-            SetDlgItemTextA(h, 1048, st);
+            int nmons = GetSystemMetrics(SM_CMONITORS);
+            if (nmons > 4) nmons = 4;
+            if (nmons < 1) nmons = 1;
+            int extra = (4 - nmons) * 26;
+            if (extra > 0) {
+                RECT r;
+                HWND fs = GetDlgItem(h, 1032);
+                GetWindowRect(fs, &r);
+                MapWindowPoints(NULL, h, (LPPOINT)&r, 2);
+                MoveWindow(fs, r.left, r.top, r.right - r.left,
+                           (r.bottom - r.top) - extra, TRUE);
+                HWND ctrls[] = { GetDlgItem(h, 1050), GetDlgItem(h, 1044),
+                                 GetDlgItem(h, 1046), GetDlgItem(h, IDOK),
+                                 GetDlgItem(h, IDCANCEL) };
+                for (int i = 0; i < 5; i++) {
+                    GetWindowRect(ctrls[i], &r);
+                    MapWindowPoints(NULL, h, (LPPOINT)&r, 2);
+                    MoveWindow(ctrls[i], r.left, r.top - extra,
+                               r.right - r.left, r.bottom - r.top, TRUE);
+                }
+                RECT dr;
+                GetWindowRect(h, &dr);
+                SetWindowPos(h, NULL, 0, 0, dr.right - dr.left,
+                             dr.bottom - dr.top - extra,
+                             SWP_NOMOVE | SWP_NOZORDER);
+            }
         }
         return TRUE;
     }
@@ -1638,38 +1675,32 @@ static INT_PTR CALLBACK interface_dlg_proc(HWND h, UINT m, WPARAM w, LPARAM l)
             EndDialog(h, 1);
         } else if (LOWORD(w) == IDCANCEL) {
             EndDialog(h, 0);
-        } else if (LOWORD(w) == 1044) {   /* Enable autostart */
-            int rc = svc_install();
-            if (rc == 0)      MessageBoxW(h, L"Autostart enabled: the engine will start at your next login.", L"Start with Windows", MB_OK);
-            else if (rc == 1) MessageBoxW(h, L"Autostart already enabled.", L"Start with Windows", MB_OK);
-            else              MessageBoxW(h, L"Enable failed.", L"Start with Windows", MB_ICONERROR);
-            char st[160];
-            svc_status_text(st, sizeof(st));
-            SetDlgItemTextA(h, 1048, st);
-        } else if (LOWORD(w) == 1045) {   /* Disable autostart */
-            int rc = svc_uninstall();
-            if (rc == 0)      MessageBoxW(h, L"Autostart disabled.", L"Start with Windows", MB_OK);
-            else if (rc == 1) MessageBoxW(h, L"Autostart was not enabled.", L"Start with Windows", MB_OK);
-            else              MessageBoxW(h, L"Disable failed.", L"Start with Windows", MB_ICONERROR);
-            char st[160];
-            svc_status_text(st, sizeof(st));
-            SetDlgItemTextA(h, 1048, st);
-        } else if (LOWORD(w) == 1046) {   /* Start engine now */
-            int rc = svc_start();
-            if (rc == 0)      MessageBoxW(h, L"Engine started (icon in the notification area).", L"Start with Windows", MB_OK);
-            else if (rc == 1) MessageBoxW(h, L"Engine already running.", L"Start with Windows", MB_OK);
-            else              MessageBoxW(h, L"Start failed.", L"Start with Windows", MB_ICONERROR);
-            char st[160];
-            svc_status_text(st, sizeof(st));
-            SetDlgItemTextA(h, 1048, st);
-        } else if (LOWORD(w) == 1047) {   /* Stop engine */
-            int rc = svc_stop();
-            if (rc == 0)      MessageBoxW(h, L"Engine stopped.", L"Start with Windows", MB_OK);
-            else if (rc == 1) MessageBoxW(h, L"Engine not running.", L"Start with Windows", MB_OK);
-            else              MessageBoxW(h, L"Stop failed.", L"Start with Windows", MB_ICONERROR);
-            char st[160];
-            svc_status_text(st, sizeof(st));
-            SetDlgItemTextA(h, 1048, st);
+        } else if (LOWORD(w) == 1044) {   /* Enable/Disable autostart (un seul bouton) */
+            if (svc_installed() == 1) {
+                int rc = svc_uninstall();
+                if (rc == 0)      MessageBoxW(h, L"Autostart disabled.", L"Start with Windows", MB_OK);
+                else if (rc == 1) MessageBoxW(h, L"Autostart was not enabled.", L"Start with Windows", MB_OK);
+                else              MessageBoxW(h, L"Disable failed.", L"Start with Windows", MB_ICONERROR);
+            } else {
+                int rc = svc_install();
+                if (rc == 0)      MessageBoxW(h, L"Autostart enabled: the engine will start at your next login.", L"Start with Windows", MB_OK);
+                else if (rc == 1) MessageBoxW(h, L"Autostart already enabled.", L"Start with Windows", MB_OK);
+                else              MessageBoxW(h, L"Enable failed.", L"Start with Windows", MB_ICONERROR);
+            }
+            refresh_svc_buttons(h);
+        } else if (LOWORD(w) == 1046) {   /* Start/Stop engine (un seul bouton) */
+            if (svc_running() == 1) {
+                int rc = svc_stop();
+                if (rc == 0)      MessageBoxW(h, L"Engine stopped.", L"Start with Windows", MB_OK);
+                else if (rc == 1) MessageBoxW(h, L"Engine not running.", L"Start with Windows", MB_OK);
+                else              MessageBoxW(h, L"Stop failed.", L"Start with Windows", MB_ICONERROR);
+            } else {
+                int rc = svc_start();
+                if (rc == 0)      MessageBoxW(h, L"Engine started (icon in the notification area).", L"Start with Windows", MB_OK);
+                else if (rc == 1) MessageBoxW(h, L"Engine already running.", L"Start with Windows", MB_OK);
+                else              MessageBoxW(h, L"Start failed.", L"Start with Windows", MB_ICONERROR);
+            }
+            refresh_svc_buttons(h);
         }
         return TRUE;
     }
