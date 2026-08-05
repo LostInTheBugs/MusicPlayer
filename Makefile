@@ -32,7 +32,7 @@ LDFLAGS  := -Lvendor/ffmpeg/lib \
             -static -mwindows
 
 SRC := src/main.c src/player.c src/plugin_loader.c src/lang.c src/update.c src/config.c src/cd.c \
-       src/client_core.c src/stream_player.c src/svc.c
+       src/client_core.c src/stream_player.c src/svc.c src/repo.c
 OBJ := $(SRC:.c=.o)
 RES := src/musicplayer_res.o
 BIN := bin/MusicPlayer.exe
@@ -176,14 +176,28 @@ test: all plugins-examples test-samples
 
 # ----------------------------------------------------------------------
 # Archive portable pour Windows 11
+# Les plugins/skins optionnels ne sont plus embarqués : ils se
+# téléchargent depuis le repository (Settings ▸ Plugin repository…).
 # ----------------------------------------------------------------------
 zip: all plugins-examples dirs core
-	cd bin && zip -q ../dist/MusicPlayer-$(VERSION)-win64.zip MusicPlayer.exe musicplayer-core.exe $(FFMPEG_DLLS) LICENSE-FFmpeg.txt plugins/*.dll core_plugins/*.dll core_plugins/*.txt skins/*.dll skins/*.png lang/*.lang && \
+	cd bin && zip -q ../dist/MusicPlayer-$(VERSION)-win64.zip MusicPlayer.exe musicplayer-core.exe $(FFMPEG_DLLS) LICENSE-FFmpeg.txt plugins/ts.dll core_plugins/*.dll core_plugins/*.txt lang/*.lang && \
 	cd .. && echo "Archive : dist/MusicPlayer-$(VERSION)-win64.zip"
+
+# ----------------------------------------------------------------------
+# Repository de plugins : copie les binaires dans repo/bin/ (à committer
+# pour publier). L'index est plugins.json (racine).
+# ----------------------------------------------------------------------
+repo: plugins-examples
+	rm -rf repo/bin
+	mkdir -p repo/bin/plugins repo/bin/skins repo/bin/core_plugins
+	cp -f bin/plugins/*.dll repo/bin/plugins/ 2>/dev/null || true
+	cp -f bin/skins/*.dll bin/skins/*.png repo/bin/skins/ 2>/dev/null || true
+	cp -f bin/core_plugins/*.dll repo/bin/core_plugins/ 2>/dev/null || true
+	@echo "repo/bin prêt — committez-le pour publier le repository"
 
 clean:
 	rm -f $(OBJ) $(OBJ:.o=.d) bin/*.exe bin/*.dll bin/*.log
 	rm -rf build
 	@echo "Note : dist/*.zip (livrables) n'est pas supprimé ; utilisez 'make distclean' si besoin."
 
-.PHONY: all dirs setup plugins-examples test-samples test zip clean
+.PHONY: all dirs setup plugins-examples test-samples test zip repo clean

@@ -26,6 +26,7 @@
 #include "client_core.h"
 #include "stream_player.h"
 #include "svc.h"
+#include "repo.h"
 #include "plugin.h"
 #include "plugin_loader.h"
 #include "lang.h"
@@ -61,6 +62,7 @@ enum {
     IDM_UPDATE_CFG = 806,   /* Settings ▸ Update… (mode de mise à jour) */
     IDM_DJ_MODE = 807,      /* Settings ▸ DJ Mixing (synchro web) */
     IDM_NETWORK = 809,      /* Settings ▸ Network… (services réseau) */
+    IDM_REPO = 810,         /* Settings ▸ Plugin repository… */
     IDM_ABOUT = 901
 };
 
@@ -903,6 +905,7 @@ static HMENU create_menus(void)
     AppendMenuW(mSettings, MF_STRING, IDM_WEB_SERVER, lang_get("menu_web_server"));
     AppendMenuW(mSettings, MF_SEPARATOR, 0, NULL);
     AppendMenuW(mSettings, MF_STRING, IDM_PLUGIN_CFG, lang_get("menu_plugins_cfg"));
+    AppendMenuW(mSettings, MF_STRING, IDM_REPO, L"Plugin repository…");
     append_bar_item(bar, mSettings, lang_get("menu_settings"));
 
     append_bar_item(bar, (HMENU)CreatePopupMenu(), lang_get("menu_plugins"));
@@ -1705,6 +1708,158 @@ static INT_PTR CALLBACK interface_dlg_proc(HWND h, UINT m, WPARAM w, LPARAM l)
         return TRUE;
     }
     return FALSE;
+}
+
+/* ------------------------------------------------------------------ */
+/* Dialog Plugin repository (Settings ▸ Plugin repository…)           */
+/* ------------------------------------------------------------------ */
+#define IDD_REPO        112
+#define IDC_REPO_URL    2001
+#define IDC_REPO_FETCH  2002
+#define IDC_REPO_SEARCH 2003
+#define IDC_REPO_TYPE   2004
+#define IDC_REPO_LIST   2005
+#define IDC_REPO_DL     2006
+
+static repo_plugin* g_repo_list = NULL;
+static int g_repo_n = 0;
+static wchar_t g_repo_base[512] = REPO_DEFAULT_BASE;
+
+static void repo_fill_list(HWND h)
+{
+    HWND lv = GetDlgItem(h, IDC_REPO_LIST);
+    SendMessageW(lv, LVM_DELETEALLITEMS, 0, 0);
+    wchar_t search[64] = L"";
+    GetDlgItemTextW(h, IDC_REPO_SEARCH, search, 64);
+    int type_sel = (int)SendMessageW(GetDlgItem(h, IDC_REPO_TYPE),
+                                     CB_GETCURSEL, 0, 0);
+    static const char* types[] = { "", "skin", "visual", "effect", "service" };
+    const char* typef = types[type_sel < 0 ? 0 : type_sel];
+
+    for (int i = 0; i < g_repo_n; i++) {
+        repo_plugin* p = &g_repo_list[i];
+        if (typef[0] && strcmp(p->type, typef)) continue;
+        if (search[0]) {
+            wchar_t name[64];
+            MultiByteToWideChar(CP_UTF8, 0, p->name, -1, name, 64);
+            if (!wcsstr(name, search)) continue;
+        }
+        wchar_t name[64], type[16], ver[32], desc[256];
+        MultiByteToWideChar(CP_UTF8, 0, p->name, -1, name, 64);
+        MultiByteToWideChar(CP_UTF8, 0, p->type, -1, type, 16);
+        MultiByteToWideChar(CP_UTF8, 0, p->version, -1, ver, 32);
+        MultiByteToWideChar(CP_UTF8, 0, p->desc, -1, desc, 256);
+        LVITEMW li;
+        memset(&li, 0, sizeof(li));
+        li.mask = LVIF_TEXT | LVIF_PARAM;
+        li.iItem = (int)SendMessageW(lv, LVM_GETITEMCOUNT, 0, 0);
+        li.lParam = i;
+        li.pszText = name;
+        int idx = (int)SendMessageW(lv, LVM_INSERTITEMW, 0, (LPARAM)&li);
+        li.iItem = idx;
+        li.mask = LVIF_TEXT;
+        li.iSubItem = 1; li.pszText = type; SendMessageW(lv, LVM_SETITEMW, 0, (LPARAM)&li);
+        li.iSubItem = 2; li.pszText = ver;  SendMessageW(lv, LVM_SETITEMW, 0, (LPARAM)&li);
+        li.iSubItem = 3; li.pszText = desc; SendMessageW(lv, LVM_SETITEMW, 0, (LPARAM)&li);
+    }
+}
+
+static INT_PTR CALLBACK repo_dlg_proc(HWND h, UINT m, WPARAM w, LPARAM l)
+{
+    (void)l;
+    switch (m) {
+    case WM_CTLCOLORDLG:
+    case WM_CTLCOLORSTATIC:
+        return dlg_skin_color(h, w, l);
+    case WM_INITDIALOG: {
+        HWND lv = GetDlgItem(h, IDC_REPO_LIST);
+        LVCOLUMNW col;
+        memset(&col, 0, sizeof(col));
+        col.mask = LVCF_TEXT | LVCF_WIDTH;
+        col.cx = 130; col.pszText = L"Name";
+        SendMessageW(lv, LVM_INSERTCOLUMNW, 0, (LPARAM)&col);
+        col.cx = 70; col.pszText = L"Type";
+        SendMessageW(lv, LVM_INSERTCOLUMNW, 1, (LPARAM)&col);
+        col.cx = 90; col.pszText = L"Version";
+        SendMessageW(lv, LVM_INSERTCOLUMNW, 2, (LPARAM)&col);
+        col.cx = 140; col.pszText = L"Description";
+        SendMessageW(lv, LVM_INSERTCOLUMNW, 3, (LPARAM)&col);
+        HWND cb = GetDlgItem(h, IDC_REPO_TYPE);
+        SendMessageW(cb, CB_ADDSTRING, 0, (LPARAM)L"All types");
+        SendMessageW(cb, CB_ADDSTRING, 0, (LPARAM)L"Skin");
+        SendMessageW(cb, CB_ADDSTRING, 0, (LPARAM)L"Visual");
+        SendMessageW(cb, CB_ADDSTRING, 0, (LPARAM)L"Effect");
+        SendMessageW(cb, CB_ADDSTRING, 0, (LPARAM)L"Service");
+        SendMessageW(cb, CB_SETCURSEL, 0, 0);
+        SetDlgItemTextW(h, IDC_REPO_URL, g_repo_base);
+        return TRUE;
+    }
+    case WM_COMMAND:
+        if (LOWORD(w) == IDC_REPO_FETCH) {
+            GetDlgItemTextW(h, IDC_REPO_URL, g_repo_base, 512);
+            HCURSOR cur = SetCursor(LoadCursor(NULL, IDC_WAIT));
+            wchar_t json_url[1024];
+            swprintf(json_url, 1024, L"%ls/plugins.json", g_repo_base);
+            repo_free(g_repo_list, g_repo_n);
+            g_repo_list = NULL;
+            g_repo_n = 0;
+            int rc = repo_fetch(json_url, &g_repo_list, &g_repo_n);
+            SetCursor(cur);
+            if (rc != 0)
+                MessageBoxW(h, rc == -1 ? L"Network error (check the URL)."
+                                        : L"Invalid repository index.",
+                            L"Plugin repository", MB_ICONERROR);
+            repo_fill_list(h);
+        } else if (LOWORD(w) == IDC_REPO_DL) {
+            HWND lv = GetDlgItem(h, IDC_REPO_LIST);
+            int sel = (int)SendMessageW(lv, LVM_GETNEXTITEM, (WPARAM)-1,
+                                        LVNI_SELECTED);
+            if (sel < 0) {
+                MessageBoxW(h, L"Select a plugin first.", L"Plugin repository", MB_OK);
+                break;
+            }
+            LVITEMW li;
+            memset(&li, 0, sizeof(li));
+            li.mask = LVIF_PARAM;
+            li.iItem = sel;
+            SendMessageW(lv, LVM_GETITEMW, 0, (LPARAM)&li);
+            int pi = (int)li.lParam;
+            if (pi < 0 || pi >= g_repo_n) break;
+            HCURSOR cur = SetCursor(LoadCursor(NULL, IDC_WAIT));
+            int rc = repo_download(g_repo_base, &g_repo_list[pi]);
+            SetCursor(cur);
+            if (rc == 0) {
+                wchar_t msg[600];
+                swprintf(msg, 600,
+                         L"%hs downloaded.\nRestart MusicPlayer to load it.",
+                         g_repo_list[pi].name);
+                MessageBoxW(h, msg, L"Plugin repository", MB_OK);
+            } else {
+                MessageBoxW(h, L"Download failed.", L"Plugin repository",
+                            MB_ICONERROR);
+            }
+        } else if (LOWORD(w) == IDC_REPO_SEARCH) {
+            if (HIWORD(w) == EN_CHANGE) repo_fill_list(h);
+        } else if (LOWORD(w) == IDC_REPO_TYPE) {
+            if (HIWORD(w) == CBN_SELCHANGE) repo_fill_list(h);
+        } else if (LOWORD(w) == IDCANCEL) {
+            EndDialog(h, 0);
+        }
+        return TRUE;
+    case WM_CLOSE:
+        EndDialog(h, 0);
+        return TRUE;
+    }
+    return FALSE;
+}
+
+static void do_repo_dialog(void)
+{
+    DialogBoxW(GetModuleHandleW(NULL), MAKEINTRESOURCEW(IDD_REPO), g_hwnd,
+               repo_dlg_proc);
+    repo_free(g_repo_list, g_repo_n);
+    g_repo_list = NULL;
+    g_repo_n = 0;
 }
 
 static void do_interface_dialog(void)
@@ -3342,6 +3497,9 @@ static void on_command(int id, HMENU bar)
         break;
     case IDM_NETWORK:
         do_net_dialog();
+        break;
+    case IDM_REPO:
+        do_repo_dialog();
         break;
     case IDM_WEB_SERVER:
         do_web_dialog();

@@ -4,654 +4,656 @@ All notable changes to MusicPlayer are documented in this file.
 
 ## [2026.08.042-c1] — 2026-08-04
 
-### Changed (Settings ▸ Interface… : boutons uniques + fenêtre compacte)
-- **Un seul bouton** « Enable autostart » / « Disable autostart » (le texte change selon l'état) — fini les deux boutons fixes
-- **Un seul bouton** « Start engine now » / « Stop engine » (idem)
-- **Ligne d'état supprimée** (l'accès au registre y causait des soucis, et un seul bouton suffit à connaître l'état)
-- **Le groupe Full screen s'adapte au nombre d'écrans** : les rangées masquées (écrans 3/4 absents) rétrécissent le groupe, les contrôles du bas remontent et la fenêtre se compacte — plus d'espace vide
+### Changed (Settings ▸ Interface… : single buttons + compact window)
+- **Single autostart button** — « Enable autostart » / « Disable autostart » (the label switches with the state)
+- **Single engine button** — « Start engine now » / « Stop engine » (same behaviour)
+- **Status line removed** (the registry access caused issues, and a single stateful button is enough)
+- **The Full screen group adapts to the number of screens**: hidden rows (missing screens 3/4) shrink the group, the controls below move up and the window compacts — no more empty space
 
 ## [2026.08.042] — 2026-08-04
 
-### Added (architecture client/serveur — le mode DJ passe côté moteur)
-Décision d'architecture appliquée : **le mix DJ se fait dans le moteur**, pas sur le client.
-- **`musicplayer-core.exe`** : le flux diffusé (`/stream`, webserver, RTP, Multiroom…) contient désormais le **mix des platines A (flux principal) et B (2e décodeur du moteur)** avec volumes + crossfader
-- **API REST** : nouvelles commandes `dj_open_b` (path), `dj_play_b`, `dj_stop_b`, `dj_xf` (crossfader), `dj_vol_a`, `dj_vol_b`
-- **Client** : la console DJ pilote le moteur par l'API (le mix local est retiré — le flux reçu contient déjà le mix) ; les sliders affichent les valeurs envoyées
-- Conséquence : le mix DJ est identique sur **tous** les consommateurs (haut-parleur du client, téléphone, RTP, Multiroom)
-- Vérifié sous Wine : commandes DJ ok, flux /stream complet avec le DJ actif, SELFTEST PASS
+### Added (client/server architecture — DJ mode moves to the engine)
+Architecture decision applied: **the DJ mix now happens in the engine**, not on the client.
+- **`musicplayer-core.exe`**: the broadcast stream (`/stream`, web server, RTP, Multiroom…) now contains the **mix of decks A (main stream) and B (second decoder of the engine)** with volumes + crossfader
+- **REST API**: new commands `dj_open_b` (path), `dj_play_b`, `dj_stop_b`, `dj_xf` (crossfader), `dj_vol_a`, `dj_vol_b`
+- **Client**: the DJ console drives the engine through the API (the local mix was removed — the received stream already contains the mix); sliders show the sent values
+- Consequence: the DJ mix is identical on **all** consumers (client speakers, phone, RTP, Multiroom)
+- Verified under Wine: DJ commands ok, full `/stream` with DJ active, SELFTEST PASS
 
 ## [2026.08.041-c2] — 2026-08-04
 
-### Fixed (RTP et Multiroom se volaient les échantillons)
-Les diffuseurs **RTP** et **Multiroom** utilisaient tous les deux `web_read` (lecteur 0 partagé) : activés ensemble, chaque paquet lu par l'un était perdu pour l'autre → flux hachés. Chacun réserve désormais **son propre lecteur** (`mp_web_reader_open` / `web_read_n` / close à l'arrêt) — le complément de la phase 2 de la spec Claude (webserver/UPnP/REST étaient déjà migrés).
-- Vérifié sous Wine avec RTP + Multiroom actifs : le `/stream` du client reçoit le flux **complet** (24 620 octets) et la lecture reste propre
+### Fixed (RTP and Multiroom were stealing samples from each other)
+The **RTP** and **Multiroom** broadcasters both used `web_read` (shared reader 0): when both were active, every packet read by one was lost for the other → choppy streams. Each one now reserves **its own reader** (`mp_web_reader_open` / `web_read_n` / close on exit) — completing Claude's phase 2 spec (web server/UPnP/REST were already migrated).
+- Verified under Wine with RTP + Multiroom active: the client `/stream` receives the **full** stream (24 620 bytes) and playback stays clean
 
 ## [2026.08.041-c1] — 2026-08-04
 
-### Changed (démarrage du moteur au login — sans droits admin)
-Le service Windows (041) exigeait des droits administrateur pour s'installer. Remplacé par le **démarrage automatique au login de l'utilisateur** :
-- **Autostart via HKCU\…\CurrentVersion\Run** : **aucun droit spécial requis**
-- **Icône du moteur dans la zone de notification** (barre des tâches) avec menu au **clic droit** :
-  - *Open MusicPlayer client* (lance l'interface)
-  - *Open web remote* (ouvre le navigateur sur la télécommande web)
-  - *Exit* (arrête le moteur)
-  - double-clic : lance le client
-- **Settings ▸ Interface…** : groupe « Start with Windows (login) » — **Enable autostart / Disable autostart / Start engine now / Stop engine** + ligne d'état (autostart activé ? moteur en cours d'exécution ?)
-- Le client se connecte au moteur s'il tourne (lancé au login) sans le relancer, et ne l'arrête pas à sa fermeture ; le moteur lancé par le client lui-même reste arrêté avec lui
+### Changed (engine starts at login — no admin rights)
+The Windows service (041) required administrator rights to install. Replaced by **automatic start at the user login**:
+- **Autostart via HKCU\…\CurrentVersion\Run**: **no special rights required**
+- **Engine icon in the notification area** (taskbar) with a **right-click** menu:
+  - *Open MusicPlayer client* (launches the interface)
+  - *Open web remote* (opens the browser on the web remote control)
+  - *Exit* (stops the engine)
+  - double-click: launches the client
+- **Settings ▸ Interface…**: group « Start with Windows (login) » — **Enable autostart / Disable autostart / Start engine now / Stop engine** + status line (autostart enabled? engine running?)
+- The client connects to the engine when it is already running (started at login) without relaunching it, and does not stop it on exit; an engine started by the client itself is stopped with it
 
 ## [2026.08.041] — 2026-08-04
 
-### Added (architecture client/serveur — phase 3 : service Windows)
-- **`musicplayer-core.exe --service`** : le moteur tourne comme **service Windows** (24/7, sans session ouverte) — `StartServiceCtrlDispatcherW`, contrôle SCM (stop/shutdown → même chemin d'arrêt que l'API, `WM_APP+1`), statut SERVICE_RUNNING/STOPPED
-- **Settings ▸ Interface…** : groupe « Windows service (moteur 24/7) » avec **Install / Uninstall / Start / Stop** + ligne d'état (installé ? en cours d'exécution ?) — via le Gestionnaire de contrôle des services (`advapi32`)
-- **Le client s'adapte** : si le service tourne, il s'y connecte **sans lancer le moteur** ; à la fermeture, il **ne l'arrête pas** (le service survit au client)
-- Installation : `CreateService` (démarrage automatique au boot), binPath `"…\musicplayer-core.exe" --service`
-- Testé : mode normal inchangé (lecture, playlist, webserver 200, SELFTEST PASS) ; `--service` se comporte correctement (sous Wine, pas de SCM → sortie propre)
+### Added (client/server architecture — phase 3: Windows service)
+- **`musicplayer-core.exe --service`**: the engine runs as a **Windows service** (24/7, without an open session) — `StartServiceCtrlDispatcherW`, SCM control (stop/shutdown → same shutdown path as the API, `WM_APP+1`), SERVICE_RUNNING/STOPPED status
+- **Settings ▸ Interface…**: « Windows service (engine 24/7) » group with **Install / Uninstall / Start / Stop** + status line — through the Service Control Manager (`advapi32`)
+- **The client adapts**: if the service is running it connects **without launching the engine**; on exit it **does not stop it** (the service outlives the client)
+- Installation: `CreateService` (auto start at boot), binPath `"…\musicplayer-core.exe" --service`
+- Tested: normal mode unchanged (playback, playlist, web server 200, SELFTEST PASS); `--service` behaves correctly (under Wine, no SCM → clean exit)
 
 ## [2026.08.040-c6] — 2026-08-04
 
-### Fixed (boutons de transport — spec Claude 3)
-Le problème : les commandes partaient bien et le moteur les exécutait bien, mais **~1,5-2 s d'audio restaient en transit** après l'appui (web_ring du core 0,74 s + tampons TCP 0,37 s + ring du client 0,74 s) — le son continuait après Stop/Pause, et l'icône ne basculait qu'au polling de 250 ms.
+### Fixed (transport buttons — Claude spec 3)
+The commands were sent and executed correctly, but **~1.5-2 s of audio remained in transit** after pressing a button (core web_ring 0.74 s + TCP buffers 0.37 s + client ring 0.74 s) — the sound kept playing after Stop/Pause, and the icon only switched at the 250 ms polling.
 
-- **`mp_web_flush()`** (core) : purge le flux de diffusion (tous les lecteurs recalés sur l'écriture) — appelée par `mp_stop`, `mp_seek`, `mp_open` **avant** la remise à zéro de la position
-- **`SO_SNDBUF 8192`** dans `stream_loop` : borne l'audio en vol dans la socket à ~46 ms
-- **`sp_flush()`** (client) : purge du ring local demandée par l'UI, vidée **par le callback audio** (seul possesseur du tail) — silence immédiat sur stop/pause/changement
-- **`client_transport(cmd, flush)`** : purge + commande + **état rafraîchi immédiatement** (plus d'icône en retard) 
-- **`client_play_pause()` déterministe** : plus de bascule `playpause` (2 clics rapides sur un état périmé = bouton mort) — décide `play`/`pause` d'après l'état connu du moteur
-- **Stop/Seek/Next/Prev** : purge + état immédiat ; Espace et S au clavier comme les boutons ; API plugins (host_play_pause/host_stop) branchée sur les nouvelles fonctions
-- Pas de purge sur pause : le tampon est conservé pour reprendre sans trou ; mode DJ intact
+- **`mp_web_flush()`** (core): flushes the broadcast stream (all readers repositioned on the write cursor) — called by `mp_stop`, `mp_seek`, `mp_open` **before** the position reset
+- **`SO_SNDBUF 8192`** in `stream_loop`: bounds in-flight socket audio to ~46 ms
+- **`sp_flush()`** (client): local ring purge requested by the UI, drained **by the audio callback** (the only owner of the tail) — instant silence on stop/pause/track change
+- **`client_transport(cmd, flush)`**: purge + command + **immediate state refresh** (no more delayed icon)
+- **Deterministic `client_play_pause()`**: no more `playpause` toggle (two fast clicks on a stale state = dead button) — decides `play`/`pause` from the engine's known state
+- **Stop/Seek/Next/Prev**: purge + immediate state; Space and S keys like the buttons; plugin API (host_play_pause/host_stop) wired to the new functions
+- No purge on pause: the buffer is kept so playback resumes without a gap; DJ mode untouched
 
 ### Verified (Wine)
-- Stop : state 0, position 0, immédiat ✓ · Pause : state 2, position figée ✓
-- Lecture, playlist, webserver 8000 : 200 ✓ · 0 warning (client, plugins, core) + SELFTEST PASS
+- Stop: state 0, position 0, immediate ✓ · Pause: state 2, position frozen ✓
+- Playback, playlist, web server 8000: 200 ✓ · 0 warnings (client, plugins, core) + SELFTEST PASS
 
 ## [2026.08.040-c5] — 2026-08-04
 
-### Fixed (lecture impossible — spec Claude 2 : lecteur 0 fantôme)
-- **Lecteur 0 fantôme supprimé** : réservé dans `mp_init()` mais jamais lu, son curseur figé retenait le plancher de lecture → `web_ring_write_bp` voyait le ring toujours plein → le décodeur se bloquait après ~0,74 s d'audio → plus aucune lecture. `mp_web_read` ouvre désormais son lecteur **à la première utilisation** (variante `mp_web_reader_open_locked` sans verrou)
-- **Soupape anti-blocage** dans `web_ring_write_bp` : si un lecteur ne consomme plus pendant 2 s (socket mort, client tué…), il est **recalé de force** (plus jamais le moteur ne se fige) ; le décodage reste interruptible (`!g_interrupt && g_state == PLAYING`) → Stop/Seek répondent immédiatement
-- **Deadlock des commandes** (playidx/next/prev/open dossier) : le verrou de playlist était tenu pendant `mp_open` — le décodeur attend ce verrou à la fin d'un morceau → deadlock. Les commandes libèrent le verrou avant `mp_open`
+### Fixed (playback impossible — Claude spec 2: ghost reader 0)
+- **Ghost reader 0 removed**: reserved in `mp_init()` but never read, its frozen cursor held the read floor → `web_ring_write_bp` saw the ring always full → the decoder blocked after ~0.74 s of audio → no playback at all. `mp_web_read` now opens its reader **on first use** (`mp_web_reader_open_locked` variant without lock)
+- **Anti-block safety valve** in `web_ring_write_bp`: if a reader does not consume for 2 s (dead socket, killed client…), it is **force-repositioned** (the engine can never freeze again); decoding stays interruptible (`!g_interrupt && g_state == PLAYING`) → Stop/Seek respond immediately
+- **Command deadlock** (playidx/next/prev/open folder): the playlist lock was held during `mp_open` — the decoder waits for that lock at the end of a track → deadlock. Commands now release the lock before `mp_open`
 
 ### Verified (Wine)
-- `playidx 0` → 01_a.mp3 joué **en entier** (6,104/6,0 s) ; next → 02_b.mp3 ; prev → 01_a.mp3 ✓
-- Open dossier : lecture + enchaînement automatique de toute la playlist ✓
-- Client complet : les 3 morceaux joués, webserver 8000 : 200 ✓
-- 0 warning (client, plugins, core) + SELFTEST PASS
+- `playidx 0` → 01_a.mp3 played **in full** (6.104/6.0 s); next → 02_b.mp3; prev → 01_a.mp3 ✓
+- Open folder: playback + automatic track chaining of the whole playlist ✓
+- Full client: 3 tracks played, web server 8000: 200 ✓
+- 0 warnings (client, plugins, core) + SELFTEST PASS
 
 ## [2026.08.040-c4] — 2026-08-04
 
-### Fixed (son, commandes, serveur web — spec Claude appliquée en 3 phases)
-**Phase 1 — contre-débit rétabli (le son)**
-- `sp_ring_write` (client) : **écriture bloquante** — si le ring est plein, on attend que la carte son consomme au lieu de jeter : c'est ce blocage qui cale toute la chaîne sur la carte son (le morceau dure sa durée réelle, la position avance au rythme réel)
-- Curseur « peek » du TeamSpeak **borné** (recalage si le lecteur est trop en retard)
-- **Pré-remplissage ~200 ms** avant le démarrage du device (thread réseau démarré avant, plus de silence initial)
-- `core_http.c` : le **faux pacing `Sleep(5)`** supprimé (le `send()` bloquant cadence désormais)
-- `player.c` : le **masque** `& WEB_RING_MASK` retiré du calcul d'occupation (ring plein = 0 détecté → écrasement de données non lues)
+### Fixed (sound, commands, web server — Claude spec applied in 3 phases)
+**Phase 1 — backpressure restored (the sound)**
+- `sp_ring_write` (client): **blocking write** — if the ring is full, wait for the sound card to consume instead of dropping: this blockage paces the whole chain on the sound card (a track lasts its real duration, the position advances in real time)
+- TeamSpeak **peek cursor bounded** (repositioning when the reader lags too far)
+- **~200 ms pre-fill** before the device starts (network thread started first, no initial silence)
+- `core_http.c`: the **fake `Sleep(5)` pacing** removed (the blocking `send()` now paces)
+- `player.c`: the **`& WEB_RING_MASK`** mask removed from the fill calculation (full ring detected as 0 → overwriting unread data)
 
-**Phase 2 — plusieurs lecteurs sur le flux du core**
-- **4 curseurs de lecture indépendants** (`mp_web_reader_open/close/read_n`) : chaque consommateur (/stream du client, webserver téléphone, UPnP, REST) a son propre curseur — plus de vols d'échantillons entre consommateurs
-- La position du morceau n'avance que quand le **lecteur le plus en retard** progresse (pas de double comptage avec plusieurs clients)
-- API plugins **v4** + `web_reader_open/close/read_n` dans l'API hôte (webserver, UPnP, REST migrés)
+**Phase 2 — multiple readers on the core stream**
+- **4 independent read cursors** (`mp_web_reader_open/close/read_n`): each consumer (client `/stream`, phone web server, UPnP, REST) has its own cursor — no more sample stealing between consumers
+- The track position only advances when the **slowest reader** progresses (no double counting with several clients)
+- Plugin API **v4** + `web_reader_open/close/read_n` in the host API (web server, UPnP, REST migrated)
 
-**Phase 3 — serveur web redémarré**
-- Le core envoie désormais l'événement `MP_SERVICE_WEB_APPLY` au démarrage : **webserver 8000, RTP, UPnP, Multiroom démarrent** (ils attendaient cet événement que le core n'envoyait jamais)
-- Endpoint `POST /api/config` (web_enabled/web_port/web_ips appliqués à chaud) + `cc_push_web_config` côté client (les 4 sites de réglage)
-- Le core **n'écrase plus `config.yml`** à sa sortie (le client est le seul propriétaire de la config)
+**Phase 3 — web server restarted**
+- The core now sends the `MP_SERVICE_WEB_APPLY` event at startup: **web server 8000, RTP, UPnP, Multiroom start** (they were waiting for this event the core never sent)
+- `POST /api/config` endpoint (web_enabled/web_port/web_ips applied live) + `cc_push_web_config` on the client side (the 4 settings sites)
+- The core **no longer overwrites `config.yml`** on exit (the client is the only owner of the config)
 
 ### Verified (Wine)
-- Position qui avance au rythme réel, pause (state 2, position figée), stop (state 0), playpause ✓
-- Webserver 8000 : 200 sur la page et l'API ✓ · RTP/UPnP/Multiroom démarrés ✓
-- 0 warning (client, plugins, core) + SELFTEST PASS
+- Position advancing in real time, pause (state 2, frozen position), stop (state 0), playpause ✓
+- Web server 8000: 200 on page and API ✓ · RTP/UPnP/Multiroom started ✓
+- 0 warnings (client, plugins, core) + SELFTEST PASS
 
 ## [2026.08.040-c3] — 2026-08-04
 
-### Fixed (son — le ring buffer du client était corrompu)
-- **Le ring buffer du lecteur de flux écrivait à la position de LECTURE** (tail) au lieu de la position d'ÉCRITURE (head), et avançait le tail en écrivant : les données jouées par le haut-parleur étaient mélangées (échantillons L/R croisés, paquets partiels, silence intermittent) — le « son indescriptible ». Réécrit en SPSC standard : le producteur (thread réseau) écrit à `head`, le consommateur (callback audio) lit à `tail`
-- Diagnostiqué par **dump du flux réellement joué** : avant : 30 469 sauts > 0,5 et fréquence 3303 Hz (bruit) ; après : **0 saut, sine 440 Hz propre**
-- Conséquence du bug : le client avalait le flux trop vite → le moteur atteignait la fin du morceau prématurément → cycle « Playing puis Finished puis Playing » — corrigé (le client consomme désormais au rythme de la carte son, le moteur enchaîne à la vitesse réelle)
+### Fixed (sound — the client ring buffer was corrupted)
+- **The stream player ring wrote at the READ position (tail) instead of the WRITE position (head)**, and advanced the tail while writing: played data was garbled (crossed L/R samples, partial packets, intermittent silence) — the « indescribable sound ». Rewritten as a standard SPSC: the producer (network thread) writes at `head`, the consumer (audio callback) reads at `tail`
+- Diagnosed with a **dump of the actually played stream**: before — 30 469 jumps > 0.5 and a 3303 Hz frequency (noise); after — **0 jumps, clean 440 Hz sine**
+- Consequence of the bug: the client swallowed the stream too fast → the engine reached the end of the track early → « Playing then Finished then Playing » cycle — fixed (the client now consumes at the sound-card pace, the engine chains at real speed)
 
 ## [2026.08.040-c2] — 2026-08-04
 
-### Fixed (son — cause racine)
-- **Le plugin TeamSpeak volait le flux audio du device principal** : il lisait le ring du flux via `web_read` de façon **destructive** — chaque échantillon n'était lu qu'une fois, soit par le haut-parleur, soit par le TS → son principal haché (la moitié des échantillons) et TS décalé. `sp_web_read` fait maintenant une **lecture non destructive** (curseur de lecture séparé) : le TS voit le flux complet sans retirer les échantillons du device
-- État du resample réinitialisé à chaque reconnexion au moteur
+### Fixed (sound — root cause)
+- **The TeamSpeak plugin was stealing the main device stream**: it read the stream ring via `web_read` **destructively** — each sample was read only once, either by the speakers or by TS → choppy main sound (half the samples) and shifted TS. `sp_web_read` now does a **non-destructive read** (separate read cursor): TS sees the full stream without removing samples from the device
+- Resample state reset on every engine reconnection
 
 ## [2026.08.040-c1] — 2026-08-04
 
-### Fixed (son — régression 040)
-- **Désalignement L/R du flux** (le « son indescriptible ») : les lectures réseau (`InternetReadFile`) arrivent à des **tailles arbitraires** ; l'ancien code jetait les 1-3 octets restants à chaque lecture, désalignant progressivement les canaux gauche/droite (37 % des échantillons mélangés — mesuré). Le lecteur de flux conserve désormais les **octets résiduels** entre les lectures (buffer de report) : 0 échantillon désaligné sur 6 144 frames (testé)
-- **Pitch incorrect sur les cartes à 48 kHz** : le flux du moteur est à 44 100 Hz mais le device du client peut jouer à 48 000 — **resample linéaire** du flux vers le sample rate réel du device (position fractionnaire + interpolation, état conservé entre les blocs)
+### Fixed (sound — 040 regression)
+- **L/R misalignment of the stream** (the « indescribable sound »): network reads (`InternetReadFile`) arrive at **arbitrary sizes**; the old code dropped the remaining 1-3 bytes at each read, progressively misaligning the left/right channels (37 % of samples mixed — measured). The stream player now keeps **residual bytes** between reads (carry buffer): 0 misaligned samples over 6 144 frames (tested)
+- **Wrong pitch on 48 kHz sound cards**: the engine stream is 44 100 Hz but the client device may play at 48 000 — **linear resampling** of the stream to the device's real sample rate (fractional position + interpolation, state kept between blocks)
 
 ## [2026.08.040] — 2026-08-04
 
-### Added (architecture client/serveur — phase 2 : client branché)
-- **Le client pilote le moteur** (`MusicPlayer.exe` → `musicplayer-core.exe`) :
-  - au démarrage, le client **lance le moteur** s'il ne tourne pas (et l'**arrête à la fermeture** : API shutdown + arrêt forcé en secours) ;
-  - toutes les commandes passent par l'API REST (play, pause, stop, next, prev, seek, speed, shuffle, open, playidx) ;
-  - l'état (position, durée, titre, métadonnées) arrive par **polling** `/api/state` (250 ms) ;
-  - la **playlist du client est synchronisée** via `/api/plist` (le moteur scanne, le client affiche)
-- **Lecteur de flux local** (`stream_player.c`) : le client reçoit le PCM du moteur (`/stream`) et le joue sur sa carte son — volume local, **effets plugins** (equalizer, sound quality), **mix DJ local** et **analyse des visuels** dans le callback
-- **TeamSpeak côté client** : le plugin diffuse le flux reçu (host `web_read` → flux local)
-- **Plugins réseau retirés du client** : webserver/restapi/upnp/rtp/multiroom ne sont chargés que par le **core** (`core_plugins/`) — plus de double serveur ni de conflit de ports (filtre dans le loader)
-- Testé sous Wine : le client lance le core, synchronise la playlist (3 morceaux), la lecture s'enchaîne et se termine sur le moteur, TeamSpeak démarre côté client
+### Added (client/server architecture — phase 2: wired client)
+- **The client drives the engine** (`MusicPlayer.exe` → `musicplayer-core.exe`):
+  - at startup, the client **launches the engine** if not running (and **stops it on exit**: API shutdown + forced stop as fallback);
+  - every command goes through the REST API (play, pause, stop, next, prev, seek, speed, shuffle, open, playidx);
+  - state (position, duration, title, metadata) arrives via **`/api/state` polling** (250 ms);
+  - the **client playlist is synchronized** through `/api/plist` (the engine scans, the client displays)
+- **Local stream player** (`stream_player.c`): the client receives the engine's PCM (`/stream`) and plays it on its sound card — local volume, **plugin effects** (equalizer, sound quality), **local DJ mix** and **visual analysis** in the callback
+- **TeamSpeak on the client**: the plugin broadcasts the received stream (host `web_read` → local stream)
+- **Network plugins removed from the client**: web server/restapi/upnp/rtp/multiroom are only loaded by the **core** (`core_plugins/`) — no more double server or port conflicts (filter in the loader)
+- Tested under Wine: the client launches the core, syncs the playlist (3 tracks), playback chains and finishes on the engine, TeamSpeak starts on the client
 
 ## [2026.08.039] — 2026-08-04
 
-### Added (architecture client/serveur — phase 1 : moteur autonome)
-- **`musicplayer-core.exe`** : le moteur sans interface — playlist, décodeur FFmpeg, CD, plugins services réseau (webserver, metadata, cover, UPnP, RTP/AES67, Multiroom) dans un **dossier `core_plugins/` dédié**. Fenêtre invisible, timers d'enchaînement, log `musicplayer-core.log`
-- **API publique REST** (port 8080, `svc_rest_port`) documentée dans **`API.md`** : `/health`, `/api/state`, `/api/plist`, `/api/cover`, `/api/levels`, `/stream` (PCM WAV 44,1 kHz stéréo), `POST /api/cmd` (play, pause, stop, next, prev, seek, speed, shuffle, open, playidx, shutdown — anti-CSRF Content-Type JSON)
-- **Flux diffusé** : pas de carte son côté moteur — la position avance au rythme des clients qui consomment `/stream` (backpressure), la fin de morceau est détectée par le consommateur
-- **`player.c` compile en deux modes** : `MP_CORE` (sans miniaudio, diffusion) et normal (carte son locale) — le client actuel est **inchangé et fonctionne**
-- Testé sous Wine : state/plist/cover/levels/cmd ✓, `/stream` = PCM réel (peak 2752) ✓, shutdown propre ✓
-- Le zip inclut `musicplayer-core.exe` + `core_plugins/`
+### Added (client/server architecture — phase 1: standalone engine)
+- **`musicplayer-core.exe`**: the UI-less engine — playlist, FFmpeg decoder, CD, network service plugins (web server, metadata, cover, UPnP, RTP/AES67, Multiroom) in a dedicated **`core_plugins/`** folder. Invisible window, chaining timers, `musicplayer-core.log`
+- **Public REST API** (port 8080, `svc_rest_port`) documented in **`API.md`**: `/health`, `/api/state`, `/api/plist`, `/api/cover`, `/api/levels`, `/stream` (WAV PCM 44.1 kHz stereo), `POST /api/cmd` (play, pause, stop, next, prev, seek, speed, shuffle, open, playidx, shutdown — anti-CSRF JSON Content-Type)
+- **Broadcast stream**: no sound card on the engine — the position advances at the pace of the clients consuming `/stream` (backpressure), the end of track is detected by the consumer
+- **`player.c` compiles in two modes**: `MP_CORE` (no miniaudio, broadcast) and normal (local sound card) — the current client is **unchanged and works**
+- Tested under Wine: state/plist/cover/levels/cmd ✓, `/stream` = real PCM (peak 2752) ✓, clean shutdown ✓
+- The zip includes `musicplayer-core.exe` + `core_plugins/`
 
 ## [2026.08.038-c1] — 2026-08-04
 
-### Fixed (dialog Update)
-- **Les 3 groupes de radios sont indépendants** : `WS_GROUP` manquait sur le premier bouton de chaque groupe (« Update mode », « Update type », « Delay ») — toutes les radios formaient un seul groupe et un seul choix était possible. On peut maintenant choisir le mode ET le type ET le délai.
+### Fixed (Update dialog)
+- **The 3 radio groups are independent**: `WS_GROUP` was missing on the first button of each group (« Update mode », « Update type », « Delay ») — all radios formed a single group and only one choice was possible. Mode AND type AND delay can now be chosen.
 
 ## [2026.08.038] — 2026-08-04
 
 ### Added (Settings ▸ Update…)
-- **Mode autonome** : vérifie **toutes les heures**, applique la mise à jour et **redémarre sans rien demander** (timer 1 h + application via script : attente de fermeture, extraction du zip, relance, auto-nettoyage)
-- **Type de mises à jour** : toutes (défaut) ou **correctives seulement** (versions `-cX`)
-- **Délai avant d'appliquer / signaler** : 0, 1 jour, 1 semaine (défaut) ou 1 mois — une release plus récente que le délai n'est ni proposée ni appliquée (`published_at` comparé à l'horloge locale)
-- Persistance : `upd.txt` au format `mode=… / type=… / lag=…` (ancien format monoparamètre toujours lu)
+- **Autonomous mode**: checks **every hour**, applies the update and **restarts without asking** (1 h timer + script-based application: wait for exit, extract the zip, relaunch, self-cleanup)
+- **Update types**: all (default) or **fixes only** (`-cX` versions)
+- **Delay before applying/reporting**: 0, 1 day, 1 week (default) or 1 month — a release more recent than the delay is neither offered nor applied (`published_at` compared to the local clock)
+- Persistence: `upd.txt` as `mode=… / type=… / lag=…` (old single-parameter format still read)
 
 ## [2026.08.037-c2] — 2026-08-04
 
 ### Added
-- **Commandes de lecture dans le menu File** : Play/Pause, Stop, Next, **Previous** (nouveau, boucle sur la playlist), **Shuffle** (case à cocher, état synchronisé à l'ouverture du menu) — accessibles aussi quand le menu est caché par un skin (clic droit)
+- **Playback commands in the File menu**: Play/Pause, Stop, Next, **Previous** (new, loops over the playlist), **Shuffle** (checkmark, state synced when the menu opens) — also reachable when a skin hides the menu (right-click)
 
 ## [2026.08.037-c1] — 2026-08-04
 
-### Fixed (skins — 2e passe)
-- **Clic droit : les sous-menus ne sont plus détruits** — `DestroyMenu` détruisait récursivement les popups attachés de la barre (File/Settings/Plugins/Help) : le 1er clic droit marchait, les suivants montraient des entrées mortes. Le popup détache ses sous-menus (`RemoveMenu`) avant d'être détruit — testé : 3 clics droits d'affilée sans crash, menus intacts
-- **Barre de contrôles peinte au bon endroit** : avec un skin « contrôles en haut », le fond était peint en bas (bande opaque sur la photo) — il est peint là où sont les boutons (haut si `g_skin_ctrl_top`)
-- **Voiles semi-transparents** sur les barres (contrôles 63 % et progression 50 %) quand le skin a une image de fond : l'artwork reste lisible, les icônes gardent leur contraste
-- Commentaire orphelin de `get_visual_rect` supprimé
+### Fixed (skins — 2nd pass)
+- **Right-click: submenus are no longer destroyed** — `DestroyMenu` recursively destroyed the attached popups of the bar (File/Settings/Plugins/Help): the first right-click worked, the following ones showed dead entries. The popup detaches its submenus (`RemoveMenu`) before being destroyed — tested: 3 right-clicks in a row without crash, menus intact
+- **Control bar painted at the right place**: with a « top controls » skin, the background was painted at the bottom (opaque band over the photo) — it is painted where the buttons are (top when `g_skin_ctrl_top`)
+- **Semi-transparent veils** on the bars (controls 63 % and progress 50 %) when the skin has a background image: the artwork stays readable, the icons keep their contrast
+- Orphan comment of `get_visual_rect` removed
 
 ## [2026.08.037] — 2026-08-04
 
-### Changed (skins « fenêtre entière » — refonte)
-- **API plugins v3** : nouveau point d'entrée hôte `skin_set_window_size(w, h, fixed)` et `skin_set_layout` étendu (menu, contrôles, **barre d'état**)
-- **Séparation des deux rectangles** : `get_content_rect` (surface de l'image de fond, des contrôles et de la progression) ≠ zone du visualiseur (celle du skin, convertie en coordonnées locales) — le fond n'est plus écrasé dans la zone du visualiseur
-- **Rendu 1:1 de l'image de fond** (taille native, plus d'étirement) : les skins « fenêtre entière » imposent la **taille exacte de l'artwork** (640×300), fenêtre **non redimensionnable** (WM_GETMINMAXINFO borné, bord non étirable, agrandir grisé), barre d'état masquée
-- **État du skin réinitialisé entre deux skins** (image, zone visuelle, layout, taille) : passer de « Vintage radio » à « Clean » retrouve menu visible, barre d'état et fenêtre redimensionnable
-- **Skins mis à jour** : Vintage radio (cadran 222,202,196,36), Winamp (analyseur 30,212,580,54, contrôles dans le bandeau) ; les 9 skins palette inchangés
-- Testé sous Wine : radio = fenêtre **640×300 exacte**, artwork 1:1 (pixels bois présents), spectre dans le cadran ; Clean = 632×266, menu visible, état par défaut
+### Changed (full-window skins — overhaul)
+- **Plugin API v3**: new host entry point `skin_set_window_size(w, h, fixed)` and extended `skin_set_layout` (menu, controls, **status bar**)
+- **Two separate rectangles**: `get_content_rect` (background image, controls and progress surface) ≠ visualizer zone (the skin's, converted to local coordinates) — the background is no longer overpainted in the visualizer zone
+- **1:1 background rendering** (native size, no stretching): full-window skins impose the **exact artwork size** (640×300), window **not resizable** (WM_GETMINMAXINFO bounded, non-stretchable border, maximize greyed), status bar hidden
+- **Skin state reset between skins** (image, visual zone, layout, size): switching from « Vintage radio » to « Clean » restores the visible menu, the status bar and a resizable window
+- **Skins updated**: Vintage radio (dial 222,202,196,36), Winamp (analyzer 30,212,580,54, controls in the band); the 9 palette skins unchanged
+- Tested under Wine: radio = exact **640×300** window, 1:1 artwork (wood pixels present), spectrum in the dial; Clean = 632×266, visible menu, default state
 
 ## [2026.08.036-c10] — 2026-08-04
 
-### Fixed (revue de code — 5e passe)
-- **`http_post_is_json` précisé** : la valeur du `Content-Type` est **bornée à la fin de sa ligne** (un corps contenant la chaîne « application/json » ne peut plus faire passer un autre type — testé : `text/plain` + corps piégé → 403) et la recherche d'en-tête est **insensible à la casse** (compatibilité clients HTTP/2/lib normalisant en minuscules — testé : `content-type:` → 200)
+### Fixed (code review — 5th pass)
+- **`http_post_is_json` tightened**: the `Content-Type` value is **bounded to the end of its line** (a body containing the string « application/json » can no longer pass another type — tested: `text/plain` + trapped body → 403) and the header search is **case-insensitive** (compatibility with HTTP/2/lib clients normalizing to lowercase — tested: `content-type:` → 200)
 
 ## [2026.08.036-c9] — 2026-08-04
 
-### Fixed / Refactored (revue de code — 4e passe)
-- **`examples/http_util.h` créé** (header-only, un par DLL) : mutualise la lecture de requête robuste (boucle recv + terminaison avant strstr + corps Content-Length + timeout 5 s), les réponses HTTP à longueur bornée, l'en-tête WAV et la conversion float→PCM16 — les 3 plugins HTTP (webserver, REST API, UPnP) l'utilisent, un correctif ne se porte plus sur 3 copies
-- **strstr prématuré corrigé dans `plugin_upnp.c` et `plugin_restapi.c`** (les copies de la boucle recv avaient le même défaut que le webserver : `req` non terminé avant le strstr) — via `http_read_request`
-- Anti-CSRF mutualisé (`http_post_is_json`) ; tampons WAV/PCM16 des flux via helpers communs
+### Fixed / Refactored (code review — 4th pass)
+- **`examples/http_util.h` created** (header-only, one per DLL): shares the robust request reading (recv loop + termination before strstr + Content-Length body + 5 s timeout), bounded-length HTTP responses, the WAV header and float→PCM16 conversion — the 3 HTTP plugins (web server, REST API, UPnP) use it; a fix no longer has to be ported to 3 copies
+- **Premature strstr fixed in `plugin_upnp.c` and `plugin_restapi.c`** (their recv loop copies had the same flaw as the web server: `req` not terminated before the strstr) — via `http_read_request`
+- Shared anti-CSRF (`http_post_is_json`); stream WAV/PCM16 buffers via common helpers
 
 ## [2026.08.036-c8] — 2026-08-04
 
-### Fixed (revue de code — 3e passe)
-- **UPnP `media_stream` : tampons par connexion** (dernier static survivant sur un chemin multi-clients — `plugin_rtp.c` / `plugin_multiroom.c` gardent leurs static : thread de service unique, correct) + `snprintf` partout dans le plugin
-- **player.c : `#include <math.h>` explicite** pour `llround` (ne plus dépendre de l'include transitif de miniaudio.h)
+### Fixed (code review — 3rd pass)
+- **UPnP `media_stream`: per-connection buffers** (last remaining static on a multi-client path — `plugin_rtp.c` / `plugin_multiroom.c` keep their statics: single service thread, correct) + `snprintf` everywhere in the plugin
+- **player.c: explicit `#include <math.h>`** for `llround` (no longer relying on the transitive include of miniaudio.h)
 
 ## [2026.08.036-c7] — 2026-08-04
 
-### Fixed (revue de code — 2e passe)
-- **Position : facteur vitesse intégré** — chaque bloc joué est accumulé en `got / speed` dans le callback : la barre affiche le **temps du morceau** quel que soit le speed (testé : à 2×, la position atteint 6:00/6:00 à la fin du morceau de 6 min au lieu de 3:00), et reste exact si la vitesse change en cours de morceau
-- **`dj_stream_thread` et `api_stream` : tampons par thread** (plus de static partagé — la page DJ ouvre les decks A et B simultanément, usage nominal)
-- **Lecture hors bornes corrigée dans la boucle recv** : `req[rn] = 0` est posé **avant** chaque `strstr` (le buffer n'était pas terminé → strstr pouvait lire au-delà de rn, chemin atteignable par le réseau)
-- **CORS du REST API documenté et assumé** : lecture ouverte (`Access-Control-Allow-Origin: *` pour les GET), commandes protégées (POST exige `Content-Type: application/json` → le preflight cross-origin échoue, pas d'`Allow-Headers`)
-- **README : instructions vendor corrigées** (`win64-gpl-shared` → `win64-lgpl-shared`) — plus de risque de régénérer le problème de licence
+### Fixed (code review — 2nd pass)
+- **Position: speed factor integrated** — each played block is accumulated as `got / speed` in the callback: the bar shows the **track time** whatever the speed (tested: at 2×, the position reaches 6:00/6:00 at the end of a 6-minute track instead of 3:00), and stays exact if the speed changes mid-track
+- **`dj_stream_thread` and `api_stream`: per-thread buffers** (no more shared static — the DJ page opens decks A and B simultaneously, nominal usage)
+- **Out-of-bounds read fixed in the recv loop**: `req[rn] = 0` is set **before** each `strstr` (the buffer was not terminated → strstr could read beyond rn, a network-reachable path)
+- **REST API CORS documented and assumed**: open reading (`Access-Control-Allow-Origin: *` for GET), protected commands (POST requires `Content-Type: application/json` → the cross-origin preflight fails, no `Allow-Headers`)
+- **README: vendor instructions fixed** (`win64-gpl-shared` → `win64-lgpl-shared`) — no more risk of regenerating the license problem
 
 ## [2026.08.036-c6] — 2026-08-04
 
-### Fixed (build, robustesse, CI)
-- **Makefile : dépendances d'en-têtes** (`-MMD -MP` + `-include *.d`) — modifier `player.h` déclenche la recompilation des .c concernés
-- **Durcissement du binaire** : `-fstack-protector-strong` + `-D_FORTIFY_SOURCE=2` (le code parse du réseau et des tags ID3)
-- **`%APPDATA%` absent : plus de buffer non initialisé** — `GetEnvironmentVariableW` testé partout (config.c, plugin_loader.c) avec repli sur le dossier de l'exe
-- **update.c : buffer de réponse GitHub passé à 64 Ko** — le JSON (tag_name) n'est plus tronqué par construction
-- **CI GitHub Actions ajoutée** (`.github/workflows/build.yml`) : toolchain MinGW-w64 + Wine, `make setup` (vendor), build zéro warning, plugins, **selftest sous Wine**, zip — exécutée à chaque push/PR
+### Fixed (build, robustness, CI)
+- **Makefile: header dependencies** (`-MMD -MP` + `-include *.d`) — modifying `player.h` now triggers recompilation of the affected .c files
+- **Binary hardening**: `-fstack-protector-strong` + `-D_FORTIFY_SOURCE=2` (the code parses network data and ID3 tags)
+- **`%APPDATA%` missing: no more uninitialized buffer** — `GetEnvironmentVariableW` tested everywhere (config.c, plugin_loader.c) with fallback to the exe folder
+- **update.c: GitHub response buffer raised to 64 KB** — the JSON (tag_name) is no longer truncated by construction
+- **GitHub Actions CI added** (`.github/workflows/build.yml`): MinGW-w64 toolchain + Wine, `make setup` (vendor), zero-warning build, plugins, **selftest under Wine**, zip — run on every push/PR
 
 ## [2026.08.036-c5] — 2026-08-04
 
-### Fixed (sécurité & robustesse HTTP)
-- **CSRF bloqué** : les POST (`/api/cmd` du serveur web **et** du plugin REST) exigent désormais `Content-Type: application/json` — sans ce marqueur, le serveur répond **403**. Une requête « simple » (formulaire, fetch sans header) ne peut plus piloter le lecteur depuis un site tiers ; le JS des pages web envoie le header (testé : sans header → 403, avec → 200)
-- **Client muet / lent ne bloque plus le serveur** : le dispatch lit la requête **en boucle** jusqu'à la fin des en-têtes (un seul `recv()` pouvait ne ramener qu'une partie) + **attend le corps annoncé** (`Content-Length`) + **timeout de réception 5 s** — une connexion qui n'envoie rien est fermée après le timeout au lieu de bloquer toutes les suivantes
+### Fixed (HTTP security & robustness)
+- **CSRF blocked**: POST requests (`/api/cmd` of the web server **and** of the REST plugin) now require `Content-Type: application/json` — without this marker, the server answers **403**. A « simple » request (form, headerless fetch) can no longer drive the player from a third-party site; the web pages' JS sends the header (tested: without header → 403, with → 200)
+- **A silent/slow client no longer blocks the server**: the dispatcher reads the request **in a loop** until the end of the headers (a single `recv()` could return only part) + **waits for the announced body** (`Content-Length`) + **5 s receive timeout** — a connection that sends nothing is closed after the timeout instead of blocking all the following ones
 
 ## [2026.08.036-c4] — 2026-08-04
 
-### Fixed (revue de code)
-- **Position de lecture exacte** : elle compte désormais les frames réellement **jouées** (callback, après resampling → taux du périphérique) au lieu des frames décodées — plus d'avance (8,8 % à 48 kHz, ×2 en vitesse 2×, ~6 s de ring)
-- **Deck A du mixeur web réparé** : l'URL `/dj/streamA` chargeait la platine B (mauvais index `path[4]` → `path[10]`)
-- **Platine B du mode DJ local : plus de décodage dans le callback audio** — décodage déplacé dans un **thread dédié + ring buffer SPSC** (comme la platine A), fin des dropouts sur I/O disque lente ; tampon de mix par blocs de 4096
-- **Use-after-free éliminé** : `mp_dj_b_close` arrête le thread (interrupt_callback) et **attend sa fin** avant de libérer les contextes FFmpeg
-- **`/stream` : tampons par connexion** (plus de static partagé entre threads — deux clients se corrompaient)
-- **`snprintf` partout** (terminaison garantie) + longueurs bornées dans les réponses HTTP (`http_response_len`) — plus de `strlen` hors bornes sur troncature
-- **Ring buffers avec barrières mémoire** (`__atomic` RELEASE/ACQUIRE au lieu de `volatile`) : visibilité des données garantie sous GCC
-- **Fuites FFmpeg sur chemins d'erreur** : `mp_dj_b_open` et `dj_open` libèrent proprement (fmt/codec/swr) via `goto done`
+### Fixed (code review)
+- **Exact playback position**: it now counts the frames actually **played** (callback, after resampling → device rate) instead of decoded frames — no more advance (8.8 % at 48 kHz, ×2 at speed 2×, ~6 s of ring)
+- **Web mixer deck A fixed**: the `/dj/streamA` URL loaded deck B (wrong index `path[4]` → `path[10]`)
+- **Local DJ deck B: no more decoding in the audio callback** — decoding moved to a **dedicated thread + SPSC ring buffer** (like deck A), no more dropouts on slow disk I/O; mix buffer in 4096-sample blocks
+- **Use-after-free eliminated**: `mp_dj_b_close` stops the thread (interrupt_callback) and **waits for its end** before freeing the FFmpeg contexts
+- **`/stream`: per-connection buffers** (no more shared static between threads — two clients corrupted each other)
+- **`snprintf` everywhere** (guaranteed termination) + bounded lengths in HTTP responses (`http_response_len`) — no more out-of-bounds `strlen` on truncation
+- **Ring buffers with memory barriers** (`__atomic` RELEASE/ACQUIRE instead of `volatile`): data visibility guaranteed under GCC
+- **FFmpeg leaks on error paths**: `mp_dj_b_open` and `dj_open` free cleanly (fmt/codec/swr) via `goto done`
 
 ## [2026.08.036-c3] — 2026-08-03
 
 ### Changed
-- **Licence FFmpeg : bascule GPL → LGPL** — le projet est distribué avec les builds **BtbN `win64-lgpl-shared`** (FFmpeg n8.1) au lieu des builds GPL : le code source reste **MIT** (la liaison dynamique avec des DLL FFmpeg LGPL ne contamine pas le projet) ; `LICENSE-FFmpeg.txt` (notice LGPL de FFmpeg) est inclus dans l'archive distribuée
+- **FFmpeg license: GPL → LGPL switch** — the project is distributed with the **BtbN `win64-lgpl-shared`** builds (FFmpeg n8.1) instead of the GPL ones: the source code stays **MIT** (dynamic linking with LGPL FFmpeg DLLs does not contaminate the project); `LICENSE-FFmpeg.txt` (FFmpeg LGPL notice) is included in the distributed archive
 
 ## [2026.08.036-c2] — 2026-08-03
 
 ### Fixed
-- **Scintillement de la fenêtre principale éliminé** : `WM_ERASEBKGND` ne redessine plus le fond directement sur l'écran à chaque frame (le double buffer du `WM_PAINT` couvre toute la fenêtre) et toutes les invalidations passent en mode non-effaçant — plus d'impression de « fenêtre qui se ferme et se rouvre » ; l'equalizer bénéficie du même traitement
+- **Main window flicker eliminated**: `WM_ERASEBKGND` no longer redraws the background directly on screen every frame (the `WM_PAINT` double buffer covers the whole window) and all invalidations go through non-erasing mode — no more « window closing and reopening » impression; the equalizer benefits from the same treatment
 
 ## [2026.08.036-c1] — 2026-08-03
 
 ### Changed
-- **Equalizer : docké aux dimensions du core** — la fenêtre de l'equalizer a **exactement la même largeur que la fenêtre principale** et **se redimensionne avec elle** (curseurs répartis automatiquement)
-- **Equalizer : thème du core** — la fenêtre utilise **la palette du skin actif** (fond, texte, accent, pistes, curseurs, bordure) et se met à jour en direct quand on change de skin (nouvelle API `get_skin_colors`)
+- **Equalizer docked to the core dimensions**: the equalizer window has **exactly the same width as the main window** and **resizes with it** (sliders automatically redistributed)
+- **Equalizer: core theme** — the window uses **the active skin's palette** (background, text, accent, tracks, sliders, border) and updates live when the skin changes (new `get_skin_colors` API)
 
 ## [2026.08.036] — 2026-08-03
 
 ### Added
-- **Plugin Equalizer** (Plugins ▸ Effets ▸ Equalizer) : égaliseur **10 bandes style Winamp** (60 Hz – 16 kHz, ±12 dB) + preamp — sa fenêtre est **détachée et s'attache sous la fenêtre principale** (elle la suit quand on la déplace) ; curseurs verticaux cliquables/glissables, bouton ON/OFF, bouton [✕] pour cacher (rouvrir via le menu Plugins)
+- **Equalizer plugin** (Plugins ▸ Effects ▸ Equalizer): **10-band Winamp-style** equalizer (60 Hz – 16 kHz, ±12 dB) + preamp — its window is **detached and docks under the main window** (it follows when moving); clickable/draggable vertical sliders, ON/OFF button, [✕] button to hide (reopen via the Plugins menu)
 
 ## [2026.08.035] — 2026-08-03
 
 ### Added
-- **Mises à jour indépendantes des plugins** : chaque plugin a une version **« core.NNN »** (ex. `2026.08.034-c1.002` — validé avec le core 2026.08.034-c1). Au démarrage, le client consulte le manifeste **`plugins.json`** (GitHub) et **télécharge uniquement la DLL du plugin** dont la version diffère — pas de nouvelle version du programme (redémarrage pour charger)
-- Le plugin **Fractale** passe en `2026.08.034-c1.002` (1er plugin versionné ainsi)
+- **Independent plugin updates**: each plugin has a **« core.NNN »** version (e.g. `2026.08.034-c1.002` — validated with core 2026.08.034-c1). At startup, the client queries the **`plugins.json`** manifest (GitHub) and **downloads only the plugin DLL** whose version differs — no new program version (restart to load)
+- The **Fractal** plugin moves to `2026.08.034-c1.002` (first plugin versioned this way)
 
 ### Fixed
-- **Fractale : zoom qui se figeait après ~10 s** — le zoom dépassait la précision du double (tous les pixels identiques) ; il est maintenant plafonné (2^30) et **reboucle à l'infini** sur la frontière
+- **Fractal: zoom freezing after ~10 s** — the zoom exceeded the double precision (all pixels identical); it is now capped (2^30) and **loops forever** on the boundary
 
 ## [2026.08.034-c1] — 2026-08-03
 
 ### Fixed
-- **Fractale v2.1** :
-  - le zoom démarre **sur la frontière de l'ensemble** (seahorse valley −0.74529+0.11308i, point de bord vérifié) — le principe du zoom à l'infini sur le bord est respecté
-  - **plus de scintillement** : zoom transmis par valeur atomique (thread audio → thread UI), lissage d'itérations sans NaN, teinte stable par position avec dérive très lente (testé : 0–1 pixel changeant entre deux frames)
-  - itérations **dynamiques** avec le zoom (jusqu'à 400) pour continuer à résoudre la frontière en profondeur
+- **Fractal v2.1**:
+  - the zoom starts **on the set's boundary** (seahorse valley −0.74529+0.11308i, verified edge point) — the infinite boundary zoom principle is respected
+  - **no more flicker**: zoom passed by atomic value (audio thread → UI thread), NaN-free iteration smoothing, stable hue by position with very slow drift (tested: 0–1 pixel changing between two frames)
+  - **dynamic iterations** with the zoom (up to 400) to keep resolving the boundary deep down
 
 ## [2026.08.034] — 2026-08-03
 
 ### Changed
-- **Plugin visuel Fractale réécrit (v2.0)** : une **vraie fractale de Mandelbrot** (Sea Horse Valley) et **Julia** qui **zoome au rythme de la musique** — l'énergie des basses est analysée sur le flux audio, chaque battement pousse le zoom vers l'intérieur de la fractale (décroissance douce entre deux battements), teintes animées, rendu fluide en résolution réduite agrandie
+- **Fractal visual plugin rewritten (v2.0)**: a **real Mandelbrot fractal** (Sea Horse Valley) and **Julia** that **zooms to the rhythm of the music** — bass energy is analyzed on the audio stream, each beat pushes the zoom deeper into the fractal (gentle decay between beats), animated hues, smooth rendering at enlarged reduced resolution
 
 ## [2026.08.033-c1] — 2026-08-03
 
 ### Fixed
-- **Plein écran multi-écrans corrigé** :
-  - le dialog Interface affiche **Screen 1, 2, 3…** selon le nombre d'écrans détectés (fini les « 2, 3, 4 » fixes) et **chaque écran a son contenu**, y compris le 1er (visuel, playlist, lyrics ou jaquette appliqué à la fenêtre principale)
-  - les fenêtres annexes couvrent les **autres moniteurs** (celui de la fenêtre principale exclu), toutes en vrai plein écran
-  - la **sortie du plein écran** ferme bien toutes les fenêtres annexes et restaure complètement
+- **Multi-screen fullscreen fixed**:
+  - the Interface dialog shows **Screen 1, 2, 3…** according to the detected screens (no more fixed « 2, 3, 4 ») and **each screen has its content**, including the 1st (visual, playlist, lyrics or cover applied to the main window)
+  - secondary windows cover the **other monitors** (the main window's excluded), all true fullscreen
+  - **leaving fullscreen** closes all secondary windows and restores completely
 
 ## [2026.08.033] — 2026-08-03
 
 ### Changed
-- **TeamSpeak Broadcast devient un plugin** : retiré du menu Settings, il vit maintenant dans **Plugins ▸ Services ▸ TeamSpeak Broadcast** (comme REST API, DLNA…). Au démarrage il choisit automatiquement le périphérique (nom exact dans `ts_device.txt` à côté de la DLL, sinon un câble audio virtuel « CABLE »/« VoiceMeeter », sinon le périphérique par défaut)
+- **TeamSpeak Broadcast becomes a plugin**: removed from the Settings menu, it now lives in **Plugins ▸ Services ▸ TeamSpeak Broadcast** (like REST API, DLNA…). At startup it automatically picks the device (exact name in `ts_device.txt` next to the DLL, else a virtual audio cable « CABLE »/« VoiceMeeter », else the default device)
 
 ## [2026.08.032] — 2026-08-03
 
 ### Added
-- **Vrai plein écran** : la fenêtre couvre entièrement le moniteur sous le curseur (sans barre de titre ni barre des tâches) — F11/Échap
-- **Plein écran multi-écrans** : Settings ▸ Interface… — nombre d'écrans utilisés (détection automatique affichée) et **contenu de chaque écran** : effet visuel, playlist, lyrics ou jaquette
-- **Settings ▸ Network…** : comme le dialog Web server — pour chaque service réseau (REST API, DLNA/UPnP, RTP/AES67, Multiroom) : **port modifiable** et **IPs à utiliser** (cases à cocher) ; les plugins s'y conforment au redémarrage
+- **True fullscreen**: the window fully covers the monitor under the cursor (no title bar, no taskbar) — F11/Esc
+- **Multi-screen fullscreen**: Settings ▸ Interface… — number of screens used (auto-detection shown) and **content of each screen**: visual effect, playlist, lyrics or cover
+- **Settings ▸ Network…**: like the Web server dialog — for each network service (REST API, DLNA/UPnP, RTP/AES67, Multiroom): **editable port** and **IPs to use** (checkboxes); plugins comply at restart
 
 ## [2026.08.031] — 2026-08-03
 
 ### Added
-- **5 nouveaux plugins** (Plugins ▸ Services / Effets) :
-  - **REST API** : serveur HTTP JSON sur le port 8080 (`/api/state`, `/api/playlist`, `/api/cover`, `/api/cmd`, `/api/stream`, CORS)
-  - **RTP/AES67 Output** : diffusion du flux en RTP L16 multicast (239.255.0.1:5004) + annonce SAP (réception VLC/AES67)
-  - **DLNA/UPnP Media Server** : serveur UPnP AV (SSDP + ContentDirectory) exposant la playliste aux appareils DLNA (TV, téléphone…)
-  - **Multiroom** : diffusion multi-pièces (RTP multicast 239.255.0.2:5004 + cibles du fichier `multiroom.txt`)
-  - **Sound Quality** : effet audio (filtre infra-basses, basse boost, présence, limiteur doux)
+- **5 new plugins** (Plugins ▸ Services / Effects):
+  - **REST API**: HTTP JSON server on port 8080 (`/api/state`, `/api/playlist`, `/api/cover`, `/api/cmd`, `/api/stream`, CORS)
+  - **RTP/AES67 Output**: stream broadcast in RTP L16 multicast (239.255.0.1:5004) + SAP announcement (VLC/AES67 reception)
+  - **DLNA/UPnP Media Server**: UPnP AV server (SSDP + ContentDirectory) exposing the playlist to DLNA devices (TV, phone…)
+  - **Multiroom**: multi-room broadcast (RTP multicast 239.255.0.2:5004 + targets from `multiroom.txt`)
+  - **Sound Quality**: audio effect (sub-bass filter, bass boost, presence, soft limiter)
 
 ## [2026.08.030] — 2026-08-03
 
 ### Added
-- **Diffusion vers TeamSpeak 3** : Settings ▸ **Broadcast to TeamSpeak…** — choisissez un périphérique de sortie (ex. **CABLE Input** d'un Virtual Audio Cable) : la musique (et le mix DJ) est diffusée dessus en plus des haut-parleurs ; dans TeamSpeak 3, sélectionnez le câble comme **microphone** pour diffuser la musique sur le serveur
+- **TeamSpeak 3 broadcast**: Settings ▸ **Broadcast to TeamSpeak…** — pick an output device (e.g. **CABLE Input** of a Virtual Audio Cable): the music (and DJ mix) is broadcast on it in addition to the speakers; in TeamSpeak 3, select the cable as **microphone** to broadcast the music on the server
 
 ## [2026.08.029] — 2026-08-03
 
 ### Added
-- **Mode DJ local complet sur l'ordinateur** : chaque platine a ses boutons **▶ lecture / ⏸ pause / ■ stop** (la platine B est un **2e décodeur indépendant** réellement mixé dans la sortie audio) et son **curseur de volume** ; en bas de la console : le **crossfader A/B** et le **curseur de pitch** (vitesse) — le vrai mixage 2 voies se fait maintenant aussi sur l'ordinateur, pas seulement sur le web
+- **Full local DJ mode on the computer**: each deck has its **▶ play / ⏸ pause / ■ stop** buttons (deck B is a **real independent second decoder** mixed into the audio output) and its **volume slider**; at the bottom of the console: the **A/B crossfader** and the **pitch slider** (speed) — real 2-way mixing now happens on the computer too, not only on the web
 
 ## [2026.08.028-c5] — 2026-08-03
 
 ### Added
-- **Console DJ locale complète** : chaque platine a maintenant un **sélecteur de piste** (clic sur la platine = menu avec toute la playliste, façon select) et un **bouton lecture ▶** (joue la piste choisie sur cette voie) — la musique de chaque voie se choisit indépendamment, comme sur le web
+- **Complete local DJ console**: each deck now has a **track selector** (click the deck = menu with the whole playlist, select-style) and a **play button ▶** (plays the chosen track on that deck) — each deck's music is chosen independently, like on the web
 
 ## [2026.08.028-c4] — 2026-08-03
 
 ### Fixed
-- **Console DJ locale réparée** : les 2 platines sont maintenant bien délimitées (couleurs fixes, bordures, titres DECK A/B et noms de pistes) et la console occupe toute la zone centrale — elle n'est plus déformée par la zone du visualiseur imposée par un skin ni par les couleurs du skin
+- **Local DJ console repaired**: the 2 decks are now well delimited (fixed colors, borders, DECK A/B titles and track names) and the console occupies the whole central zone — no longer distorted by the skin-imposed visualizer zone or skin colors
 
 ## [2026.08.028-c3] — 2026-08-03
 
 ### Added
-- **Mode DJ Mixing synchronisé ordinateur ⇄ web** :
-  - **Settings ▸ DJ Mixing** (ou `/api/cmd dj`) active/désactive le mode des deux côtés
-  - Sur l'ordinateur : la fenêtre affiche la **console DJ locale** (2 platines avec les pistes, clic = jouer)
-  - Sur le web : la page principale **bascule automatiquement sur la table de mixage** quand le mode DJ est actif, et le bouton « Quitter » revient à la télécommande
+- **DJ Mixing mode synchronized computer ⇄ web**:
+  - **Settings ▸ DJ Mixing** (or `/api/cmd dj`) toggles the mode on both sides
+  - On the computer: the window shows the **local DJ console** (2 decks with tracks, click to play)
+  - On the web: the main page **switches automatically to the mixer** when DJ mode is active, and the « Quit » button returns to the remote control
 
 ## [2026.08.028-c2] — 2026-08-03
 
 ### Changed
-- **Mode DJ Mixing : vrai mixeur 2 voies** — chaque platine a son **volume**, son **pitch (±12 %)**, son **égaliseur 3 bandes** (basses/médiums/aigus), ses boutons **play/pause** et **stop**, et le **crossfader** central A/B — le tout traité en temps réel par le Web Audio API (les 2 platines jouent simultanément)
+- **DJ Mixing mode: real 2-way mixer** — each deck has its **volume**, its **pitch (±12 %)**, its **3-band equalizer** (bass/mid/treble), its **play/pause** and **stop** buttons, and the central **A/B crossfader** — all processed in real time by the Web Audio API (both decks play simultaneously)
 
 ## [2026.08.028-c1] — 2026-08-03
 
 ### Fixed
-- **Page web réparée** : le script appelait un élément qui n'existait plus (`meta`) et plantait à chaque rafraîchissement — la jaquette et la playliste ne s'affichaient plus. Les métadonnées sont maintenant écrites dans leurs propres zones (titre, artiste, album, année)
-- **Lien vers le mode DJ Mixing** ajouté sur la page principale (bouton « 🎚️ DJ Mixing »)
+- **Web page repaired**: the script referenced an element that no longer existed (`meta`) and crashed on every refresh — the cover and playlist no longer displayed. Metadata is now written to its own zones (title, artist, album, year)
+- **DJ Mixing mode link added** on the main page (« 🎚️ DJ Mixing » button)
 
 ## [2026.08.028] — 2026-08-03
 
 ### Added
-- **Page web : métadonnées complètes** — sous les boutons de commande : titre, artiste, album, année (ID3 TYER/TDRC), puis la jaquette et la playliste
-- **Lecture de CD audio** — File ▸ Open CD… : les pistes du disque remplacent la playliste (play/pause/stop/next, enchaînement automatique des pistes)
-- **Mode DJ Mixing (page web `/dj`)** — table de mixage : 2 platines (une piste de la playliste par platine), crossfader A/B, chaque platine streame indépendamment
+- **Web page: full metadata** — under the command buttons: title, artist, album, year (ID3 TYER/TDRC), then the cover and the playlist
+- **CD audio playback** — File ▸ Open CD…: the disc tracks replace the playlist (play/pause/stop/next, automatic track chaining)
+- **DJ Mixing mode (web page `/dj`)** — mixer: 2 decks (one playlist track per deck), A/B crossfader, each deck streams independently
 
 ## [2026.08.027-c2] — 2026-08-03
 
 ### Fixed
-- **Menu qui ne revenait plus** : après le skin Vintage radio (menu caché), revenir à l'interface par défaut laissait la fenêtre sans barre de menus — la barre était créée dans une variable locale au démarrage, le rappel du menu ne pouvait pas la retrouver
+- **Menu that never came back**: after the Vintage radio skin (hidden menu), returning to the default interface left the window without a menu bar — the bar was created in a local variable at startup, the menu recall could not find it
 
 ## [2026.08.027-c1] — 2026-08-03
 
 ### Fixed
-- **Crash corrigé** : quand la barre de menus est cachée (skin Vintage radio), un clic dans le menu contextuel (vitesse, plugins…) provoquait une erreur — toutes les manipulations de menu passent désormais par la barre réelle même cachée
+- **Crash fixed**: when the menu bar is hidden (Vintage radio skin), a click in the context menu (speed, plugins…) caused an error — all menu manipulations now go through the real bar even when hidden
 
 ## [2026.08.027] — 2026-08-03
 
 ### Added
-- **Disposition personnalisable par skin** : chaque skin peut **cacher la barre de menus** (menu accessible par **clic droit**) et **déplacer les boutons de contrôle** (en haut, à la place du menu, ou en bas) — l'image de fond couvre **toute la fenêtre**
-- **Skin Vintage radio** : la barre de menus est remplacée par les boutons de contrôle en haut ; le menu reste accessible par clic droit
+- **Skin-customizable layout**: each skin can **hide the menu bar** (menu reachable by **right-click**) and **move the control buttons** (top, where the menu was, or bottom) — the background image covers **the whole window**
+- **Vintage radio skin**: the menu bar is replaced by the control buttons at the top; the menu stays reachable by right-click
 
 ## [2026.08.026-c1] — 2026-08-03
 
 ### Fixed
-- **Zip corrigé** : le dossier `skins/` (DLL + textures) est maintenant inclus dans l'archive de distribution
-- **Skin Vintage radio** : texture photoréaliste générée par IA (ComfyUI) — vraie radio à cadran 1950s, le visualiseur se joue dans la grille du haut-parleur
+- **Zip fixed**: the `skins/` folder (DLL + textures) is now included in the distribution archive
+- **Vintage radio skin**: photorealistic texture generated by AI (ComfyUI) — real 1950s dial radio, the visualizer plays in the speaker grille
 
 ## [2026.08.026] — 2026-08-03
 
 ### Changed
-- **Skins dans leur propre dossier `skins/`** (à côté de l'exe) — plus mélangés aux plugins dans `plugins/`
-- **Sous-menu Skins retiré du menu Plugins** — le skin se choisit uniquement dans Settings ▸ Interface…
-- **Skin Vintage radio** : le visualiseur se joue dans le **haut-parleur** de la radio (zone imposée par le skin), texture redessinée (bandeau doré « VINTAGE RADIO », cadran AM gradué, grille du haut-parleur)
+- **Skins in their own `skins/` folder** (next to the exe) — no longer mixed with plugins in `plugins/`
+- **Skins submenu removed from the Plugins menu** — the skin is chosen only in Settings ▸ Interface…
+- **Vintage radio skin**: the visualizer plays in the radio's **speaker** (skin-imposed zone), texture redrawn (golden « VINTAGE RADIO » band, graduated AM dial, speaker grille)
 
 ## [2026.08.025] — 2026-08-03
 
 ### Added
-- **Skins complets** : un skin personnalise maintenant toute l'interface :
-  - **Image de fond** de la fenêtre principale (étirée), affichée sous le visualiseur
-  - **Barre de menus** dessinée avec la palette du skin (fond, texte, survol) — y compris le fond de la barre
-  - **Fenêtres de configuration** (Web server, Plugins, Interface, Update, About) aux couleurs du skin (fond + textes)
-- **Skin Vintage radio** : texture complète d'une radio à lampes (bois, bandeau doré « VINTAGE RADIO », cadran AM gradué, haut-parleur) affichée derrière le visualiseur
-- **Skin Winamp** : texture façon Winamp classique (barre de titre, zone playlist, égaliseur)
+- **Full skins**: a skin now customizes the whole interface:
+  - **Background image** of the main window (stretched), displayed under the visualizer
+  - **Menu bar** drawn with the skin's palette (background, text, hover) — including the bar background
+  - **Configuration windows** (Web server, Plugins, Interface, Update, About) in the skin's colors (background + texts)
+- **Vintage radio skin**: full valve radio texture (wood, golden « VINTAGE RADIO » band, graduated AM dial, speaker) displayed behind the visualizer
+- **Winamp skin**: classic Winamp-style texture (title bar, playlist zone, equalizer)
 
 ## [2026.08.024] — 2026-08-03
 
 ### Added
-- **Settings ▸ Interface…** : fenêtre pour choisir le **skin** (liste déroulante, palette par défaut comprise) et la **langue** — le sous-menu Language est retiré du menu Settings
-- **Settings ▸ Update…** : fenêtre pour configurer le **mode de mise à jour** (automatique au démarrage / manuel / désactivé) et **vérifier maintenant** — « Check for updates » et « Check for updates at startup » sont retirés du menu Settings
+- **Settings ▸ Interface…**: window to choose the **skin** (dropdown, default palette included) and the **language** — the Language submenu is removed from the Settings menu
+- **Settings ▸ Update…**: window to configure the **update mode** (automatic at startup / manual / disabled) and **check now** — « Check for updates » and « Check for updates at startup » are removed from the Settings menu
 
 ## [2026.08.023-c1] — 2026-08-03
 
 ### Fixed
-- **Skins : plus de désactivation** — choisir un skin dans Plugins ▸ Skins ne retire plus les autres skins de la liste : les 11 restent toujours affichés, la sélection (radio) ne change que le skin actif
-- **Dialog Plugins (Settings ▸ Plugins…)** : il définit désormais les plugins **affichés dans le menu Plugins** (libellé corrigé : « Plugins to show in the Plugins menu ») ; **les skins n'y figurent plus** — ils se choisissent uniquement dans Plugins ▸ Skins
-- **Menu Plugins** : sélectionner/désélectionner un plugin (case ou radio) ne l'enlève plus de la liste
-- Un seul skin est appliqué au démarrage (le premier actif de la sélection radio)
+- **Skins: no more deactivation** — choosing a skin in Plugins ▸ Skins no longer removes the other skins from the list: all 11 stay displayed, the (radio) selection only changes the active skin
+- **Plugins dialog (Settings ▸ Plugins…)**: it now defines the plugins **shown in the Plugins menu** (label fixed: « Plugins to show in the Plugins menu »); **skins no longer appear there** — they are chosen only in Plugins ▸ Skins
+- **Plugins menu**: selecting/deselecting a plugin (check or radio) no longer removes it from the list
+- Only one skin is applied at startup (the first active one of the radio selection)
 
 ## [2026.08.023] — 2026-08-03
 
 ### Added
-- **Télécommande web enrichie** :
-  - **Jaquette de la musique en cours** affichée sur la page (endpoint `/cover` — jaquette intégrée au MP3 ou cover.jpg/folder.jpg à côté du morceau)
-  - **Métadonnées** dans l'état : titre, artiste, album de la musique en cours d'écoute
-  - **Titres des morceaux** (balises ID3) dans la playlist web au lieu des noms de fichiers
+- **Richer web remote**:
+  - **Cover art of the current track** displayed on the page (`/cover` endpoint — MP3-embedded cover or cover.jpg/folder.jpg next to the track)
+  - **Metadata** in the state: title, artist, album of the playing track
+  - **Track titles** (ID3 tags) in the web playlist instead of file names
 
 ### Changed
-- **Skins exclusifs** : un seul skin actif à la fois (sélection radio, comme les visuels) — re-clic sur le skin actif = retour à la palette par défaut
+- **Exclusive skins**: only one active skin at a time (radio selection, like visuals) — re-clicking the active skin returns to the default palette
 
 ## [2026.08.022] — 2026-08-03
 
 ### Added
-- **Skins** : 11 skins proposés dans Plugins ▸ Skins — rétro 60s, 70s, 80s (néon), 90s, années 2000, radio vintage (bois & or), Winamp, épuré, kitsch, cartoon, noir & blanc. Chaque skin applique une palette de couleurs complète (fond, texte, boutons, volume, progression) instantanément
-- **Fenêtre Playlist** : bouton playlist (touche L) — liste des morceaux avec le morceau courant en surbrillance ; double-clic ou Entrée pour jouer la musique choisie
-- **Plugin Jaquette** (Cover art) : affiche l'image de la chanson en cours — jaquette intégrée au MP3 (frame APIC) ou cover.jpg / folder.jpg / cover.png / front.jpg placé à côté du morceau
+- **Skins**: 11 skins in Plugins ▸ Skins — 60s, 70s, 80s (neon), 90s, 2000s retro, vintage radio (wood & gold), Winamp, clean, kitsch, cartoon, black & white. Each skin applies a full color palette (background, text, buttons, volume, progress) instantly
+- **Playlist window**: playlist button (L key) — track list with the current track highlighted; double-click or Enter to play the chosen track
+- **Cover plugin** (Cover art): displays the current track's image — MP3-embedded cover (APIC frame) or cover.jpg / folder.jpg / cover.png / front.jpg placed next to the track
 
 ## [2026.08.021] — 2026-08-03
 
 ### Added
-- **Settings ▸ Plugins…** : fenêtre listant tous les plugins avec cases à cocher pour les activer/désactiver (état persisté dans `plugins.ini`)
-- **Plugin Lyrics** : affiche les paroles de la chanson (fichier `.lrc` placé à côté du morceau) — clic dans Plugins ▸ Services
-- **Barre de progression cliquable** : cliquer dessus pour aller directement à un moment de la musique
-- **Icône de la fenêtre et de la barre des tâches** (WM_SETICON)
-- **À propos : lien GitHub cliquable** (bouton « Open GitHub »)
+- **Settings ▸ Plugins…**: window listing all plugins with checkboxes to enable/disable them (state persisted in `plugins.ini`)
+- **Lyrics plugin**: displays the song's lyrics (`.lrc` file placed next to the track) — click in Plugins ▸ Services
+- **Clickable progress bar**: click to jump directly to a moment of the music
+- **Window and taskbar icon** (WM_SETICON)
+- **About: clickable GitHub link** (« Open GitHub » button)
 
 ### Changed
-- **Mise à jour automatique** : fenêtre d'avertissement à 3 choix avant l'installation — « Mettre à jour maintenant » (télécharge le zip, ferme et relance automatiquement l'application), « Plus tard », « Ignorer cette version » (seules les versions suivantes seront proposées)
+- **Automatic update**: 3-choice warning window before installation — « Update now » (downloads the zip, closes and relaunches the application automatically), « Later », « Ignore this version » (only later versions will be offered)
 
 ## [2026.08.020] — 2026-08-03
 
 ### Changed
-- **Le serveur web est maintenant un plugin** (Web Server, type Service) — visible dans Plugins ▸ Services, désactivable dans Settings ▸ Plugins
-- **Booster de volume** : le plugin d'effet audio s'appelle désormais « Volume booster » (+25 % avec écrêtage)
+- **The web server is now a plugin** (Web Server, Service type) — visible in Plugins ▸ Services, disableable in Settings ▸ Plugins
+- **Volume booster**: the audio effect plugin is now called « Volume booster » (+25 % with clipping)
 
 ### Added
-- **Plugin Métadonnées MP3** (type Service) : lit les balises ID3 (titre) des fichiers MP3 — l'interface affiche le titre au lieu du nom de fichier quand il est disponible
-- **Settings ▸ Plugins** : active/désactive chaque plugin (état persisté dans `plugins.ini`) ; un plugin désactivé n'apparaît plus dans le menu Plugins
+- **MP3 Metadata plugin** (Service type): reads ID3 tags (title) of MP3 files — the interface shows the title instead of the file name when available
+- **Settings ▸ Plugins**: enables/disables each plugin (state persisted in `plugins.ini`); a disabled plugin no longer appears in the Plugins menu
 
 ## [2026.08.019] — 2026-08-03
 
 ### Added
-- **Fichier de configuration `config.yml`** (`%APPDATA%\MusicPlayer\config.yml`) : l'état du lecteur est sauvegardé à la fermeture et restauré au démarrage
-  - Volume, vitesse, mode aléatoire
-  - Dernier chemin ouvert (fichier ou dossier) et fichier en cours de lecture
-  - Configuration du serveur web (activé, port, sortie audio, IP écoutées)
-- **Rescan automatique de la playlist au démarrage** : les nouveaux fichiers (dossier et sous-dossiers) sont ajoutés, ceux qui n'existent plus sont retirés, et la lecture reprend sur le morceau en cours
-- Migration automatique de l'ancien fichier `web.txt`
+- **`config.yml` configuration file** (`%APPDATA%\MusicPlayer\config.yml`): player state saved on exit and restored at startup
+  - Volume, speed, shuffle mode
+  - Last opened path (file or folder) and current file
+  - Web server configuration (enabled, port, audio output, listened IPs)
+- **Automatic playlist rescan at startup**: new files (folder and subfolders) are added, missing files are dropped, and playback resumes on the current track
+- Automatic migration of the old `web.txt` file
 
 ## [2026.08.018-c5] — 2026-08-03
 
 ### Added
-- **Fenêtre Web server : liste des interfaces réseau avec cases à cocher** — chaque adresse IP (avec le nom de l'interface) peut être activée ou désactivée pour l'écoute ; le serveur n'écoute que sur les IP cochées (par défaut : toutes)
+- **Web server window: network interface list with checkboxes** — each IP address (with the interface name) can be enabled or disabled for listening; the server only listens on the checked IPs (default: all)
 
 ## [2026.08.018-c4] — 2026-08-03
 
 ### Added
-- **Télécommande web : télécommande fixe (sticky)** — les boutons et le titre restent visibles en haut de l'écran quand on fait défiler la playlist
-- **Clic sur un morceau** de la playlist web pour y passer directement
-- **Mode aléatoire (shuffle)** : bouton 🔀 dans l'application (barre de contrôles, orange quand actif) et sur la télécommande web — le morceau suivant est choisi au hasard
+- **Web remote: sticky remote** — buttons and title stay visible at the top of the screen when scrolling the playlist
+- **Click on a track** in the web playlist to jump directly to it
+- **Shuffle mode**: 🔀 button in the application (control bar, orange when active) and on the web remote — the next track is chosen at random
 
 ## [2026.08.018-c3] — 2026-08-03
 
 ### Added
-- **Télécommande web : bouton de sortie audio clair** — un bouton (icône + libellé) indique le mode son courant : 🖥️ **PC** / 📱 **Phone** / 🔀 **Both** ; un clic change le mode (cyclique) directement depuis le téléphone, la configuration est sauvegardée
-- Le bouton lecture de la page lance/arrête aussi le son sur le téléphone (modes Phone/Both) ; stop coupe le son partout
+- **Web remote: clear audio output button** — one button (icon + label) shows the current sound mode: 🖥️ **PC** / 📱 **Phone** / 🔀 **Both**; one click changes the mode (cyclic) directly from the phone, the configuration is saved
+- The play button of the page also starts/stops the sound on the phone (Phone/Both modes); stop cuts the sound everywhere
 
 ## [2026.08.018-c2] — 2026-08-03
 
 ### Fixed
-- **Page web : icônes de la télécommande remplacées par des SVG inline** — le bouton lecture (▶/⏸) et les autres s'affichaient mal sur certains navigateurs/téléphones (caractères Unicode ⏸ et emojis mal rendus)
-- **Bouton « Son téléphone » dédié** : la lecture du son sur le téléphone est maintenant indépendante du bouton lecture — en mode « les deux », le bouton lecture contrôle l'application, et un bouton haut-parleur (violet) lance/arrête le son sur le téléphone
+- **Web page: remote icons replaced by inline SVG** — the play (▶/⏸) and other buttons displayed badly on some browsers/phones (badly rendered Unicode ⏸ and emojis)
+- **Dedicated « Phone sound » button**: playing sound on the phone is now independent of the play button — in « both » mode, the play button controls the application, and a speaker button (purple) starts/stops the sound on the phone
 
 ## [2026.08.018-c1] — 2026-08-03
 
 ### Fixed
-- **Settings ▸ Web server… ne faisait rien** : l'identifiant du template de dialogue dans la ressource était symbolique (`IDD_WEB`) au lieu du numéro attendu (104) — le dialogue ne pouvait pas être chargé. Corrigé (ID numérique 104).
+- **Settings ▸ Web server… did nothing**: the dialog template id in the resource was symbolic (`IDD_WEB`) instead of the expected number (104) — the dialog could not be loaded. Fixed (numeric id 104).
 
 ## [2026.08.018] — 2026-08-03
 
 ### Added
-- **Serveur web de contrôle à distance** (Settings ▸ Web server…) — la page web est accessible depuis le téléphone ou la tablette sur le même réseau
-  - **Port libre détecté automatiquement à partir de 8000**, modifiable par l'utilisateur
-  - **Télécommande** : lecture/pause, stop, suivant, volume +/-, vitesse +/-
-  - **Playlist affichée** avec le morceau en cours mis en évidence (raffraîchie chaque seconde)
-  - **Sortie audio** : cet ordinateur, téléphone seul, ou les deux en simultané — le téléphone reçoit le son via un flux audio WAV diffusé par le serveur (/stream)
+- **Remote-control web server** (Settings ▸ Web server…) — the web page is reachable from the phone or tablet on the same network
+  - **Free port auto-detected from 8000**, user-modifiable
+  - **Remote**: play/pause, stop, next, volume +/-, speed +/-
+  - **Playlist displayed** with the current track highlighted (refreshed every second)
+  - **Audio output**: this computer, phone only, or both simultaneously — the phone receives the sound via a WAV audio stream broadcast by the server (/stream)
 
 ## [2026.08.017-c2] — 2026-08-02
 
+### Added
+- **File ▸ Open folder…: real folder picker** — back to the classic `SHBrowseForFolderW` dialog (with COM initialized): you choose a **folder**, not a file
+
 ### Fixed
-- **File ▸ Open folder… : vrai sélecteur de dossier** — retour au dialogue classique `SHBrowseForFolderW` (avec COM initialisé) : on choisit un **dossier**, plus un fichier
-- **Vérification de mises à jour : les corrections `-cX` sont détectées** — le comparateur de versions gère le suffixe de correction (ex. `2026.08.017` → `2026.08.017-c1` est signalé comme mise à jour ; `-c2` > `-c1`)
+- **Update check: `-cX` fixes are detected** — the version comparator handles the correction suffix (e.g. `2026.08.017` → `2026.08.017-c1` reported as an update; `-c2` > `-c1`)
 
 ## [2026.08.017-c1] — 2026-08-02
 
 ### Fixed
-- **File ▸ Open folder… : l'application ne répondait plus / se fermait** après le dialogue de sélection (dialogues shell instables : `IFileOpenDialog` se fige, `SHBrowseForFolderW` détruit la fenêtre) — remplacé par le **dialogue d'ouverture classique** `GetOpenFileNameW` (le même que File ▸ Open…, le plus fiable) : choisissez n'importe quel MP3/MP4 du dossier → tout le dossier est lu (sous-dossiers inclus)
-- Titre du dialogue raccourci
+- **File ▸ Open folder…: the application froze / closed** after the picker dialog (unstable shell dialogs: `IFileOpenDialog` hangs, `SHBrowseForFolderW` destroys the window) — replaced by the **classic open dialog** `GetOpenFileNameW` (the same as File ▸ Open…, the most reliable): pick any MP3/MP4 of the folder → the whole folder is played (subfolders included)
+- Dialog title shortened
 
 ## [2026.08.017] — 2026-08-02
 
 ### Fixed
-- **Menu File ▸ Open folder… affichait la clé « menu_open_folder »** : les nouvelles clés de l'anglais embarqué (`menu_open_folder`, `err_folder`, mises à jour…) manquaient dans le tableau par défaut
-- **Plantage au clic sur Open folder…** : le dialogue de sélection de dossier passe de `SHBrowseForFolderW` (instable sans COM initialisé) au dialogue moderne **IFileOpenDialog** (FOS_PICKFOLDERS, COM initialisé) — plus stable sur Windows 11
+- **File ▸ Open folder… menu showed the « menu_open_folder » key**: the new English keys (`menu_open_folder`, `err_folder`, updates…) were missing in the default table
+- **Crash when clicking Open folder…**: the folder picker moves from `SHBrowseForFolderW` (unstable without initialized COM) to the modern **IFileOpenDialog** (FOS_PICKFOLDERS, COM initialized) — more stable on Windows 11
 
 ## [2026.08.016] — 2026-08-02
 
 ### Added
-- **Lecture d'un dossier (playlist)** : File ▸ Open folder…, glisser-déposer d'un dossier ou en ligne de commande — scan récursif des MP3/MP4 (sous-dossiers inclus), tri par nom, lecture automatique du morceau suivant, arrêt en fin de playlist ; compteur « [n/total] » dans la barre d'état
-- **Bouton ⏭ Suivant** dans la barre de contrôles (raccourci N)
+- **Folder playback (playlist)**: File ▸ Open folder…, drag & drop of a folder or command line — recursive MP3/MP4 scan (subfolders included), sort by name, automatic next-track playback, stop at the end of the playlist; « [n/total] » counter in the status bar
+- **⏭ Next button** in the control bar (N shortcut)
 
 ### Fixed
-- chemins de la playlist tronqués : `%ls` obligatoire pour `wchar_t*` dans `swprintf` (MinGW) — le scan scannait le mauvais dossier
+- truncated playlist paths: `%ls` mandatory for `wchar_t*` in `swprintf` (MinGW) — the scan was scanning the wrong folder
 
 ## [2026.08.015] — 2026-08-02
 
 ### Added
-- **Vérification de mises à jour** (GitHub Releases) :
-  - manuelle : **Settings ▸ Check for updates…** (affiche le résultat même si à jour)
-  - automatique : **Settings ▸ Check for updates at startup** (4 s après le lancement, silencieuse si à jour), préférence persistée dans `%APPDATA%\MusicPlayer\upd.txt`
-  - comparaison de la version locale avec la dernière release ; si une nouvelle version existe : boîte de dialogue avec ouverture de la page des releases (bouton Yes)
-  - requête en arrière-plan (thread WinINet, timeout 10 s) : l'interface ne bloque jamais
+- **Update check** (GitHub Releases):
+  - manual: **Settings ▸ Check for updates…** (shows the result even when up to date)
+  - automatic: **Settings ▸ Check for updates at startup** (4 s after launch, silent when up to date), preference persisted in `%APPDATA%\MusicPlayer\upd.txt`
+  - local version compared to the latest release; if a new version exists: dialog with a link to the releases page (Yes button)
+  - background query (WinINet thread, 10 s timeout): the interface never blocks
 
 ## [2026.08.014] — 2026-08-02
 
 ### Changed
-- **3D Isometric : caméra frontale basse** (conforme aux références) — fini le « carré séparé en deux » des axes diagonaux : les rangées s'élèvent en rétrécissant vers le centre (point de fuite central), la grille au sol est un trapèze, les barres du fond sont plus petites, plus hautes et plus sombres (2 jeux de dégradés), sommet lumineux sur chaque barre
-- Gain d'analyse augmenté (18) et lissage adouci (0.95) pour un paysage plus dense avec la musique
+- **3D Isometric: low frontal camera** (matching the references) — no more « square split in two » of the diagonal axes: the rows rise while shrinking toward the center (central vanishing point), the floor grid is a trapezoid, the background bars are smaller, taller and darker (2 gradient sets), bright tip on each bar
+- Analysis gain increased (18) and smoothing softened (0.95) for a denser landscape with music
 
 ## [2026.08.013] — 2026-08-02
 
 ### Fixed
-- **3D Isometric : bug critique d'affichage** — la hauteur projetée `gh` devenait négative avec l'axe du temps inversé (`by < 0`), ce qui donnait une échelle de grille négative : barres placées hors écran / scène inversée. Corrigé avec la valeur absolue.
-- Analyse audio stabilisée : **tampon continu de 0,74 s** (au lieu d'un bloc unique) + **détection de silence** (les zéros ne vident plus le paysage, retombée très lente) — le paysage se remplit désormais régulièrement, y compris sous Wine
+- **3D Isometric: critical display bug** — the projected height `gh` became negative with the time axis reversed (`by < 0`), giving a negative grid scale: bars off-screen / inverted scene. Fixed with the absolute value
+- Audio analysis stabilized: **continuous 0.74 s buffer** (instead of a single block) + **silence detection** (zeros no longer empty the landscape, very slow fall) — the landscape now fills up regularly, including under Wine
 
 ## [2026.08.012] — 2026-08-02
 
 ### Changed
-- **3D Isometric : vraie vue de côté isométrique** — les axes partent en diagonale (fréquences → bas-droite, temps → haut-gauche), chaque barre a 3 faces (avant dégradée, latérale sombre, dessus lumineux), grille centrée par calcul de boîte englobante
-- **Plus de scintillement** : rendu en double buffer (dessin hors écran + un seul BitBlt) dans toute la zone centrale
+- **3D Isometric: real isometric side view** — the axes go diagonally (frequencies → bottom-right, time → top-left), each bar has 3 faces (gradient front, dark side, bright top), grid centered by bounding-box computation
+- **No more flicker**: double-buffered rendering (offscreen drawing + single BitBlt) over the whole central zone
 
 ## [2026.08.011] — 2026-08-02
 
 ### Changed
-- **3D Isometric entièrement refait, style GLBars / WM3DSpectrum** :
-  - grille **rectangulaire en perspective** (les rangées du fond sont plus petites et plus hautes) — fini le losange isométrique
-  - **dégradé vertical sur chaque barre** : sombre à la base, vive et lumineuse au sommet (6 segments, éclat blanc)
-  - **grille centrée** sur l'écran (horizontal et vertical), 24 colonnes × 14 rangées
+- **3D Isometric fully reworked, GLBars / WM3DSpectrum style**:
+  - **rectangular perspective grid** (background rows smaller and taller) — no more isometric lozenge
+  - **vertical gradient on each bar**: dark at the base, vivid and bright at the top (6 segments, white glow)
+  - **grid centered** on the screen (horizontal and vertical), 24 columns × 14 rows
 
 ## [2026.08.010] — 2026-08-02
 
 ### Changed
-- **3D Isometric** : grille désormais **carrée 24×24** (au lieu de 30×16) — comme les références WM3DSpectrum / spectrogrammes 3D
+- **3D Isometric**: grid now **square 24×24** (instead of 30×16) — like the WM3DSpectrum / 3D spectrogram references
 
 ## [2026.08.009] — 2026-08-02
 
 ### Fixed
-- **3D Isometric** : grille et bâtons maintenant centrés sur l'écran (le centre logique de la grille était confondu avec l'origine de la projection — décalage à droite et en bas), centrage vertical incluant la hauteur des barres
+- **3D Isometric**: grid and bars now centered on the screen (the grid's logical center was confused with the projection origin — offset right and down), vertical centering including the bar height
 
 ## [2026.08.008] — 2026-08-02
 
 ### Added
-- **Plugin visuel « 3D Isometric »** : paysage de bâtons 3D isométrique (style WM3DSpectrum / spectrogramme 3D) — grille rectangulaire fréquences × temps, 30 colonnes arc-en-ciel, 16 rangées d'historique qui défilent, faces 3D (avant clair, côté sombre, sommet en losange), fond bleu nuit
-- Fenêtre agrandie à 640×300 (plus de place pour les paysages 3D), taille minimale 420×260
+- **« 3D Isometric » visual plugin**: isometric 3D bar landscape (WM3DSpectrum / 3D spectrogram style) — rectangular frequency × time grid, 30 rainbow columns, 16 scrolling history rows, 3D faces (light front, dark side, lozenge top), night-blue background
+- Window enlarged to 640×300 (more room for the 3D landscapes), minimum size 420×260
 
 ## [2026.08.007] — 2026-08-02
 
 ### Changed
-- **3D Spectrum aligné sur le rendu Spectrum3D de référence** : fond bleu nuit très sombre, 96 barres fines, dégradé arc-en-ciel par position (bleu → cyan → vert → jaune → orange → rouge), arrière assombri — grille wireframe retirée
+- **3D Spectrum aligned on the Spectrum3D reference rendering**: very dark night-blue background, 96 thin bars, rainbow gradient by position (blue → cyan → green → yellow → orange → red), darkened back — wireframe grid removed
 
 ### Fixed
-- **Menu Paramètres** : le sous-menu des langues n'apparaît plus en double (position de remplacement corrigée)
-- **Redimensionnement de la fenêtre** : le fond est repeint en blanc avant chaque rendu (régression du `WM_ERASEBKGND`), taille minimale 420×220 ajoutée
+- **Settings menu**: the languages submenu no longer appears twice (replacement position fixed)
+- **Window resizing**: the background is repainted in white before each render (WM_ERASEBKGND regression), minimum size 420×220 added
 
 ## [2026.08.006] — 2026-08-02
 
 ### Changed
-- **3D Spectrum relooké style Spectrum3D** (spectrum3d.sourceforge.net) : fond noir, grille wireframe au sol, 72 barres fines (blanc→jaune→rouge), arrière assombri
-- **Menus simplifiés** : File · Settings · Plugins · Help — menus Playback et Volume supprimés
-- **Settings** regroupe : Speed, Fullscreen, Language
-- **Raccourcis clavier retirés des libellés de menus** (plus de « Ctrl+O » affichés)
-- **Volume 0–200 %** : curseur avec zone bleue (0–100 %) et orange (booster 100–200 %), marque à 100 %
+- **3D Spectrum restyled Spectrum3D-like** (spectrum3d.sourceforge.net): black background, wireframe floor grid, 72 thin bars (white→yellow→red), darkened back
+- **Simplified menus**: File · Settings · Plugins · Help — Playback and Volume menus removed
+- **Settings** gathers: Speed, Fullscreen, Language
+- **Keyboard shortcuts removed from menu labels** (no more « Ctrl+O » shown)
+- **Volume 0–200 %**: slider with blue zone (0–100 %) and orange (booster 100–200 %), mark at 100 %
 
 ### Fixed
-- **Redimensionnement de la fenêtre** : parts de la status bar recalculées, zone entière redessinée (visuel, progression, contrôles)
+- **Window resizing**: status bar shares recalculated, whole zone redrawn (visual, progress, controls)
 
 ## [2026.08.005] — 2026-08-02
 
 ### Added
-- **Boutons de contrôle** dans la fenêtre : lecture/pause (bleu) et stop (rouge) — plus seulement dans le menu
-- **Curseur de volume** : piste + poignée cliquable/glissable, à côté des boutons
-- **Plein écran** pour les effets visuels : bouton ⛶, touche F11, Échap pour sortir
-- **Menu Plugins organisé par type** : sous-menus Visual / Audio effects / Skins — un seul visuel actif à la fois (radio)
-- **Icône de l'application** (play violet sur fond arrondi, 5 tailles) — plus l'icône Windows par défaut
-- Plugins visuels : **3D Spectrum** (cylindre de barres rotatif, projection 3D), **Fractal** (plasma per-pixel, 256 couleurs, réagit à la musique), **Hypnotic** (tunnel d'anneaux rotatifs pulsés par la musique)
-- Fenêtre agrandie (640×240) pour accueillir la barre de contrôles
+- **Control buttons** in the window: play/pause (blue) and stop (red) — not only in the menu
+- **Volume slider**: track + clickable/draggable handle, next to the buttons
+- **Fullscreen for visual effects**: ⛶ button, F11 key, Esc to exit
+- **Plugins menu organized by type**: Visual / Audio effects / Skins submenus — only one active visual at a time (radio)
+- **Application icon** (purple play on rounded background, 5 sizes) — no more default Windows icon
+- Visual plugins: **3D Spectrum** (rotating cylinder of bars, 3D projection), **Fractal** (per-pixel plasma, 256 colors, reacts to music), **Hypnotic** (tunnel of rotating rings pulsed by the music)
+- Window enlarged (640×240) to host the control bar
 
 ### Changed
-- Boutons et slider dessinés en GDI (aucune dépendance), le rendu visuel occupe la zone au-dessus de la progression
+- Buttons and slider drawn in GDI (no dependency), the visual rendering occupies the zone above the progress
 
 ## [2026.08.004] — 2026-08-02
 
 ### Added
-- **Multilingue** : fichiers texte `lang/<code>.lang` (UTF-8, `cle=valeur`, commentaires `#`) — n'importe qui peut ajouter une langue sans recompiler
-- Menu **Language / Langue** : bascule instantanée, préférence mémorisée dans `%APPDATA%\MusicPlayer\lang.txt`
-- **Anglais par défaut** (embarqué dans le binaire), détection automatique de la langue de Windows, français fourni (`fr.lang`)
-- Fichiers fournis : `lang/en.lang`, `lang/fr.lang`, guide `lang/README.md`
+- **Multilingual**: text files `lang/<code>.lang` (UTF-8, `key=value`, `#` comments) — anyone can add a language without recompiling
+- **Language / Langue menu**: instant switch, preference remembered in `%APPDATA%\MusicPlayer\lang.txt`
+- **English by default** (embedded in the binary), automatic detection of the Windows language, French provided (`fr.lang`)
+- Provided files: `lang/en.lang`, `lang/fr.lang`, guide `lang/README.md`
 
 ### Changed
-- Tous les textes de l'interface passent par le moteur de traduction (menus, status bar, dialogues, messages, états)
-- Messages du selftest et des journaux en anglais
+- All interface texts go through the translation engine (menus, status bar, dialogs, messages, states)
+- Selftest and log messages in English
 
 ## [2026.08.003] — 2026-08-02
 
 ### Added
-- **Barre de progression** : dégradé bleu→jaune, toujours visible (mode texte et plugins)
-- Plugin visuel **VUMeter** : VU mètre stéréo à LED (24 LED/canal, -45..0 dB, pics à décroissance lente, indicateur de clip) — style Winamp/XMMS
-- Plugin visuel **Fireworks** : feu d'artifice synchronisé sur la musique (détection de beats par énergie adaptative, gravité, traînées, 360 couleurs)
-- Le loader n'affiche plus qu'**un seul plugin visuel** à la fois (choix via le menu Plugins)
+- **Progress bar**: blue→yellow gradient, always visible (text and plugin modes)
+- **VUMeter visual plugin**: stereo LED VU meter (24 LED/channel, -45..0 dB, slow-decay peaks, clip indicator) — Winamp/XMMS style
+- **Fireworks visual plugin**: fireworks synchronized on the music (adaptive energy beat detection, gravity, trails, 360 colors)
+- The loader now shows only **one visual plugin** at a time (choice via the Plugins menu)
 
 ### Changed
-- Plugin **Spectrum** relooké : palette arc-en-ciel 256 teintes (bleu→rouge), fond en dégradé bleu nuit, grille discrète, effet de halo (glow) autour des barres
+- **Spectrum plugin restyled**: 256-hue rainbow palette (blue→red), night-blue gradient background, discrete grid, glow effect around the bars
 
 ## [2026.08.002] — 2026-08-02
 
 ### Added
-- Plugin visuel **Spectrum** : visualiseur de spectre (FFT radix-2 1024 points, 48 barres logarithmiques, palette vert→rouge, pics lumineux, lissage)
-- API plugins **v2** : hook `audio_frames()` — flux PCM lecture seule (après les effets) pour les plugins visuels ; les plugins v1 sont rejetés proprement
-- Rendu visuel branché : zone centrale remplacée par le plugin (~30 FPS) quand un visuel est actif
-- Compilation des plugins d'exemple : `make plugins-examples` (gaindemo + spectrum dans bin/plugins/)
-- Archive portable incluant les plugins
+- **Spectrum visual plugin**: spectrum visualizer (radix-2 1024-point FFT, 48 logarithmic bars, green→red palette, bright peaks, smoothing)
+- Plugin API **v2**: `audio_frames()` hook — read-only PCM stream (after effects) for visual plugins; v1 plugins are rejected cleanly
+- Visual rendering wired: central zone replaced by the plugin (~30 FPS) when a visual is active
+- Example plugin compilation: `make plugins-examples` (gaindemo + spectrum in bin/plugins/)
+- Portable archive including the plugins
 
 ### Changed
-- Le moteur diffuse chaque bloc audio aux plugins visuels après les effets
+- The engine broadcasts each audio block to visual plugins after the effects
 
 ## [2026.08.001] — 2026-08-02
 
 ### Added
-- Lecteur MP3/MP4 pour Windows (Win32 + FFmpeg + miniaudio), compilation croisée MinGW sous Linux
-- Menu Ouvrir… (Ctrl+O) + glisser-déposer de fichiers
-- Lecture / pause (Espace), stop avec retour à 0 seconde (S)
-- Volume 0–100 % (↑/↓), affiché dans la status bar
-- Vitesse 0,5× / 1× / 1,5× / 2× (resampling dynamique)
-- Status bar : fichier, position/durée, vitesse, volume
-- API plugins v1 (skin, effet audio, visuel) + chargeur de DLL avec rechargement à chaud
-- Mode `--selftest` : validation du pipeline (lecture, vitesse, pause, stop, fin) sous Wine
-- Makefile : `make`, `make test`, `make zip`
+- MP3/MP4 player for Windows (Win32 + FFmpeg + miniaudio), MinGW cross-compilation under Linux
+- Open… menu (Ctrl+O) + file drag & drop
+- Play / pause (Space), stop with reset to 0 seconds (S)
+- Volume 0–100 % (↑/↓), displayed in the status bar
+- Speed 0.5× / 1× / 1.5× / 2× (dynamic resampling)
+- Status bar: file, position/duration, speed, volume
+- Plugin API v1 (skin, audio effect, visual) + DLL loader with hot reload
+- `--selftest` mode: pipeline validation (playback, speed, pause, stop, end) under Wine
+- Makefile: `make`, `make test`, `make zip`
