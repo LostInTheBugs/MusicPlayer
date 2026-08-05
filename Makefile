@@ -176,11 +176,13 @@ test: all plugins-examples test-samples
 
 # ----------------------------------------------------------------------
 # Archive portable pour Windows 11
-# Les plugins/skins optionnels ne sont plus embarqués : ils se
-# téléchargent depuis le repository (Settings ▸ Plugin repository…).
+# Plugins/skins non embarqués (TeamSpeak, visuels, effets, skins…) :
+# ils se téléchargent depuis le repository (Settings ▸ Plugin
+# repository…). Seul le webserver du moteur est inclus — le contrôle
+# depuis le téléphone fonctionne dès l'installation.
 # ----------------------------------------------------------------------
 zip: all plugins-examples dirs core
-	cd bin && zip -q ../dist/MusicPlayer-$(VERSION)-win64.zip MusicPlayer.exe musicplayer-core.exe $(FFMPEG_DLLS) LICENSE-FFmpeg.txt plugins/ts.dll core_plugins/*.dll core_plugins/*.txt lang/*.lang && \
+	cd bin && zip -q ../dist/MusicPlayer-$(VERSION)-win64.zip MusicPlayer.exe musicplayer-core.exe $(FFMPEG_DLLS) LICENSE-FFmpeg.txt core_plugins/webserver.dll lang/*.lang && \
 	cd .. && echo "Archive : dist/MusicPlayer-$(VERSION)-win64.zip"
 
 # ----------------------------------------------------------------------

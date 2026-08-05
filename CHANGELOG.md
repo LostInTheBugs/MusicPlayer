@@ -11,6 +11,10 @@ The autonomous update relaunched the app without actually replacing the binaries
 - **The relaunch uses the full path** of the exe (`"%~dp0MusicPlayer.exe"`)
 - Release process: the zip asset is now uploaded **before** creating the release, so the update checker never downloads a missing/old asset
 
+### Changed (zip content — even leaner)
+- **TeamSpeak removed from the zip** (it is not an essential service; it stays in the plugin repository, one click away)
+- Only the **engine web server** stays embedded: the phone remote works right after installation; everything else (TeamSpeak, visuals, effects, skins, other engine services) comes from Settings ▸ Plugin repository…
+
 ## [2026.08.042-c2] — 2026-08-04
 
 ### Added (plugin repository + third-party plugin guide)
