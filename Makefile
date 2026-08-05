@@ -13,7 +13,7 @@
 #   make clean
 # ======================================================================
 
-VERSION := 2026.08.045-c1
+VERSION := 2026.08.045-c2
 
 CROSS    := x86_64-w64-mingw32-
 CC       := $(CROSS)gcc
@@ -214,10 +214,11 @@ zip: all plugins-examples dirs core
 	cd bin && zip -q ../dist/MusicPlayer-$(VERSION)-win64.zip MusicPlayer.exe MusicPlayerApp.exe musicplayer-core.exe LICENSE-FFmpeg.txt core_plugins/webserver.dll lang/*.lang VERSION && \
 	cd .. && echo "Archive : dist/MusicPlayer-$(VERSION)-win64.zip"
 
-# zip COMPLET avec les DLL FFmpeg (plan B manuel si le téléchargement
-# automatique du runtime échoue : extraire dans le dossier de l'exe)
+# zip COMPLET avec les DLL FFmpeg et TOUS les plugins du moteur
+# (podcasts, web, dlna…) — plan B manuel si le téléchargement
+# automatique du runtime échoue : extraire dans le dossier de l'exe
 zip-full: all plugins-examples dirs core
-	cd bin && zip -q ../dist/MusicPlayer-$(VERSION)-win64-full.zip MusicPlayer.exe MusicPlayerApp.exe musicplayer-core.exe $(FFMPEG_DLLS) LICENSE-FFmpeg.txt core_plugins/webserver.dll lang/*.lang VERSION && \
+	cd bin && zip -q ../dist/MusicPlayer-$(VERSION)-win64-full.zip MusicPlayer.exe MusicPlayerApp.exe musicplayer-core.exe $(FFMPEG_DLLS) LICENSE-FFmpeg.txt core_plugins/*.dll lang/*.lang VERSION && \
 	cd .. && echo "Archive : dist/MusicPlayer-$(VERSION)-win64-full.zip"
 
 # ----------------------------------------------------------------------

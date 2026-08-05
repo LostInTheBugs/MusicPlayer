@@ -2594,7 +2594,10 @@ static INT_PTR CALLBACK podcast_add_proc(HWND h, UINT m, WPARAM w, LPARAM l)
                         else
                             MessageBoxW(h,
                                 L"Invalid feed URL (no RSS podcast feed "
-                                L"found at this address).",
+                                L"found at this address).\n"
+                                L"If this keeps happening, update the "
+                                L"Podcasts plugin: Settings \u25b8 Plugin "
+                                L"repository\u2026 \u25b8 Download selected.",
                                 L"Podcasts", MB_ICONERROR);
                     } else {
                         wchar_t wtitle[512], msg[600];
