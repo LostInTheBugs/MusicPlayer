@@ -2,6 +2,11 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.043-c2] — 2026-08-05
+
+### Fixed (Add… button garbled in the repository/podcasts dialogs)
+- The button label used `…` (U+2026): windres reads the .rc as CP1252 while the file is UTF-8 → the label was garbled in the built dialog. Replaced with ASCII `Add...` (same for the Podcasts dialog)
+
 ## [2026.08.043-c1] — 2026-08-05
 
 ### Fixed (plugin repository: « Invalid repository index » on the default URL)
