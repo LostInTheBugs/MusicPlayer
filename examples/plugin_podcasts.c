@@ -1088,7 +1088,14 @@ static void server_stop(void)
 
 /* ------------------------------------------------------------------ */
 static const char* pl_name(void) { return "Podcasts"; }
-static const char* pl_version(void) { return "1.0"; }
+static const char* pl_version(void)
+{
+#ifdef MP_BUILD_VERSION
+    return MP_BUILD_VERSION;
+#else
+    return "1.0";
+#endif
+}
 static const char* pl_description(void)
 {
     return "RSS podcast subscriptions: episodes, read/unread, resume, download (port 8082)";

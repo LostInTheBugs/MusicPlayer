@@ -330,10 +330,13 @@ static DWORD WINAPI client_thread(LPVOID arg)
             WideCharToMultiByte(CP_UTF8, 0, wfn, -1, f8, sizeof(f8), NULL, NULL);
             char efile[160];
             json_escape(f8, efile, sizeof(efile));
+            char ev[64];
+            json_escape(p->api->version() ? p->api->version() : "",
+                        ev, sizeof(ev));
             o += snprintf(js + o, sizeof(js) - o,
                           "%s{\"name\":\"%s\",\"type\":\"%s\",\"desc\":\"%s\","
-                          "\"file\":\"%s\",\"enabled\":%d}",
-                          o > 12 ? "," : "", nm, ty, ds, efile,
+                          "\"file\":\"%s\",\"version\":\"%s\",\"enabled\":%d}",
+                          o > 12 ? "," : "", nm, ty, ds, efile, ev,
                           p->enabled ? 1 : 0);
             if (o > (int)sizeof(js) - 256) break;
         }

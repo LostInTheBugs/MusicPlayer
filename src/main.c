@@ -1467,6 +1467,9 @@ static void plugins_refresh(HWND h)
         ListView_InsertItem(lv, &it);
         ListView_SetItemText(lv, row, 1, (wchar_t*)type_w);
         ListView_SetItemText(lv, row, 2, desc_w);
+        wchar_t ver_w[48];
+        utf8_to_wide(p->api->version() ? p->api->version() : "", ver_w, 48);
+        ListView_SetItemText(lv, row, 3, ver_w);
         ListView_SetCheckState(lv, row, p->visible ? TRUE : FALSE);
         row++;
     }
@@ -1491,12 +1494,13 @@ static void plugins_refresh(HWND h)
                 if (olen > (int)sizeof(tmp) - 1) olen = (int)sizeof(tmp) - 1;
                 memcpy(tmp, obj, olen);
                 tmp[olen] = 0;
-                char nm[160], ty[64], ds[240], en[8], fl[128];
+                char nm[160], ty[64], ds[240], en[8], fl[128], ve[48];
                 pod_json_str(tmp, "name", nm, sizeof(nm));
                 pod_json_str(tmp, "type", ty, sizeof(ty));
                 pod_json_str(tmp, "desc", ds, sizeof(ds));
                 pod_json_str(tmp, "enabled", en, sizeof(en));
                 pod_json_str(tmp, "file", fl, sizeof(fl));
+                pod_json_str(tmp, "version", ve, sizeof(ve));
                 pod_json_unescape(nm);
                 pod_json_unescape(ds);
                 wchar_t name_w[200], desc_w[280], type_w[80];
@@ -1511,6 +1515,9 @@ static void plugins_refresh(HWND h)
                 ListView_InsertItem(lv, &it);
                 ListView_SetItemText(lv, row, 1, type_w);
                 ListView_SetItemText(lv, row, 2, desc_w);
+                wchar_t ver_w[48];
+                utf8_to_wide(ve, ver_w, 48);
+                ListView_SetItemText(lv, row, 3, ver_w);
                 ListView_SetCheckState(lv, row, atoi(en) ? TRUE : FALSE);
                 if (row - g_engine_plugins_start < 64)
                     _snprintf(g_engine_files[row - g_engine_plugins_start],
@@ -1534,7 +1541,7 @@ static INT_PTR CALLBACK plugins_dlg_proc(HWND h, UINT m, WPARAM w, LPARAM l)
         HWND lv = GetDlgItem(h, IDC_PLG_LIST);
         ListView_SetExtendedListViewStyle(lv,
             LVS_EX_CHECKBOXES | LVS_EX_FULLROWSELECT);
-        LVCOLUMNW c0, c1, c2;
+        LVCOLUMNW c0, c1, c2, c3;
         memset(&c0, 0, sizeof(c0));
         c0.mask = LVCF_TEXT | LVCF_WIDTH;
         c0.cx = 150; c0.pszText = L"Plugin";
@@ -1545,8 +1552,12 @@ static INT_PTR CALLBACK plugins_dlg_proc(HWND h, UINT m, WPARAM w, LPARAM l)
         ListView_InsertColumn(lv, 1, &c1);
         memset(&c2, 0, sizeof(c2));
         c2.mask = LVCF_TEXT | LVCF_WIDTH;
-        c2.cx = 100; c2.pszText = L"Description";
+        c2.cx = 80; c2.pszText = L"Description";
         ListView_InsertColumn(lv, 2, &c2);
+        memset(&c3, 0, sizeof(c3));
+        c3.mask = LVCF_TEXT | LVCF_WIDTH;
+        c3.cx = 60; c3.pszText = L"Version";
+        ListView_InsertColumn(lv, 3, &c3);
         plugins_refresh(h);
         SetDlgItemTextW(h, IDC_PLG_LBL, lang_get("plugins_dlg_lbl"));
         SetWindowTextW(h, lang_get("plugins_dlg_title"));
