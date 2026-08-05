@@ -2,6 +2,17 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.043-c3] — 2026-08-05
+
+### Fixed (update still not applying — now verified end to end)
+- **`VERSION` is now embedded in the zip** (built into `bin/`), and the updater script logs the extracted version: `OK: 2026.08.043-c3` in `updater.log`
+- **At startup the client compares its own version to the one the zip contained**: any mismatch (files locked, extraction skipped…) now shows an explicit message telling the user the extraction did not replace the files — no more silent « still on the old version »
+- **Download integrity**: the zip must start with the `PK` magic — a 404/HTML page can no longer be deployed
+
+### Changed (menu + logging)
+- **File ▸ Podcasts… is now dynamic**: it only appears when the engine's podcasts plugin is present **and** its service answers on port 8082 (disabled plugin = no menu entry)
+- **Help ▸ Logs…**: log level selector — **Nothing / Errors only / Info / Debug** — persisted in `config.yml`; logs now live in the **`logs/` folder** next to the executables (`logs/musicplayer.log`, `logs/musicplayer-core.log`), with an **Open logs folder** button; the engine's level follows live via `/api/config`
+
 ## [2026.08.043-c2] — 2026-08-05
 
 ### Fixed (Add… button garbled in the repository/podcasts dialogs)
