@@ -9,6 +9,9 @@ All notable changes to MusicPlayer are documented in this file.
 - Selecting a repository in the list **fetches its index automatically**; Fetch reloads it manually
 - Third-party repositories can be added the same way (any HTTP URL serving a `plugins.json` + files)
 
+### Changed (documentation)
+- **API.md translated to English** (and completed: `POST /api/config`, DJ commands) — all documentation is English-first
+
 ## [2026.08.042-c3] — 2026-08-04
 
 ### Fixed (update applied but the old version stayed)
