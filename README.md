@@ -165,16 +165,16 @@ MusicPlayer/
 
 ## Development cost (LLM)
 
-This project was built entirely through AI-assisted sessions (Hermes Agent, deepseek-v4-flash). Usage so far:
+This project was built entirely through AI-assisted sessions (Hermes Agent). Usage so far:
 
-| Metric | Value |
-|---|---|
-| Input tokens | 4 754 704 |
-| Output tokens | 2 944 066 |
-| **Total (input + output)** | **7 698 770** |
-| Cache read (reused at reduced price) | 628 431 616 |
-| API calls | 2165 |
-| **Estimated cost** | **≈ 3.03 USD** |
+| Metric | deepseek-v4-flash | deepseek-v4-pro | **Total** |
+|---|---|---|---|
+| Input tokens | 4 025 552 | 127 730 | **4 153 282** |
+| Output tokens | 2 523 352 | 37 028 | **2 560 380** |
+| **Subtotal (input + output)** | **6 548 904** | **164 758** | **6 713 662** |
+| Cache read (reused at reduced price) | 633 507 072 | 9 852 544 | **643 359 616** |
+| API calls | 2 033 | 88 | **2 121** |
+| **Estimated cost** | **≈ 3.04 USD** | **≈ 0.12 USD** | **≈ 3.17 USD** |
 
 Full breakdown: [TOKENS.md](TOKENS.md).
 
