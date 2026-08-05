@@ -13,7 +13,7 @@
 #   make clean
 # ======================================================================
 
-VERSION := 2026.08.044
+VERSION := 2026.08.044-c1
 
 CROSS    := x86_64-w64-mingw32-
 CC       := $(CROSS)gcc
@@ -210,6 +210,12 @@ zip: all plugins-examples dirs core
 	cd bin && zip -q ../dist/MusicPlayer-$(VERSION)-win64.zip MusicPlayer.exe MusicPlayerApp.exe musicplayer-core.exe LICENSE-FFmpeg.txt core_plugins/webserver.dll lang/*.lang VERSION && \
 	cd .. && echo "Archive : dist/MusicPlayer-$(VERSION)-win64.zip"
 
+# zip COMPLET avec les DLL FFmpeg (plan B manuel si le téléchargement
+# automatique du runtime échoue : extraire dans le dossier de l'exe)
+zip-full: all plugins-examples dirs core
+	cd bin && zip -q ../dist/MusicPlayer-$(VERSION)-win64-full.zip MusicPlayer.exe MusicPlayerApp.exe musicplayer-core.exe $(FFMPEG_DLLS) LICENSE-FFmpeg.txt core_plugins/webserver.dll lang/*.lang VERSION && \
+	cd .. && echo "Archive : dist/MusicPlayer-$(VERSION)-win64-full.zip"
+
 # ----------------------------------------------------------------------
 # Repository de plugins : copie les binaires dans repo/bin/ (à committer
 # pour publier). L'index est plugins.json (racine).
@@ -220,7 +226,7 @@ repo: plugins-examples
 	cp -f bin/plugins/*.dll repo/bin/plugins/ 2>/dev/null || true
 	cp -f bin/skins/*.dll bin/skins/*.png repo/bin/skins/ 2>/dev/null || true
 	cp -f bin/core_plugins/*.dll repo/bin/core_plugins/ 2>/dev/null || true
-	cd vendor/ffmpeg/bin && cp -f ../LICENSE.txt . && zip -q ffmpeg-win64-lgpl-shared.zip avcodec-63.dll avformat-63.dll avutil-61.dll swresample-7.dll LICENSE.txt && rm -f LICENSE.txt && mv ffmpeg-win64-lgpl-shared.zip "$(CURDIR)/repo/ffmpeg/"
+	cd vendor/ffmpeg/bin && cp -f ../LICENSE.txt . && zip -q ffmpeg-win64-lgpl-shared.zip avcodec-63.dll avformat-63.dll avutil-61.dll swresample-7.dll LICENSE.txt && rm -f LICENSE.txt && mv ffmpeg-win64-lgpl-shared.zip "$(CURDIR)/repo/ffmpeg/" && cp -f avcodec-63.dll avformat-63.dll avutil-61.dll swresample-7.dll "$(CURDIR)/repo/ffmpeg/"
 	@echo "repo/bin prêt — committez-le pour publier le repository"
 
 clean:
