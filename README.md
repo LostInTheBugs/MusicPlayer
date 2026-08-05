@@ -10,6 +10,7 @@ cross-compiled from Linux with MinGW-w64.
 - **Play/Pause/Stop/Next buttons + volume slider** (0–100 % blue, 100–200 % orange boost) built into the window
 - **Folder playback**: File ▸ Open folder… (or drag & drop a folder, or pass it on the command line) — all MP3/MP4 are played in order, subfolders included, next track starts automatically
 - **CD audio playback**: File ▸ Open CD… (MCI) — tracks listed as “CD Track N”, auto-advance
+- **Podcasts**: File ▸ Podcasts… — subscribe to RSS feeds (episodes streamed directly from their URL by the engine, read/unread, resume position, offline download)
 - **Web server (remote control)**: Settings ▸ Web server… — open the page from your phone/tablet: control playback, see metadata (title/artist/album/year), the cover, the playlist with the current track highlighted, and pick the audio output: this computer, phone, or both (WAV stream)
 - **DJ Mixing**: 2-deck mixer on the web page (volume, pitch ±12 %, 3-band EQ, crossfader, via Web Audio API) **and** on the computer itself (console with per-deck play/pause/stop, volumes, crossfader, pitch — deck B is a real second decoder **in the engine**, mixed into the stream and sent to every client); the mode is synchronized both ways (Settings ▸ DJ Mixing ⇄ web)
 - **Session persistence** (`config.yml` in `%APPDATA%\MusicPlayer`): volume, speed, last folder/file and web server config are saved on exit and restored on startup — playlists are rescanned (new files added, removed files dropped) and playback resumes on the current track
@@ -28,7 +29,7 @@ cross-compiled from Linux with MinGW-w64.
 
 ## Version
 
-`2026.08.042-c7` — see [CHANGELOG.md](CHANGELOG.md)
+`2026.08.043` — see [CHANGELOG.md](CHANGELOG.md)
 
 ## Run on Windows 11
 

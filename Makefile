@@ -13,7 +13,7 @@
 #   make clean
 # ======================================================================
 
-VERSION := 2026.08.042-c7
+VERSION := 2026.08.043
 
 CROSS    := x86_64-w64-mingw32-
 CC       := $(CROSS)gcc
@@ -154,11 +154,12 @@ plugins-examples: $(BIN)
 	$(CC) -O2 -shared -o bin/plugins/ts.dll examples/plugin_ts.c -Isrc -Ivendor -static-libgcc -lole32 -lwinmm
 	cp -f examples/multiroom.txt bin/plugins/multiroom.txt
 	$(CC) -O2 -shared -o bin/plugins/metadata.dll examples/plugin_metadata.c -Isrc -static-libgcc
+	$(CC) -O2 -shared -o bin/plugins/podcasts.dll examples/plugin_podcasts.c -Isrc -lws2_32 -lwininet -static-libgcc
 	$(CC) -O2 -shared -o bin/plugins/lyrics.dll examples/plugin_lyrics.c -Isrc -static-libgcc -luser32 -lgdi32
 	$(CC) -O2 -shared -o bin/plugins/cover.dll examples/plugin_cover.c -Isrc -static-libgcc -luser32 -lgdi32 -lgdiplus -Wno-incompatible-pointer-types
 	@mkdir -p bin/core_plugins
 	cp -f bin/plugins/webserver.dll bin/plugins/metadata.dll bin/plugins/cover.dll \
-	      bin/plugins/upnp.dll bin/plugins/rtp.dll bin/plugins/multiroom.dll bin/core_plugins/
+	      bin/plugins/upnp.dll bin/plugins/rtp.dll bin/plugins/multiroom.dll bin/plugins/podcasts.dll bin/core_plugins/
 	cp -f examples/multiroom.txt bin/core_plugins/multiroom.txt
 	mkdir -p bin/skins
 	$(CC) -O2 -shared -o bin/skins/skin_retro60.dll examples/plugin_skin_retro60.c -Isrc -static-libgcc

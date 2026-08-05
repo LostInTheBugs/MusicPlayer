@@ -151,6 +151,37 @@ BEGIN
     PUSHBUTTON "Cancel", IDCANCEL, 238, 52, 70, 18
 END
 
+/* Dialog "Podcasts" (File ▸ Podcasts…) — ID 114 */
+114 DIALOG 0, 0, 540, 380
+STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Podcasts"
+FONT 8, "MS Shell Dlg"
+BEGIN
+    GROUPBOX "Subscriptions", 1001, 12, 8, 516, 116
+    CONTROL "", 2001, "SysListView32", LVS_REPORT | LVS_SINGLESEL | WS_BORDER | WS_TABSTOP, 12, 22, 516, 74
+    PUSHBUTTON "Add…", 2002, 12, 100, 56, 16
+    PUSHBUTTON "Delete", 2003, 74, 100, 56, 16
+    PUSHBUTTON "Refresh", 2004, 136, 100, 60, 16
+    GROUPBOX "Episodes", 1002, 12, 132, 516, 176
+    CONTROL "", 2005, "SysListView32", LVS_REPORT | LVS_SINGLESEL | WS_BORDER | WS_TABSTOP, 12, 146, 516, 120
+    PUSHBUTTON "Play", 2006, 12, 270, 56, 16
+    PUSHBUTTON "Read/Unread", 2007, 74, 270, 86, 16
+    PUSHBUTTON "Download", 2008, 166, 270, 70, 16
+    DEFPUSHBUTTON "Close", IDCANCEL, 460, 350, 68, 18
+END
+
+/* Dialog "Add podcast" — ID 115 */
+115 DIALOG 0, 0, 320, 84
+STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Add podcast"
+FONT 8, "MS Shell Dlg"
+BEGIN
+    LTEXT "Feed URL:", 1001, 12, 14, 60, 10
+    EDITTEXT 2001, 76, 12, 232, 14, ES_AUTOHSCROLL | WS_TABSTOP
+    DEFPUSHBUTTON "OK", IDOK, 150, 52, 70, 18
+    PUSHBUTTON "Cancel", IDCANCEL, 238, 52, 70, 18
+END
+
 /* Métadonnées Windows (onglet Détails des propriétés du fichier) —
  * généré par tools/vergen.py depuis VERSION */
 #include "version_client.rc"

@@ -7,6 +7,7 @@
  */
 #include <winsock2.h>
 #include <windows.h>
+#include <wininet.h>
 #include <commctrl.h>
 #include <gdiplus.h>
 #include <windowsx.h>
@@ -63,6 +64,7 @@ enum {
     IDM_DJ_MODE = 807,      /* Settings ▸ DJ Mixing (synchro web) */
     IDM_NETWORK = 809,      /* Settings ▸ Network… (services réseau) */
     IDM_REPO = 810,         /* Settings ▸ Plugin repository… */
+    IDM_PODCASTS = 811,     /* File ▸ Podcasts… */
     IDM_ABOUT = 901
 };
 
@@ -881,6 +883,7 @@ static HMENU create_menus(void)
     AppendMenuW(mFile, MF_STRING, IDM_OPEN, lang_get("open"));
     AppendMenuW(mFile, MF_STRING, IDM_OPEN_FOLDER, lang_get("menu_open_folder"));
     AppendMenuW(mFile, MF_STRING, IDM_OPEN_CD, lang_get("menu_open_cd"));
+    AppendMenuW(mFile, MF_STRING, IDM_PODCASTS, L"Podcasts…");
     AppendMenuW(mFile, MF_SEPARATOR, 0, NULL);
     /* commandes de lecture */
     AppendMenuW(mFile, MF_STRING, IDM_PLAYPAUSE, lang_get("menu_play"));
@@ -1935,6 +1938,548 @@ static void do_repo_dialog(void)
     repo_free(g_repo_list, g_repo_n);
     g_repo_list = NULL;
     g_repo_n = 0;
+}
+
+/* ------------------------------------------------------------------ */
+/* Dialog Podcasts (File ▸ Podcasts…) — pilote le plugin podcasts du  */
+/* moteur (port 8082)                                                  */
+/* ------------------------------------------------------------------ */
+#define IDD_PODCASTS    114
+#define IDD_PODCAST_ADD 115
+#define IDC_POD_SUBS    2001
+#define IDC_POD_ADD     2002
+#define IDC_POD_DEL     2003
+#define IDC_POD_REFRESH 2004
+#define IDC_POD_EPS     2005
+#define IDC_POD_PLAY    2006
+#define IDC_POD_MARK    2007
+#define IDC_POD_DL      2008
+
+#define PODCAST_PORT 8082
+
+/* requête HTTP vers le plugin podcasts du moteur (127.0.0.1:8082).
+ * Retourne le corps de réponse (malloc) ou NULL. */
+static char* podcast_http(const char* method, const char* path,
+                          const char* body, int* out_len)
+{
+    (void)method;   /* GET ou POST selon la présence du corps */
+    wchar_t url[1200];
+    char upath[1024];
+    snprintf(upath, sizeof(upath), "http://127.0.0.1:%d%s", PODCAST_PORT, path);
+    MultiByteToWideChar(CP_UTF8, 0, upath, -1, url, 1200);
+    HINTERNET inet = InternetOpenW(L"MusicPlayer", INTERNET_OPEN_TYPE_DIRECT,
+                                   NULL, NULL, 0);
+    if (!inet) return NULL;
+    DWORD to = 15000;
+    InternetSetOptionW(inet, INTERNET_OPTION_CONNECT_TIMEOUT, &to, sizeof(to));
+    InternetSetOptionW(inet, INTERNET_OPTION_RECEIVE_TIMEOUT, &to, sizeof(to));
+    const wchar_t* hdrs = body ? L"Content-Type: application/json\r\n" : NULL;
+    HINTERNET uh = InternetOpenUrlW(inet, url, hdrs, -1,
+                                    INTERNET_FLAG_RELOAD |
+                                    INTERNET_FLAG_NO_CACHE_WRITE, 0);
+    if (!uh) { InternetCloseHandle(inet); return NULL; }
+    if (body) {
+        DWORD wr = 0;
+        InternetWriteFile(uh, body, (DWORD)strlen(body), &wr);
+    }
+    char buf[4096];
+    int cap = 8192, len = 0;
+    char* resp = (char*)malloc(cap);
+    if (!resp) { InternetCloseHandle(uh); InternetCloseHandle(inet); return NULL; }
+    for (;;) {
+        DWORD got = 0;
+        if (!InternetReadFile(uh, buf, sizeof(buf), &got) || got == 0) break;
+        if (len + (int)got + 1 > cap) {
+            cap = (len + (int)got + 1) * 2;
+            char* nb = (char*)realloc(resp, cap);
+            if (!nb) { free(resp); InternetCloseHandle(uh); InternetCloseHandle(inet); return NULL; }
+            resp = nb;
+        }
+        memcpy(resp + len, buf, got);
+        len += (int)got;
+    }
+    InternetCloseHandle(uh);
+    InternetCloseHandle(inet);
+    resp[len] = 0;
+    if (out_len) *out_len = len;
+    return resp;
+}
+
+/* extrait les chaînes du JSON de réponse (même style que le moteur) */
+static void pod_json_str(const char* body, const char* key, char* out, int outsz)
+{
+    out[0] = 0;
+    char pat[64];
+    snprintf(pat, sizeof(pat), "\"%s\"", key);
+    const char* p = strstr(body, pat);
+    if (!p) return;
+    p = strchr(p, ':');
+    if (!p) return;
+    p++;
+    while (*p == ' ' || *p == '\t') p++;
+    if (*p != '"') return;
+    p++;
+    int n = 0;
+    while (*p && *p != '"' && n < outsz - 1) out[n++] = *p++;
+    out[n] = 0;
+}
+
+static void pod_json_unescape(char* s)
+{
+    /* \u00e9 → é (les titres RSS passent en JSON) */
+    char* r = s;
+    char* w = s;
+    while (*r) {
+        if (r[0] == '\\' && r[1] == 'u' && r[2] && r[3] && r[4] && r[5]) {
+            char h[5] = { r[2], r[3], r[4], r[5], 0 };
+            unsigned cp = (unsigned)strtoul(h, NULL, 16);
+            if (cp < 0x80) {
+                *w++ = (char)cp;
+            } else if (cp < 0x800) {
+                *w++ = (char)(0xC0 | (cp >> 6));
+                *w++ = (char)(0x80 | (cp & 0x3F));
+            } else {
+                *w++ = (char)(0xE0 | (cp >> 12));
+                *w++ = (char)(0x80 | ((cp >> 6) & 0x3F));
+                *w++ = (char)(0x80 | (cp & 0x3F));
+            }
+            r += 6;
+        } else {
+            *w++ = *r++;
+        }
+    }
+    *w = 0;
+}
+
+static void pod_fill_subs(HWND h)
+{
+    HWND lv = GetDlgItem(h, IDC_POD_SUBS);
+    SendMessageW(lv, LVM_DELETEALLITEMS, 0, 0);
+    int len = 0;
+    char* resp = podcast_http("GET", "/podcasts", NULL, &len);
+    if (!resp) return;
+    /* compte les objets */
+    int n = 0;
+    const char* p = resp;
+    while ((p = strstr(p, "\"url\":")) != NULL) { n++; p += 5; }
+    /* chaque objet : {"url":"..","title":"..","unread":N} */
+    p = resp;
+    for (int i = 0; i < n; i++) {
+        const char* obj = strstr(p, "{\"url\":");
+        if (!obj) break;
+        const char* end = strchr(obj, '}');
+        if (!end) break;
+        int olen = (int)(end - obj) + 1;
+        char tmp[4096];
+        if (olen > (int)sizeof(tmp) - 1) olen = (int)sizeof(tmp) - 1;
+        memcpy(tmp, obj, olen);
+        tmp[olen] = 0;
+        char url[512], title[512], unread[16];
+        pod_json_str(tmp, "url", url, sizeof(url));
+        pod_json_str(tmp, "title", title, sizeof(title));
+        pod_json_str(tmp, "unread", unread, sizeof(unread));
+        pod_json_unescape(title);
+        wchar_t wtitle[512], wurl[512];
+        MultiByteToWideChar(CP_UTF8, 0, title, -1, wtitle, 512);
+        MultiByteToWideChar(CP_UTF8, 0, url, -1, wurl, 512);
+        wchar_t display[600];
+        swprintf(display, 600, L"%ls [%hs non lus]", wtitle, unread);
+        LVITEMW li;
+        memset(&li, 0, sizeof(li));
+        li.mask = LVIF_TEXT | LVIF_PARAM;
+        li.iItem = (int)SendMessageW(lv, LVM_GETITEMCOUNT, 0, 0);
+        li.lParam = i;
+        li.pszText = display;
+        SendMessageW(lv, LVM_INSERTITEMW, 0, (LPARAM)&li);
+        p = end + 1;
+    }
+    free(resp);
+}
+
+/* URL-encode une chaîne pour la query string */
+static void pod_urlencode(const char* in, char* out, int outsz)
+{
+    int o = 0;
+    for (int i = 0; in[i] && o < outsz - 4; i++) {
+        unsigned char c = (unsigned char)in[i];
+        if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+            (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.' ||
+            c == '~' || c == ':' || c == '/' || c == '?' || c == '&' ||
+            c == '=' || c == '%') {
+            out[o++] = (char)c;
+        } else {
+            o += snprintf(out + o, outsz - o, "%%%02X", c);
+        }
+    }
+    out[o] = 0;
+}
+
+static void pod_fill_eps(HWND h)
+{
+    HWND lv = GetDlgItem(h, IDC_POD_EPS);
+    SendMessageW(lv, LVM_DELETEALLITEMS, 0, 0);
+    HWND subs = GetDlgItem(h, IDC_POD_SUBS);
+    int sel = (int)SendMessageW(subs, LVM_GETNEXTITEM, (WPARAM)-1, LVNI_SELECTED);
+    if (sel < 0) return;
+    LVITEMW li;
+    memset(&li, 0, sizeof(li));
+    li.mask = LVIF_PARAM;
+    li.iItem = sel;
+    SendMessageW(subs, LVM_GETITEMW, 0, (LPARAM)&li);
+    /* l'URL de l'abonnement : on la retrouve dans la réponse /podcasts */
+    int len = 0;
+    char* resp = podcast_http("GET", "/podcasts", NULL, &len);
+    if (!resp) return;
+    char feed[512] = "";
+    {
+        const char* p = resp;
+        for (int i = 0; i <= (int)li.lParam; i++) {
+            const char* obj = strstr(p, "{\"url\":");
+            if (!obj) break;
+            const char* end = strchr(obj, '}');
+            if (!end) break;
+            if (i == (int)li.lParam) {
+                char tmp[4096];
+                int olen = (int)(end - obj) + 1;
+                if (olen > (int)sizeof(tmp) - 1) olen = (int)sizeof(tmp) - 1;
+                memcpy(tmp, obj, olen);
+                tmp[olen] = 0;
+                pod_json_str(tmp, "url", feed, sizeof(feed));
+            }
+            p = end + 1;
+        }
+    }
+    free(resp);
+    if (!feed[0]) return;
+    char q[1200], path[1800];
+    pod_urlencode(feed, q, sizeof(q));
+    snprintf(path, sizeof(path), "/podcasts/episodes?feed=%s", q);
+    resp = podcast_http("GET", path, NULL, &len);
+    if (!resp) return;
+    int n = 0;
+    const char* p = resp;
+    while ((p = strstr(p, "\"url\":")) != NULL) { n++; p += 5; }
+    p = resp;
+    for (int i = 0; i < n; i++) {
+        const char* obj = strstr(p, "{\"url\":");
+        if (!obj) break;
+        const char* end = strchr(obj, '}');
+        if (!end) break;
+        int olen = (int)(end - obj) + 1;
+        char tmp[8192];
+        if (olen > (int)sizeof(tmp) - 1) olen = (int)sizeof(tmp) - 1;
+        memcpy(tmp, obj, olen);
+        tmp[olen] = 0;
+        char url[512], title[512], date[64], dur[16], played[8], pos[16];
+        pod_json_str(tmp, "url", url, sizeof(url));
+        pod_json_str(tmp, "title", title, sizeof(title));
+        pod_json_str(tmp, "date", date, sizeof(date));
+        pod_json_str(tmp, "dur", dur, sizeof(dur));
+        pod_json_str(tmp, "played", played, sizeof(played));
+        pod_json_str(tmp, "pos", pos, sizeof(pos));
+        pod_json_unescape(title);
+        wchar_t wtitle[512];
+        MultiByteToWideChar(CP_UTF8, 0, title, -1, wtitle, 512);
+        wchar_t wdur[32];
+        if (atoi(dur) > 0)
+            swprintf(wdur, 32, L"%d:%02d", atoi(dur) / 60, atoi(dur) % 60);
+        else
+            wcscpy(wdur, L"?");
+        wchar_t wstate[16];
+        wcscpy(wstate, atoi(played) ? L"lu" : L"nouveau");
+        LVITEMW li2;
+        memset(&li2, 0, sizeof(li2));
+        li2.mask = LVIF_TEXT | LVIF_PARAM;
+        li2.iItem = (int)SendMessageW(lv, LVM_GETITEMCOUNT, 0, 0);
+        li2.lParam = i;
+        li2.pszText = wtitle;
+        int idx = (int)SendMessageW(lv, LVM_INSERTITEMW, 0, (LPARAM)&li2);
+        li2.iItem = idx;
+        li2.mask = LVIF_TEXT;
+        li2.iSubItem = 1;
+        {
+            wchar_t wdate[64];
+            MultiByteToWideChar(CP_UTF8, 0, date, -1, wdate, 64);
+            li2.pszText = wdate;
+        }
+        SendMessageW(lv, LVM_SETITEMW, 0, (LPARAM)&li2);
+        li2.iSubItem = 2; li2.pszText = wdur;
+        SendMessageW(lv, LVM_SETITEMW, 0, (LPARAM)&li2);
+        li2.iSubItem = 3; li2.pszText = wstate;
+        SendMessageW(lv, LVM_SETITEMW, 0, (LPARAM)&li2);
+        p = end + 1;
+    }
+    free(resp);
+}
+
+static void pod_refresh(HWND h)
+{
+    pod_fill_subs(h);
+    pod_fill_eps(h);
+}
+
+/* URL de l'épisode sélectionné (dans la liste) */
+static void pod_selected_episode(HWND h, char* url_out, int url_sz,
+                                 char* played_out, int played_sz)
+{
+    url_out[0] = 0;
+    played_out[0] = 0;
+    HWND lv = GetDlgItem(h, IDC_POD_EPS);
+    int sel = (int)SendMessageW(lv, LVM_GETNEXTITEM, (WPARAM)-1, LVNI_SELECTED);
+    if (sel < 0) return;
+    LVITEMW li;
+    memset(&li, 0, sizeof(li));
+    li.mask = LVIF_PARAM;
+    li.iItem = sel;
+    SendMessageW(lv, LVM_GETITEMW, 0, (LPARAM)&li);
+    /* re-fetch les épisodes du flux sélectionné et prend l'index */
+    HWND subs = GetDlgItem(h, IDC_POD_SUBS);
+    int ssel = (int)SendMessageW(subs, LVM_GETNEXTITEM, (WPARAM)-1, LVNI_SELECTED);
+    if (ssel < 0) return;
+    LVITEMW ls;
+    memset(&ls, 0, sizeof(ls));
+    ls.mask = LVIF_PARAM;
+    ls.iItem = ssel;
+    SendMessageW(subs, LVM_GETITEMW, 0, (LPARAM)&ls);
+    int len = 0;
+    char* resp = podcast_http("GET", "/podcasts", NULL, &len);
+    if (!resp) return;
+    char feed[512] = "";
+    {
+        const char* p = resp;
+        for (int i = 0; i <= (int)ls.lParam; i++) {
+            const char* obj = strstr(p, "{\"url\":");
+            if (!obj) break;
+            const char* end = strchr(obj, '}');
+            if (!end) break;
+            if (i == (int)ls.lParam) {
+                char tmp[4096];
+                int olen = (int)(end - obj) + 1;
+                if (olen > (int)sizeof(tmp) - 1) olen = (int)sizeof(tmp) - 1;
+                memcpy(tmp, obj, olen);
+                tmp[olen] = 0;
+                pod_json_str(tmp, "url", feed, sizeof(feed));
+            }
+            p = end + 1;
+        }
+    }
+    free(resp);
+    if (!feed[0]) return;
+    char q[1200], path[1800];
+    pod_urlencode(feed, q, sizeof(q));
+    snprintf(path, sizeof(path), "/podcasts/episodes?feed=%s", q);
+    resp = podcast_http("GET", path, NULL, &len);
+    if (!resp) return;
+    {
+        const char* p = resp;
+        for (int i = 0; i <= (int)li.lParam; i++) {
+            const char* obj = strstr(p, "{\"url\":");
+            if (!obj) break;
+            const char* end = strchr(obj, '}');
+            if (!end) break;
+            if (i == (int)li.lParam) {
+                char tmp[8192];
+                int olen = (int)(end - obj) + 1;
+                if (olen > (int)sizeof(tmp) - 1) olen = (int)sizeof(tmp) - 1;
+                memcpy(tmp, obj, olen);
+                tmp[olen] = 0;
+                pod_json_str(tmp, "url", url_out, url_sz);
+                pod_json_str(tmp, "played", played_out, played_sz);
+            }
+            p = end + 1;
+        }
+    }
+    free(resp);
+}
+
+static INT_PTR CALLBACK podcast_add_proc(HWND h, UINT m, WPARAM w, LPARAM l)
+{
+    (void)l;
+    switch (m) {
+    case WM_COMMAND:
+        if (LOWORD(w) == IDOK) {
+            wchar_t url[600];
+            GetDlgItemTextW(h, 2001, url, 600);
+            if (url[0]) {
+                char u8[900];
+                WideCharToMultiByte(CP_UTF8, 0, url, -1, u8, 900, NULL, NULL);
+                char body[1000];
+                snprintf(body, sizeof(body), "{\"url\":\"%s\"}", u8);
+                char* resp = podcast_http("POST", "/podcasts", body, NULL);
+                if (resp) {
+                    char title[512];
+                    pod_json_str(resp, "title", title, sizeof(title));
+                    pod_json_unescape(title);
+                    if (!title[0]) {
+                        MessageBoxW(h, L"Invalid feed URL.", L"Podcasts",
+                                    MB_ICONERROR);
+                    } else {
+                        wchar_t wtitle[512], msg[600];
+                        MultiByteToWideChar(CP_UTF8, 0, title, -1, wtitle, 512);
+                        swprintf(msg, 600, L"Subscribed: %ls", wtitle);
+                        MessageBoxW(h, msg, L"Podcasts", MB_OK);
+                        free(resp);
+                        EndDialog(h, 1);
+                    }
+                } else {
+                    MessageBoxW(h, L"Podcast service unavailable (engine not running?).",
+                                L"Podcasts", MB_ICONERROR);
+                }
+                if (resp) free(resp);
+            }
+        } else if (LOWORD(w) == IDCANCEL) {
+            EndDialog(h, 0);
+        }
+        return TRUE;
+    }
+    return FALSE;
+}
+
+static INT_PTR CALLBACK podcast_dlg_proc(HWND h, UINT m, WPARAM w, LPARAM l)
+{
+    (void)l;
+    switch (m) {
+    case WM_CTLCOLORDLG:
+    case WM_CTLCOLORSTATIC:
+        return dlg_skin_color(h, w, l);
+    case WM_INITDIALOG: {
+        HWND lv = GetDlgItem(h, IDC_POD_SUBS);
+        LVCOLUMNW col;
+        memset(&col, 0, sizeof(col));
+        col.mask = LVCF_TEXT | LVCF_WIDTH;
+        col.cx = 470; col.pszText = L"Subscription";
+        SendMessageW(lv, LVM_INSERTCOLUMNW, 0, (LPARAM)&col);
+        HWND le = GetDlgItem(h, IDC_POD_EPS);
+        col.cx = 260; col.pszText = L"Episode";
+        SendMessageW(le, LVM_INSERTCOLUMNW, 0, (LPARAM)&col);
+        col.cx = 90; col.pszText = L"Date";
+        SendMessageW(le, LVM_INSERTCOLUMNW, 1, (LPARAM)&col);
+        col.cx = 60; col.pszText = L"Dur";
+        SendMessageW(le, LVM_INSERTCOLUMNW, 2, (LPARAM)&col);
+        col.cx = 70; col.pszText = L"State";
+        SendMessageW(le, LVM_INSERTCOLUMNW, 3, (LPARAM)&col);
+        pod_fill_subs(h);
+        return TRUE;
+    }
+    case WM_NOTIFY: {
+        NMHDR* nm = (NMHDR*)l;
+        if (nm->idFrom == IDC_POD_SUBS && nm->code == NM_CLICK)
+            pod_fill_eps(h);
+        if (nm->idFrom == IDC_POD_EPS && nm->code == NM_DBLCLK) {
+            /* double-clic : jouer l'épisode */
+            char url[512], played[8];
+            pod_selected_episode(h, url, sizeof(url), played, sizeof(played));
+            if (url[0]) {
+                cc_cmd_path("open", url);
+                char body[1200];
+                snprintf(body, sizeof(body),
+                         "{\"url\":\"%s\",\"played\":1}", url);
+                podcast_http("POST", "/episodes", body, NULL);
+                pod_refresh(h);
+            }
+        }
+        break;
+    }
+    case WM_COMMAND:
+        if (LOWORD(w) == IDC_POD_ADD) {
+            if (DialogBoxW(GetModuleHandleW(NULL),
+                           MAKEINTRESOURCEW(IDD_PODCAST_ADD), h,
+                           podcast_add_proc) == 1)
+                pod_refresh(h);
+        } else if (LOWORD(w) == IDC_POD_DEL) {
+            HWND subs = GetDlgItem(h, IDC_POD_SUBS);
+            int sel = (int)SendMessageW(subs, LVM_GETNEXTITEM, (WPARAM)-1,
+                                        LVNI_SELECTED);
+            if (sel < 0) break;
+            LVITEMW li;
+            memset(&li, 0, sizeof(li));
+            li.mask = LVIF_PARAM;
+            li.iItem = sel;
+            SendMessageW(subs, LVM_GETITEMW, 0, (LPARAM)&li);
+            int len = 0;
+            char* resp = podcast_http("GET", "/podcasts", NULL, &len);
+            if (!resp) break;
+            char url[512] = "";
+            {
+                const char* p = resp;
+                for (int i = 0; i <= (int)li.lParam; i++) {
+                    const char* obj = strstr(p, "{\"url\":");
+                    if (!obj) break;
+                    const char* end = strchr(obj, '}');
+                    if (!end) break;
+                    if (i == (int)li.lParam) {
+                        char tmp[4096];
+                        int olen = (int)(end - obj) + 1;
+                        if (olen > (int)sizeof(tmp) - 1) olen = (int)sizeof(tmp) - 1;
+                        memcpy(tmp, obj, olen);
+                        tmp[olen] = 0;
+                        pod_json_str(tmp, "url", url, sizeof(url));
+                    }
+                    p = end + 1;
+                }
+            }
+            free(resp);
+            if (url[0]) {
+                char body[600];
+                snprintf(body, sizeof(body), "{\"url\":\"%s\"}", url);
+                podcast_http("POST", "/podcasts/del", body, NULL);
+                pod_refresh(h);
+            }
+        } else if (LOWORD(w) == IDC_POD_REFRESH) {
+            podcast_http("POST", "/refresh", NULL, NULL);
+            pod_refresh(h);
+        } else if (LOWORD(w) == IDC_POD_PLAY) {
+            char url[512], played[8];
+            pod_selected_episode(h, url, sizeof(url), played, sizeof(played));
+            if (url[0]) {
+                cc_cmd_path("open", url);
+                char body[1200];
+                snprintf(body, sizeof(body),
+                         "{\"url\":\"%s\",\"played\":1}", url);
+                podcast_http("POST", "/episodes", body, NULL);
+                pod_refresh(h);
+            }
+        } else if (LOWORD(w) == IDC_POD_MARK) {
+            char url[512], played[8];
+            pod_selected_episode(h, url, sizeof(url), played, sizeof(played));
+            if (url[0]) {
+                char body[1200];
+                snprintf(body, sizeof(body),
+                         "{\"url\":\"%s\",\"played\":%d}",
+                         url, atoi(played) ? 0 : 1);
+                podcast_http("POST", "/episodes", body, NULL);
+                pod_refresh(h);
+            }
+        } else if (LOWORD(w) == IDC_POD_DL) {
+            char url[512], played[8];
+            pod_selected_episode(h, url, sizeof(url), played, sizeof(played));
+            if (url[0]) {
+                char body[600];
+                snprintf(body, sizeof(body), "{\"url\":\"%s\"}", url);
+                char* resp = podcast_http("POST", "/download", body, NULL);
+                if (resp && strstr(resp, "\"ok\":1"))
+                    MessageBoxW(h, L"Episode downloaded (AppData\\MusicPlayer\\podcasts).",
+                                L"Podcasts", MB_OK);
+                else
+                    MessageBoxW(h, L"Download failed.", L"Podcasts",
+                                MB_ICONERROR);
+                if (resp) free(resp);
+            }
+        } else if (LOWORD(w) == IDCANCEL) {
+            EndDialog(h, 0);
+        }
+        return TRUE;
+    case WM_CLOSE:
+        EndDialog(h, 0);
+        return TRUE;
+    }
+    return FALSE;
+}
+
+static void do_podcast_dialog(void)
+{
+    DialogBoxW(GetModuleHandleW(NULL), MAKEINTRESOURCEW(IDD_PODCASTS),
+               g_hwnd, podcast_dlg_proc);
 }
 
 static void do_interface_dialog(void)
@@ -3545,6 +4090,9 @@ static void on_command(int id, HMENU bar)
         break;
     case IDM_REPO:
         do_repo_dialog();
+        break;
+    case IDM_PODCASTS:
+        do_podcast_dialog();
         break;
     case IDM_WEB_SERVER:
         do_web_dialog();

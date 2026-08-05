@@ -2,6 +2,20 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.043] — 2026-08-05
+
+### Added (Podcasts)
+- **Podcasts plugin (engine)** — `core_plugins/podcasts.dll`, HTTP on port 8082:
+  - Subscribe to any RSS feed (`POST /podcasts` with the feed URL), unsubscribe, refresh all feeds
+  - Episode list: title, date, duration (`itunes:duration`), read/unread state, resume position
+  - **Playback streams the episode URL directly** — the engine's FFmpeg opens HTTP/HTTPS audio (verified: remote MP3 played in full with duration)
+  - **Download** an episode for offline listening (`%APPDATA%\MusicPlayer\podcasts\`)
+  - State persisted in `%APPDATA%\MusicPlayer\podcasts\` (podcasts.txt + episodes.txt)
+  - Robust RSS parsing: HTML entities, numeric entities, `enclosure`/`link`, `pubDate` normalized
+- **Client: File ▸ Podcasts…** — subscriptions list (title + unread count), episodes list (title/date/duration/state), buttons: **Add…**, Delete, Refresh, **Play** (streams the episode), **Read/Unread**, **Download**; double-click an episode to play it
+- The engine already plays remote URLs: `{"cmd":"open","path":"https://…/episode.mp3"}` (HTTP/HTTPS)
+- API (engine plugin, port 8082): `GET /podcasts`, `POST /podcasts`, `POST /podcasts/del`, `GET /podcasts/episodes?feed=…`, `POST /episodes`, `POST /refresh`, `POST /download`
+
 ## [2026.08.042-c7] — 2026-08-05
 
 ### Fixed (manual update still used broken PowerShell path)
