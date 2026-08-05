@@ -4933,17 +4933,29 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR lpCmdLine, int nCmdSh
                 while (*v == ' ' || *v == '\r' || *v == '\n') v++;
                 snprintf(ver, sizeof(ver), "%s", v);
                 if (strcmp(ver, MP_VERSION) != 0) {
-                    char msg[600];
-                    snprintf(msg, sizeof(msg),
-                             "Update mismatch: this binary is %s but the "
-                             "downloaded zip contained %s.\n"
-                             "The extraction did not replace the files "
-                             "(files locked?).\n"
-                             "Download the zip manually from the GitHub "
-                             "release page.",
-                             MP_VERSION, ver);
+                    /* le zip contenait une autre version que le binaire :
+                     * zip plus récent = extraction ratée (fichiers
+                     * verrouillés) ; zip plus vieux = rien à faire */
+                    int zip_newer = strcmp(ver, MP_VERSION) > 0;
+                    char msg[700];
+                    if (zip_newer) {
+                        snprintf(msg, sizeof(msg),
+                                 "Update failed: the downloaded zip "
+                                 "contained %s but this binary is still "
+                                 "%s.\n"
+                                 "The extraction did not replace the "
+                                 "files (files locked?).\n"
+                                 "Download the zip manually from the "
+                                 "GitHub release page.", ver, MP_VERSION);
+                    } else {
+                        snprintf(msg, sizeof(msg),
+                                 "Note: the downloaded zip contained %s "
+                                 "(this binary is %s) — the update was "
+                                 "already applied or is newer.",
+                                 ver, MP_VERSION);
+                    }
                     MessageBoxA(NULL, msg, "MusicPlayer update",
-                                MB_ICONWARNING);
+                                zip_newer ? MB_ICONWARNING : MB_ICONINFORMATION);
                 }
             }
         }

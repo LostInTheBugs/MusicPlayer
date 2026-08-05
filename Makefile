@@ -13,7 +13,7 @@
 #   make clean
 # ======================================================================
 
-VERSION := 2026.08.044-c1
+VERSION := 2026.08.044-c2
 
 CROSS    := x86_64-w64-mingw32-
 CC       := $(CROSS)gcc
@@ -63,13 +63,17 @@ $(APP_BIN): $(OBJ) $(RES)
 $(BIN): $(APP_BIN) $(LAUNCHER_OBJ) bin/runtime
 	$(CC) $(CFLAGS) -o $@ $(LAUNCHER_OBJ) $(LDFLAGS)
 
-# runtime : DLL FFmpeg + licence + langues + VERSION à côté des exes
-bin/runtime:
+# runtime : DLL FFmpeg + licence + langues à côté des exes
+bin/runtime: bin/VERSION
 	cp $(addprefix vendor/ffmpeg/bin/,$(FFMPEG_DLLS)) bin/
 	cp vendor/ffmpeg/LICENSE.txt bin/LICENSE-FFmpeg.txt
 	cp lang/* bin/lang/
-	cp VERSION bin/VERSION
 	@touch bin/runtime
+
+# le fichier VERSION du dossier bin/ est toujours copié à jour (le zip
+# l'embarque : la MAJ s'en sert pour vérifier l'extraction)
+bin/VERSION: VERSION
+	cp VERSION bin/VERSION
 
 build/launcher_res.o: src/version_client.rc
 	@mkdir -p build
