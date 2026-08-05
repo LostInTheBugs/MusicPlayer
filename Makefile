@@ -224,7 +224,7 @@ repo: plugins-examples
 	@echo "repo/bin prêt — committez-le pour publier le repository"
 
 clean:
-	rm -f $(OBJ) $(OBJ:.o=.d) bin/*.exe bin/*.dll bin/*.log
+	rm -f $(OBJ) $(OBJ:.o=.d) bin/*.exe bin/*.dll bin/*.log bin/runtime
 	rm -rf build
 	@echo "Note : dist/*.zip (livrables) n'est pas supprimé ; utilisez 'make distclean' si besoin."
 
