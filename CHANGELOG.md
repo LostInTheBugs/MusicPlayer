@@ -2,6 +2,14 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.042-c7] — 2026-08-05
+
+### Fixed (manual update still used broken PowerShell path)
+- The « Update » button in the update-available dialog was still calling `apply_update_and_restart()` which used PowerShell `Expand-Archive -Force` — this fails silently when `musicplayer-core.exe` still runs (locks `core_plugins/webserver.dll`), so the extraction doesn't replace anything and the user stays on the old version.
+- Manual update now uses `mp_update_apply_and_restart()` (the same reliable path as autonomous mode): tar.exe native extraction, kills both client + core before extracting, integrity check.
+- Removed the dead `apply_update_and_restart()` function.
+- Fixed `tools/vergen.py`: leading zero in version components (08, 042) caused windres `digit exceeds base` warning (octal parsing). Components are now cast to int and formatted as decimal.
+
 ## [2026.08.042-c6] — 2026-08-04
 
 ### Added (Windows file properties — Details tab)

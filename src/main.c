@@ -1997,36 +1997,6 @@ static void do_update_cfg_dialog(void)
     if (r == 2) mp_update_check_async(g_hwnd, 1);
 }
 
-/* ------------------------------------------------------------------ */
-/* Mise à jour : téléchargement + application + relancement auto       */
-/* ------------------------------------------------------------------ */
-static void apply_update_and_restart(const wchar_t* zip_path,
-                                     const wchar_t* exe_path)
-{
-    /* PowerShell extrait le zip dans le dossier de l'exe puis relance
-     * l'application ; on ferme MusicPlayer juste après. */
-    wchar_t dir[MAX_PATH];
-    wcscpy(dir, exe_path);
-    wchar_t* slash = wcsrchr(dir, L'\\');
-    if (slash) *slash = 0;
-    wchar_t ps[2048];
-    swprintf(ps, 2048,
-        L"powershell -NoProfile -WindowStyle Hidden -Command \""
-        L"Expand-Archive -Force -Path '%ls' -DestinationPath '%ls'; "
-        L"Start-Process -FilePath '%ls'\"",
-        zip_path, dir, exe_path);
-    STARTUPINFOW si;
-    memset(&si, 0, sizeof(si));
-    si.cb = sizeof(si);
-    PROCESS_INFORMATION pi;
-    if (CreateProcessW(NULL, ps, NULL, NULL, FALSE, CREATE_NO_WINDOW,
-                       NULL, NULL, &si, &pi)) {
-        CloseHandle(pi.hThread);
-        CloseHandle(pi.hProcess);
-    }
-    PostMessageW(g_hwnd, WM_CLOSE, 0, 0);
-}
-
 static INT_PTR CALLBACK upd_dlg_proc(HWND h, UINT m, WPARAM w, LPARAM l)
 {
     (void)l;
@@ -3783,20 +3753,15 @@ static LRESULT CALLBACK wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
             if (r == 3) {
                 mp_update_skip(mp_update_latest());
             } else if (r == 1) {
-                wchar_t zip_path[MAX_PATH];
-                GetEnvironmentVariableW(L"APPDATA", zip_path, MAX_PATH);
-                wcscat(zip_path, L"\\MusicPlayer");
-                CreateDirectoryW(zip_path, NULL);
-                wcscat(zip_path, L"\\update.zip");
-                wchar_t msg[256];
-                swprintf(msg, 256, lang_get("upd_downloading"),
-                         mp_update_latest());
-                MessageBoxW(hwnd, msg, lang_get("upd_title"),
-                            MB_OK | MB_ICONINFORMATION);
-                if (mp_update_download(mp_update_latest(), zip_path) == 0) {
-                    wchar_t exe[MAX_PATH];
-                    GetModuleFileNameW(NULL, exe, MAX_PATH);
-                    apply_update_and_restart(zip_path, exe);
+                /* v042-c7 : le chemin manuel utilisait PowerShell
+                 * Expand-Archive (apply_update_and_restart) qui échoue
+                 * silencieusement quand le core verrouille les DLL des
+                 * core_plugins.  On passe par mp_update_apply_and_restart
+                 * (tar.exe natif + kill core + vérification d'intégrité)
+                 * comme le chemin autonome. */
+                if (mp_update_apply_and_restart() == 0) {
+                    PostQuitMessage(0);
+                    return 0;
                 } else {
                     MessageBoxW(hwnd, lang_get("upd_dl_error"),
                                 lang_get("upd_title"), MB_OK | MB_ICONERROR);

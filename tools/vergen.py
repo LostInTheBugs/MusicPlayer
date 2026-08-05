@@ -31,7 +31,7 @@ def main():
     m = re.match(r"(\d+)\.(\d+)\.(\d+)(?:-c(\d+))?$", version)
     if not m:
         sys.exit("bad version: " + version)
-    num = "%s,%s,%s,%s" % (m.group(1), m.group(2), m.group(3), m.group(4) or "0")
+    num = "%d,%d,%d,%d" % (int(m.group(1)), int(m.group(2)), int(m.group(3)), int(m.group(4) or "0"))
 
     rc = """/* genéré par tools/vergen.py — ne pas éditer */
 #include <winver.h>
