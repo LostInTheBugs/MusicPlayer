@@ -2,6 +2,14 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.042-c6] — 2026-08-04
+
+### Added (Windows file properties — Details tab)
+- **Both executables now carry a VERSIONINFO resource**: right-click → Properties → Details shows File version, Product name, File description, Copyright, Company, Original filename
+  - `MusicPlayer.exe` → « MusicPlayer - MP3/MP4 player (client) »
+  - `musicplayer-core.exe` → « MusicPlayer Core - headless engine (client/server) »
+- The resource is **generated from VERSION** (`tools/vergen.py`) — the file version always matches the release version (e.g. 2026.08.042-c6)
+
 ## [2026.08.042-c5] — 2026-08-04
 
 ### Fixed (autonomous update still not applying)

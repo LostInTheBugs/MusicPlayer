@@ -24,3 +24,5 @@ vendor/*.zip
 build/
 *.d
 claude/
+src/version_client.rc
+src/version_core.rc

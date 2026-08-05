@@ -1,0 +1,41 @@
+/* généré par tools/vergen.py — ne pas éditer */
+#include <winver.h>
+
+#ifndef MP_FILE_DESC
+#define MP_FILE_DESC "MusicPlayer"
+#endif
+#ifndef MP_ORIG_FILENAME
+#define MP_ORIG_FILENAME "MusicPlayer.exe"
+#endif
+#ifndef MP_PRODUCT_NAME
+#define MP_PRODUCT_NAME "MusicPlayer"
+#endif
+
+VS_VERSION_INFO VERSIONINFO
+ FILEVERSION 2026,08,042,5
+ PRODUCTVERSION 2026,08,042,5
+ FILEFLAGSMASK 0x3fL
+ FILEFLAGS 0x0L
+ FILEOS VOS_NT_WINDOWS32
+ FILETYPE VFT_APP
+ FILESUBTYPE 0x0L
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904b0"
+        BEGIN
+            VALUE "CompanyName", "LostInTheBugs"
+            VALUE "FileDescription", MP_FILE_DESC
+            VALUE "FileVersion", "2026.08.042-c5"
+            VALUE "InternalName", MP_ORIG_FILENAME
+            VALUE "LegalCopyright", "Copyright (C) 2026 LostInTheBugs - MIT License"
+            VALUE "OriginalFilename", MP_ORIG_FILENAME
+            VALUE "ProductName", MP_PRODUCT_NAME
+            VALUE "ProductVersion", "2026.08.042-c5"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x409, 1200
+    END
+END

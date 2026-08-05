@@ -13,7 +13,7 @@
 #   make clean
 # ======================================================================
 
-VERSION := 2026.08.042-c5
+VERSION := 2026.08.042-c6
 
 CROSS    := x86_64-w64-mingw32-
 CC       := $(CROSS)gcc
@@ -61,8 +61,11 @@ $(BIN): $(OBJ) $(RES)
 	cp vendor/ffmpeg/LICENSE.txt bin/LICENSE-FFmpeg.txt
 	cp lang/* bin/lang/
 
-src/musicplayer_res.o: src/musicplayer.rc src/musicplayer.ico
+src/musicplayer_res.o: src/musicplayer.rc src/musicplayer.ico src/version_client.rc
 	$(WINDRES) -i src/musicplayer.rc -o $@
+
+src/version_client.rc: VERSION tools/vergen.py
+	python3 tools/vergen.py VERSION src/version_client.rc client
 
 %.o: %.c
 	$(CC) $(CFLAGS) -c -o $@ $<
@@ -70,8 +73,15 @@ src/musicplayer_res.o: src/musicplayer.rc src/musicplayer.ico
 # --- core (objets séparés dans build/, -DMP_CORE pour player.c) ---
 core: dirs $(CORE_BIN)
 
-$(CORE_BIN): $(CORE_OBJ)
-	$(CC) $(CFLAGS) -o $@ $(CORE_OBJ) $(LDFLAGS)
+$(CORE_BIN): $(CORE_OBJ) build/core_res.o
+	$(CC) $(CFLAGS) -o $@ $(CORE_OBJ) build/core_res.o $(LDFLAGS)
+
+build/core_res.o: src/version_core.rc
+	@mkdir -p build
+	$(WINDRES) -i src/version_core.rc -o $@
+
+src/version_core.rc: VERSION tools/vergen.py
+	python3 tools/vergen.py VERSION src/version_core.rc core
 
 build/core_main.o: src/core/core_main.c
 	@mkdir -p build
