@@ -8,13 +8,13 @@ LLM token usage for this project, tallied session by session.
 |---|---|---|---|
 | Dev sessions (Hermes) | 1 | 1 | **2** |
 | Scripted agent sessions (API) | 0 | 0 | **0** |
-| Messages | 626 | 200 | **826** |
-| API calls | 2 033 | 88 | **2 121** |
-| Input tokens | 4 025 552 | 127 730 | **4 153 282** |
-| Output tokens | 2 523 352 | 37 028 | **2 560 380** |
-| **Subtotal (input + output)** | **6 548 904** | **164 758** | **6 713 662** |
-| Cache read (reused at reduced price) | 633 507 072 | 9 852 544 | **643 359 616** |
-| **Estimated cost** | **≈ 3.04 USD** | **≈ 0.12 USD** | **≈ 3.17 USD** |
+| Messages | 712 | 210 | **922** |
+| API calls | 2 069 | 94 | **2 163** |
+| Input tokens | 4 048 021 | 129 132 | **4 177 153** |
+| Output tokens | 2 566 617 | 38 529 | **2 605 146** |
+| **Subtotal (input + output)** | **6 614 638** | **167 661** | **6 782 299** |
+| Cache read (reused at reduced price) | 647 943 168 | 10 767 488 | **658 710 656** |
+| **Estimated cost** | **≈ 3.10 USD** | **≈ 0.13 USD** | **≈ 3.23 USD** |
 
 ## How to re-read the counter
 
@@ -38,4 +38,4 @@ After each dev session, copy the matching row into the table above.
   (audits, releases, background tasks) attached to this project.
 - `reasoning_tokens` is probably included in `output_tokens`
   (to be confirmed with the provider).
-- Tally updated on 2026-08-05 — added deepseek-v4-pro session (fix c7).
+- Tally updated on 2026-08-05 — podcasts (2026.08.043) added.
