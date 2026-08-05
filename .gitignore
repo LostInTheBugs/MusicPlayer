@@ -23,3 +23,4 @@ vendor/*.zip
 # objets et dépendances du build
 build/
 *.d
+claude/
