@@ -308,7 +308,7 @@ const char* mp_plugins_get_title(const char* path)
 #include <wininet.h>
 
 #define PLUGIN_MANIFEST_URL \
-    L"https://raw.githubusercontent.com/LostInTheBugs/MusicPlayer/master/plugins.json"
+    L"https://raw.githubusercontent.com/LostInTheBugs/MusicPlayer/master/repo/plugins.json"
 
 static int json_str(const char* json, const char* key, char* out, int max)
 {
