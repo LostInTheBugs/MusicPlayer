@@ -230,5 +230,28 @@ int repo_download(const wchar_t* base, const repo_plugin* p)
     BOOL ok = WriteFile(f, body, (DWORD)len, &written, NULL);
     CloseHandle(f);
     free(body);
-    return (ok && (int)written == len) ? 0 : -1;
+    if (!(ok && (int)written == len)) return -1;
+
+    /* les archives .zip (runtime : FFmpeg) sont extraites dans le
+     * dossier de l'exe (tar.exe natif) puis supprimées */
+    if (wcsstr(dest, L".zip")) {
+        wchar_t cmd[2048];
+        swprintf(cmd, 2048, L"tar -xf \"%ls\" -C \"%ls\"", dest, exe);
+        STARTUPINFOW si;
+        memset(&si, 0, sizeof(si));
+        si.cb = sizeof(si);
+        PROCESS_INFORMATION pi;
+        if (CreateProcessW(NULL, cmd, NULL, NULL, FALSE, CREATE_NO_WINDOW,
+                           NULL, NULL, &si, &pi)) {
+            WaitForSingleObject(pi.hProcess, 60000);
+            CloseHandle(pi.hThread);
+            CloseHandle(pi.hProcess);
+        }
+        DeleteFileW(dest);
+        /* vérifie que le décodage est opérationnel (avcodec) */
+        wchar_t check[MAX_PATH];
+        swprintf(check, MAX_PATH, L"%ls\\avcodec-63.dll", exe);
+        if (GetFileAttributesW(check) == INVALID_FILE_ATTRIBUTES) return -1;
+    }
+    return 0;
 }

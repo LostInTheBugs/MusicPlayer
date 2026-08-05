@@ -26,7 +26,7 @@ CFLAGS   := -O2 -Wall -Wextra -std=c11 \
             -MMD -MP \
             -Ivendor -Ivendor/ffmpeg/include
 LDFLAGS  := -Lvendor/ffmpeg/lib \
-            -lavformat -lavcodec -lavutil -lswresample \
+            -Wl,-Bdynamic -lavformat -lavcodec -lavutil -lswresample -Wl,-Bstatic \
             -lole32 -luuid -lwinmm -ldsound \
             -luser32 -lgdi32 -lshell32 -lcomdlg32 -lcomctl32 -lwininet -lws2_32 -liphlpapi -lgdiplus -ladvapi32 \
             -static -mwindows
@@ -48,7 +48,7 @@ CORE_OBJ := build/core_main.o build/core_http.o build/core_playlist.o \
 CORE_BIN := bin/musicplayer-core.exe
 
 # DLLs FFmpeg nécessaires au runtime (à livrer à côté de l'exe)
-FFMPEG_DLLS := avcodec-62.dll avformat-62.dll avutil-60.dll swresample-6.dll
+FFMPEG_DLLS := avcodec-63.dll avformat-63.dll avutil-61.dll swresample-7.dll
 
 all: dirs $(BIN)
 
@@ -145,7 +145,7 @@ plugins-examples: $(BIN)
 	$(CC) -O2 -shared -o bin/plugins/3diso.dll examples/plugin_3diso.c -Isrc -static-libgcc -lgdi32 -lm
 	$(CC) -O2 -shared -o bin/plugins/fractal.dll examples/plugin_fractal.c -Isrc -static-libgcc -lgdi32 -lm
 	$(CC) -O2 -shared -o bin/plugins/hypnotic.dll examples/plugin_hypnotic.c -Isrc -static-libgcc -lgdi32 -lm
-	$(CC) -O2 -shared -o bin/plugins/webserver.dll examples/plugin_webserver.c -Isrc -Ivendor/ffmpeg/include -Lvendor/ffmpeg/lib -lavformat -lavcodec -lavutil -lswresample -lws2_32 -static-libgcc -static
+	$(CC) -O2 -shared -o bin/plugins/webserver.dll examples/plugin_webserver.c -Isrc -Ivendor/ffmpeg/include -Lvendor/ffmpeg/lib -Wl,-Bdynamic -lavformat -lavcodec -lavutil -lswresample -Wl,-Bstatic -lws2_32 -static-libgcc -static
 	$(CC) -O2 -shared -o bin/plugins/restapi.dll examples/plugin_restapi.c -Isrc -lws2_32 -static-libgcc
 	$(CC) -O2 -shared -o bin/plugins/rtp.dll examples/plugin_rtp.c -Isrc -lws2_32 -static-libgcc
 	$(CC) -O2 -shared -o bin/plugins/upnp.dll examples/plugin_upnp.c -Isrc -lws2_32 -static-libgcc
@@ -194,7 +194,7 @@ test: all plugins-examples test-samples
 # depuis le téléphone fonctionne dès l'installation.
 # ----------------------------------------------------------------------
 zip: all plugins-examples dirs core
-	cd bin && zip -q ../dist/MusicPlayer-$(VERSION)-win64.zip MusicPlayer.exe musicplayer-core.exe $(FFMPEG_DLLS) LICENSE-FFmpeg.txt core_plugins/webserver.dll lang/*.lang VERSION && \
+	cd bin && zip -q ../dist/MusicPlayer-$(VERSION)-win64.zip MusicPlayer.exe musicplayer-core.exe LICENSE-FFmpeg.txt core_plugins/webserver.dll lang/*.lang VERSION && \
 	cd .. && echo "Archive : dist/MusicPlayer-$(VERSION)-win64.zip"
 
 # ----------------------------------------------------------------------
@@ -203,10 +203,11 @@ zip: all plugins-examples dirs core
 # ----------------------------------------------------------------------
 repo: plugins-examples
 	rm -rf repo/bin
-	mkdir -p repo/bin/plugins repo/bin/skins repo/bin/core_plugins
+	mkdir -p repo/bin/plugins repo/bin/skins repo/bin/core_plugins repo/ffmpeg
 	cp -f bin/plugins/*.dll repo/bin/plugins/ 2>/dev/null || true
 	cp -f bin/skins/*.dll bin/skins/*.png repo/bin/skins/ 2>/dev/null || true
 	cp -f bin/core_plugins/*.dll repo/bin/core_plugins/ 2>/dev/null || true
+	cd vendor/ffmpeg/bin && cp -f ../LICENSE.txt . && zip -q ffmpeg-win64-lgpl-shared.zip avcodec-63.dll avformat-63.dll avutil-61.dll swresample-7.dll LICENSE.txt && rm -f LICENSE.txt && mv ffmpeg-win64-lgpl-shared.zip "$(CURDIR)/repo/ffmpeg/"
 	@echo "repo/bin prêt — committez-le pour publier le repository"
 
 clean:

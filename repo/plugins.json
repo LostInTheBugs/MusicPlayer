@@ -3,6 +3,13 @@
   "repo": "MusicPlayer official plugins & skins",
   "plugins": [
     {
+      "name": "FFmpeg runtime (required)",
+      "type": "runtime",
+      "version": "9.0",
+      "file": "ffmpeg/ffmpeg-win64-lgpl-shared.zip",
+      "desc": "FFmpeg 9.0 decoding engine (LGPL) - required to play audio"
+    },
+    {
       "name": "Vintage radio",
       "type": "skin",
       "version": "2026.08.042",
