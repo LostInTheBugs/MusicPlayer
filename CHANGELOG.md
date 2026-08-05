@@ -2,6 +2,14 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.043-c5] — 2026-08-05
+
+### Added (Settings ▸ Plugins… ▸ Delete selected...)
+- Select a plugin (client or engine) and **Delete selected...** removes it: the DLL is unloaded and the file is deleted
+- **Engine plugins** are removed through `POST /api/plugins/del` (unload + delete, `core_plugins/`)
+- **Protected plugins cannot be deleted**: Web Server, Metadata, Cover (required), and the active skin
+- The menu is rebuilt after a deletion (e.g. File ▸ Podcasts… disappears if the podcasts plugin is removed)
+
 ## [2026.08.043-c4] — 2026-08-05
 
 ### Fixed (installed podcasts plugin not visible in the Plugins list)
