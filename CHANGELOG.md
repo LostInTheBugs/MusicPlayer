@@ -2,6 +2,12 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.043-c4] — 2026-08-05
+
+### Fixed (installed podcasts plugin not visible in the Plugins list)
+- The Settings ▸ Plugins… list only showed plugins loaded by the **client** process — engine plugins (`core_plugins/`, including Podcasts, Web Server, DLNA, RTP…) were invisible
+- New engine API **`GET /api/plugins`** (name, type, description, enabled) and the client dialog now appends the engine plugins with the **`(engine)`** marker; their checkbox reflects the real engine state and is read-only (enable/disable stays on the engine side)
+
 ## [2026.08.043-c3] — 2026-08-05
 
 ### Fixed (update still not applying — now verified end to end)
