@@ -21,6 +21,10 @@ mp_plugin* mp_plugins_get(int i);
 /* Active/désactive un plugin (état actif : case/radio du menu Plugins). */
 void mp_plugins_set_enabled(int i, int on);
 
+/* Décharge un plugin et le retire de la liste (suppression fichier par
+ * l'appelant). */
+void mp_plugins_unload(int i);
+
 /* Visibilité dans le menu Plugins (Settings ▸ Plugins…). Les skins sont
  * toujours visibles. */
 int mp_plugins_is_visible(int i);

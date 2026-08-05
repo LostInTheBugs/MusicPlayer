@@ -323,10 +323,18 @@ static DWORD WINAPI client_thread(LPVOID arg)
                 (p->api->type() & MP_PLUGIN_VISUAL) ? "Visual" :
                 (p->api->type() & MP_PLUGIN_AUDIO_EFFECT) ? "Audio effect" :
                 "Service";
+            /* nom du fichier DLL (pour la suppression) */
+            const wchar_t* wfn = wcsrchr(p->path, L'\\');
+            wfn = wfn ? wfn + 1 : p->path;
+            char f8[128];
+            WideCharToMultiByte(CP_UTF8, 0, wfn, -1, f8, sizeof(f8), NULL, NULL);
+            char efile[160];
+            json_escape(f8, efile, sizeof(efile));
             o += snprintf(js + o, sizeof(js) - o,
                           "%s{\"name\":\"%s\",\"type\":\"%s\",\"desc\":\"%s\","
-                          "\"enabled\":%d}",
-                          o > 12 ? "," : "", nm, ty, ds, p->enabled ? 1 : 0);
+                          "\"file\":\"%s\",\"enabled\":%d}",
+                          o > 12 ? "," : "", nm, ty, ds, efile,
+                          p->enabled ? 1 : 0);
             if (o > (int)sizeof(js) - 256) break;
         }
         snprintf(js + o, sizeof(js) - o, "]}");
@@ -360,6 +368,73 @@ static DWORD WINAPI client_thread(LPVOID arg)
         /* applique à chaud */
         mp_plugins_service(MP_SERVICE_WEB_APPLY, NULL);
         http_response(c, 200, "application/json", "{\"status\":\"ok\"}");
+    } else if (!strcmp(method, "POST") && !strcmp(path, "/api/plugins/del")) {
+        /* décharge et supprime un plugin du moteur (Settings ▸ Plugins…
+         * ▸ Delete). Les plugins essentiels sont protégés. */
+        if (!http_post_is_json(req)) {
+            http_response(c, 403, "text/plain", "forbidden");
+        } else {
+            const char* body = strstr(req, "\r\n\r\n");
+            body = body ? body + 4 : "";
+            char file[128] = "";
+            const char* fp = strstr(body, "\"file\"");
+            if (fp) {
+                fp = strchr(fp, ':');
+                if (fp) {
+                    fp++;
+                    while (*fp == ' ' || *fp == '\t') fp++;
+                    if (*fp == '"') {
+                        fp++;
+                        int n = 0;
+                        while (*fp && *fp != '"' && n < (int)sizeof(file) - 1)
+                            file[n++] = *fp++;
+                        file[n] = 0;
+                    }
+                }
+            }
+            if (!file[0]) {
+                http_response(c, 400, "application/json",
+                              "{\"error\":\"file required\"}");
+            } else {
+                static const char* protected_files[] = {
+                    "webserver.dll", "metadata.dll", "cover.dll"
+                };
+                int prot = 0;
+                for (int i = 0; i < 3; i++)
+                    if (_stricmp(file, protected_files[i]) == 0) prot = 1;
+                if (prot) {
+                    http_response(c, 403, "application/json",
+                                  "{\"error\":\"protected\"}");
+                } else {
+                    wchar_t wfile[128];
+                    MultiByteToWideChar(CP_UTF8, 0, file, -1, wfile, 128);
+                    int idx = -1;
+                    for (int i = 0; i < mp_plugins_count(); i++) {
+                        mp_plugin* p = mp_plugins_get(i);
+                        if (!p || !p->path[0]) continue;
+                        const wchar_t* fn = wcsrchr(p->path, L'\\');
+                        fn = fn ? fn + 1 : p->path;
+                        if (_wcsicmp(fn, wfile) == 0) { idx = i; break; }
+                    }
+                    if (idx < 0) {
+                        http_response(c, 404, "application/json",
+                                      "{\"error\":\"not loaded\"}");
+                    } else {
+                        wchar_t dllpath[MAX_PATH];
+                        GetModuleFileNameW(NULL, dllpath, MAX_PATH);
+                        wchar_t* sl = wcsrchr(dllpath, L'\\');
+                        if (sl) wcscpy(sl + 1, L"core_plugins\\");
+                        wcscat(dllpath, wfile);
+                        mp_plugins_unload(idx);
+                        int del_ok = DeleteFileW(dllpath) != 0;
+                        char resp[128];
+                        snprintf(resp, sizeof(resp), "{\"ok\":%d}",
+                                 del_ok ? 1 : 0);
+                        http_response(c, 200, "application/json", resp);
+                    }
+                }
+            }
+        }
     } else if (!strcmp(method, "POST") && !strcmp(path, "/api/cmd")) {
         if (!http_post_is_json(req)) {
             http_response(c, 403, "text/plain", "forbidden");

@@ -255,6 +255,20 @@ mp_plugin* mp_plugins_get(int i)
     return &g_plugins[i];
 }
 
+/* Décharge un plugin (FreeLibrary) et le retire de la liste. L'appelant
+ * supprime ensuite le fichier (Settings ▸ Plugins… ▸ Delete). */
+void mp_plugins_unload(int i)
+{
+    if (i < 0 || i >= g_count) return;
+    mp_plugin* p = &g_plugins[i];
+    if (p->dll) FreeLibrary((HMODULE)p->dll);
+    p->dll = NULL;
+    p->api = NULL;
+    for (int j = i; j < g_count - 1; j++)
+        g_plugins[j] = g_plugins[j + 1];
+    g_count--;
+}
+
 void mp_plugins_set_enabled(int i, int on)
 {
     mp_plugin* p = mp_plugins_get(i);

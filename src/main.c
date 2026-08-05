@@ -82,24 +82,68 @@ static char* engine_http_get(const char* path, int* out_len)
     return resp;
 }
 
+static int g_podcasts_cached = -1;
+
+/* POST JSON vers le REST du moteur (8080) : retourne le corps (malloc) ou NULL */
+static char* engine_http_post(const char* path, const char* body, int* out_len)
+{
+    wchar_t url[1200];
+    char upath[1024];
+    snprintf(upath, sizeof(upath), "http://127.0.0.1:8080%s", path);
+    MultiByteToWideChar(CP_UTF8, 0, upath, -1, url, 1200);
+    HINTERNET inet = InternetOpenW(L"MusicPlayer", INTERNET_OPEN_TYPE_DIRECT,
+                                   NULL, NULL, 0);
+    if (!inet) return NULL;
+    DWORD to = 15000;
+    InternetSetOptionW(inet, INTERNET_OPTION_CONNECT_TIMEOUT, &to, sizeof(to));
+    InternetSetOptionW(inet, INTERNET_OPTION_RECEIVE_TIMEOUT, &to, sizeof(to));
+    const wchar_t* hdrs = L"Content-Type: application/json\r\n";
+    HINTERNET uh = InternetOpenUrlW(inet, url, hdrs, -1,
+                                    INTERNET_FLAG_RELOAD |
+                                    INTERNET_FLAG_NO_CACHE_WRITE, 0);
+    if (!uh) { InternetCloseHandle(inet); return NULL; }
+    DWORD wr = 0;
+    InternetWriteFile(uh, body, (DWORD)strlen(body), &wr);
+    char buf[4096];
+    int cap = 8192, len = 0;
+    char* resp = (char*)malloc(cap);
+    if (!resp) { InternetCloseHandle(uh); InternetCloseHandle(inet); return NULL; }
+    for (;;) {
+        DWORD got = 0;
+        if (!InternetReadFile(uh, buf, sizeof(buf), &got) || got == 0) break;
+        if (len + (int)got + 1 > cap) {
+            cap = (len + (int)got + 1) * 2;
+            char* nb = (char*)realloc(resp, cap);
+            if (!nb) { free(resp); InternetCloseHandle(uh); InternetCloseHandle(inet); return NULL; }
+            resp = nb;
+        }
+        memcpy(resp + len, buf, got);
+        len += (int)got;
+    }
+    InternetCloseHandle(uh);
+    InternetCloseHandle(inet);
+    resp[len] = 0;
+    if (out_len) *out_len = len;
+    return resp;
+}
+
 static int podcasts_available(void)
 {
-    static int cached = -1;
-    if (cached >= 0) return cached;
+    if (g_podcasts_cached >= 0) return g_podcasts_cached;
     wchar_t core[MAX_PATH];
     GetModuleFileNameW(NULL, core, MAX_PATH);
     wchar_t* sl = wcsrchr(core, L'\\');
     if (sl) wcscpy(sl + 1, L"core_plugins\\podcasts.dll");
     if (GetFileAttributesW(core) == INVALID_FILE_ATTRIBUTES) {
-        cached = 0;
+        g_podcasts_cached = 0;
         return 0;
     }
     /* le service répond-il ? (plugin chargé et activé par le moteur) */
     int len = 0;
     char* r = podcast_http("GET", "/podcasts", NULL, &len);
-    if (!r) { cached = 0; return 0; }
+    if (!r) { g_podcasts_cached = 0; return 0; }
     free(r);
-    cached = 1;
+    g_podcasts_cached = 1;
     return 1;
 }
 #include "config.h"
@@ -1179,6 +1223,7 @@ static void do_open_folder_dialog(void)
 #define IDC_ABT_L2      1007
 #define IDC_PLG_LIST    2005
 static int g_engine_plugins_start = 0;   /* 1ère ligne "engine" du dialog Plugins */
+static char g_engine_files[64][128];    /* noms de fichiers des plugins moteur */
 #define IDC_IF_SKIN     1013   /* dialog Interface : combo skin */
 #define IDC_IF_LANG     1014   /* dialog Interface : combo langue */
 #define IDC_IF_LBL_S    1015
@@ -1393,6 +1438,90 @@ static INT_PTR dlg_skin_color(HWND h, WPARAM w, LPARAM l)
     return (INT_PTR)g_dlg_brush;
 }
 
+/* Recharge la liste : plugins locaux puis plugins du moteur (engine) */
+static void plugins_refresh(HWND h)
+{
+    HWND lv = GetDlgItem(h, IDC_PLG_LIST);
+    ListView_DeleteAllItems(lv);
+    int n = mp_plugins_count();
+    int row = 0;
+    for (int i = 0; i < n; i++) {
+        mp_plugin* p = mp_plugins_get(i);
+        if (!p || !p->api) continue;
+        if (p->api->type() & MP_PLUGIN_SKIN) continue;  /* skins : menu uniquement */
+        wchar_t name_w[160], desc_w[240];
+        utf8_to_wide(p->api->name() ? p->api->name() : "?", name_w, 160);
+        utf8_to_wide(p->api->description() ? p->api->description() : "",
+                     desc_w, 240);
+        const wchar_t* type_w = L"";
+        unsigned t = p->api->type();
+        if (t & MP_PLUGIN_VISUAL) type_w = L"Visual";
+        else if (t & MP_PLUGIN_AUDIO_EFFECT) type_w = L"Audio effect";
+        else if (t & MP_PLUGIN_SERVICE) type_w = L"Service";
+        LVITEMW it;
+        memset(&it, 0, sizeof(it));
+        it.mask = LVIF_TEXT;
+        it.iItem = row;
+        it.pszText = name_w;
+        ListView_InsertItem(lv, &it);
+        ListView_SetItemText(lv, row, 1, (wchar_t*)type_w);
+        ListView_SetItemText(lv, row, 2, desc_w);
+        ListView_SetCheckState(lv, row, p->visible ? TRUE : FALSE);
+        row++;
+    }
+    /* plugins du MOTEUR (core_plugins/) : GET /api/plugins, affichés
+     * avec la mention (engine) — case en lecture seule */
+    g_engine_plugins_start = row;
+    {
+        int elen = 0;
+        char* eresp = engine_http_get("/api/plugins", &elen);
+        if (eresp) {
+            int cnt = 0;
+            const char* pp = eresp;
+            while ((pp = strstr(pp, "\"name\":")) != NULL) { cnt++; pp += 7; }
+            pp = eresp;
+            for (int i = 0; i < cnt; i++) {
+                const char* obj = strstr(pp, "{\"name\":");
+                if (!obj) break;
+                const char* end = strchr(obj, '}');
+                if (!end) break;
+                int olen = (int)(end - obj) + 1;
+                char tmp[2048];
+                if (olen > (int)sizeof(tmp) - 1) olen = (int)sizeof(tmp) - 1;
+                memcpy(tmp, obj, olen);
+                tmp[olen] = 0;
+                char nm[160], ty[64], ds[240], en[8], fl[128];
+                pod_json_str(tmp, "name", nm, sizeof(nm));
+                pod_json_str(tmp, "type", ty, sizeof(ty));
+                pod_json_str(tmp, "desc", ds, sizeof(ds));
+                pod_json_str(tmp, "enabled", en, sizeof(en));
+                pod_json_str(tmp, "file", fl, sizeof(fl));
+                pod_json_unescape(nm);
+                pod_json_unescape(ds);
+                wchar_t name_w[200], desc_w[280], type_w[80];
+                utf8_to_wide(nm, name_w, 200);
+                swprintf(desc_w, 280, L"%hs (engine)", ds);
+                utf8_to_wide(ty, type_w, 80);
+                LVITEMW it;
+                memset(&it, 0, sizeof(it));
+                it.mask = LVIF_TEXT;
+                it.iItem = row;
+                it.pszText = name_w;
+                ListView_InsertItem(lv, &it);
+                ListView_SetItemText(lv, row, 1, type_w);
+                ListView_SetItemText(lv, row, 2, desc_w);
+                ListView_SetCheckState(lv, row, atoi(en) ? TRUE : FALSE);
+                if (row - g_engine_plugins_start < 64)
+                    _snprintf(g_engine_files[row - g_engine_plugins_start],
+                              sizeof(g_engine_files[0]), "%s", fl);
+                row++;
+                pp = end + 1;
+            }
+            free(eresp);
+        }
+    }
+}
+
 static INT_PTR CALLBACK plugins_dlg_proc(HWND h, UINT m, WPARAM w, LPARAM l)
 {
     (void)l;
@@ -1417,79 +1546,7 @@ static INT_PTR CALLBACK plugins_dlg_proc(HWND h, UINT m, WPARAM w, LPARAM l)
         c2.mask = LVCF_TEXT | LVCF_WIDTH;
         c2.cx = 100; c2.pszText = L"Description";
         ListView_InsertColumn(lv, 2, &c2);
-        int n = mp_plugins_count();
-        int row = 0;
-        for (int i = 0; i < n; i++) {
-            mp_plugin* p = mp_plugins_get(i);
-            if (!p || !p->api) continue;
-            if (p->api->type() & MP_PLUGIN_SKIN) continue;  /* skins : menu uniquement */
-            wchar_t name_w[160], desc_w[240];
-            utf8_to_wide(p->api->name() ? p->api->name() : "?", name_w, 160);
-            utf8_to_wide(p->api->description() ? p->api->description() : "",
-                         desc_w, 240);
-            const wchar_t* type_w = L"";
-            unsigned t = p->api->type();
-            if (t & MP_PLUGIN_VISUAL) type_w = L"Visual";
-            else if (t & MP_PLUGIN_AUDIO_EFFECT) type_w = L"Audio effect";
-            else if (t & MP_PLUGIN_SERVICE) type_w = L"Service";
-            LVITEMW it;
-            memset(&it, 0, sizeof(it));
-            it.mask = LVIF_TEXT;
-            it.iItem = row;
-            it.pszText = name_w;
-            ListView_InsertItem(lv, &it);
-            ListView_SetItemText(lv, row, 1, (wchar_t*)type_w);
-            ListView_SetItemText(lv, row, 2, desc_w);
-            ListView_SetCheckState(lv, row, p->visible ? TRUE : FALSE);
-            row++;
-        }
-        /* plugins du MOTEUR (core_plugins/) : GET /api/plugins, affichés
-         * avec la mention (engine) — case en lecture seule */
-        g_engine_plugins_start = row;
-        {
-            int elen = 0;
-            char* eresp = engine_http_get("/api/plugins", &elen);
-            if (eresp) {
-                int cnt = 0;
-                const char* pp = eresp;
-                while ((pp = strstr(pp, "\"name\":")) != NULL) { cnt++; pp += 7; }
-                pp = eresp;
-                for (int i = 0; i < cnt; i++) {
-                    const char* obj = strstr(pp, "{\"name\":");
-                    if (!obj) break;
-                    const char* end = strchr(obj, '}');
-                    if (!end) break;
-                    int olen = (int)(end - obj) + 1;
-                    char tmp[2048];
-                    if (olen > (int)sizeof(tmp) - 1) olen = (int)sizeof(tmp) - 1;
-                    memcpy(tmp, obj, olen);
-                    tmp[olen] = 0;
-                    char nm[160], ty[64], ds[240], en[8];
-                    pod_json_str(tmp, "name", nm, sizeof(nm));
-                    pod_json_str(tmp, "type", ty, sizeof(ty));
-                    pod_json_str(tmp, "desc", ds, sizeof(ds));
-                    pod_json_str(tmp, "enabled", en, sizeof(en));
-                    pod_json_unescape(nm);
-                    pod_json_unescape(ds);
-                    wchar_t name_w[200], desc_w[280], type_w[80];
-                    utf8_to_wide(nm, name_w, 200);
-                    swprintf(desc_w, 280, L"%hs (engine)", ds);
-                    utf8_to_wide(ty, type_w, 80);
-                    LVITEMW it;
-                    memset(&it, 0, sizeof(it));
-                    it.mask = LVIF_TEXT;
-                    it.iItem = row;
-                    it.pszText = name_w;
-                    ListView_InsertItem(lv, &it);
-                    ListView_SetItemText(lv, row, 1, type_w);
-                    ListView_SetItemText(lv, row, 2, desc_w);
-                    ListView_SetCheckState(lv, row, atoi(en) ? TRUE : FALSE);
-                    row++;
-                    pp = end + 1;
-                }
-                free(eresp);
-            }
-        }
+        plugins_refresh(h);
         SetDlgItemTextW(h, IDC_PLG_LBL, lang_get("plugins_dlg_lbl"));
         SetWindowTextW(h, lang_get("plugins_dlg_title"));
         return TRUE;
@@ -1506,7 +1563,69 @@ static INT_PTR CALLBACK plugins_dlg_proc(HWND h, UINT m, WPARAM w, LPARAM l)
         break;
     }
     case WM_COMMAND:
-        if (LOWORD(w) == IDOK) {
+        if (LOWORD(w) == 2006) {
+            /* Delete selected... : plugin local ou moteur */
+            HWND lv = GetDlgItem(h, IDC_PLG_LIST);
+            int sel = (int)SendMessageW(lv, LVM_GETNEXTITEM, (WPARAM)-1,
+                                        LVNI_SELECTED);
+            if (sel < 0) break;
+            if (sel < g_engine_plugins_start) {
+                mp_plugin* p = mp_plugins_get(sel);
+                if (!p) break;
+                /* le skin actif ne peut pas être supprimé */
+                if ((p->api->type() & MP_PLUGIN_SKIN) && p->enabled) {
+                    MessageBoxW(h, L"This skin is active and cannot be deleted.",
+                                L"Plugins", MB_ICONWARNING);
+                    break;
+                }
+                wchar_t name_w[160];
+                utf8_to_wide(p->api->name() ? p->api->name() : "?", name_w, 160);
+                wchar_t msg[320];
+                swprintf(msg, 320,
+                         L"Delete plugin \"%ls\"?\nThe DLL file will be removed.",
+                         name_w);
+                if (MessageBoxW(h, msg, L"Plugins",
+                                MB_YESNO | MB_ICONQUESTION) == IDYES) {
+                    wchar_t dll[MAX_PATH];
+                    wcscpy(dll, p->path);
+                    mp_plugins_unload(sel);
+                    if (!DeleteFileW(dll)) {
+                        MessageBoxW(h, L"File is locked — it will be removed "
+                                        L"on next startup.",
+                                    L"Plugins", MB_ICONWARNING);
+                    }
+                    plugins_refresh(h);
+                    rebuild_menus();
+                }
+            } else {
+                /* plugin du moteur : POST /api/plugins/del */
+                int eidx = sel - g_engine_plugins_start;
+                if (eidx < 0 || eidx >= 64 || !g_engine_files[eidx][0]) break;
+                wchar_t msg[320];
+                swprintf(msg, 320,
+                         L"Delete engine plugin \"%hs\"?\nThe DLL file will be "
+                         L"removed (core_plugins).", g_engine_files[eidx]);
+                if (MessageBoxW(h, msg, L"Plugins",
+                                MB_YESNO | MB_ICONQUESTION) == IDYES) {
+                    char body[192];
+                    snprintf(body, sizeof(body),
+                             "{\"file\":\"%s\"}", g_engine_files[eidx]);
+                    int elen = 0;
+                    char* r = engine_http_post("/api/plugins/del", body, &elen);
+                    if (r) {
+                        if (strstr(r, "\"error\":\"protected\""))
+                            MessageBoxW(h,
+                                L"This plugin is required and cannot be deleted.",
+                                L"Plugins", MB_ICONWARNING);
+                        else if (strstr(r, "\"ok\":1"))
+                            plugins_refresh(h);
+                        free(r);
+                    }
+                    g_podcasts_cached = -1;
+                    rebuild_menus();
+                }
+            }
+        } else if (LOWORD(w) == IDOK) {
             HWND lv = GetDlgItem(h, IDC_PLG_LIST);
             int n = mp_plugins_count();
             int row = 0;

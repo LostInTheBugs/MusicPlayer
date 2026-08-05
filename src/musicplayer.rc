@@ -9,8 +9,9 @@ FONT 8, "MS Shell Dlg"
 BEGIN
     LTEXT "Activate or deactivate plugins :", 1004, 14, 12, 220, 12
     CONTROL "", 2005, "SysListView32", LVS_REPORT | LVS_SINGLESEL | WS_BORDER | WS_TABSTOP, 14, 26, 352, 184
-    DEFPUSHBUTTON "OK", 1, 130, 218, 60, 16
-    PUSHBUTTON "Cancel", 2, 200, 218, 60, 16
+    PUSHBUTTON "Delete selected...", 2006, 14, 218, 106, 16
+    DEFPUSHBUTTON "OK", 1, 200, 218, 60, 16
+    PUSHBUTTON "Cancel", 2, 270, 218, 60, 16
 END
 
 /* Dialog "Mise à jour disponible" — ID numérique 106 */
