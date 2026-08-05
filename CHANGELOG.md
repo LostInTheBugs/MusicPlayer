@@ -2,6 +2,13 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.045-c4] — 2026-08-05
+
+### Fixed (plugins list selection + repository download of a loaded plugin)
+- **Selection of engine plugins in Settings ▸ Plugins…**: the read-only guard only locked the checkbox, not the row selection — **Delete selected...** now works on engine plugins too
+- **Repository download when the plugin is loaded** (engine running): the DLL file is locked; the download now deletes the existing file (best effort) and retries before failing — no more « download failed » requiring a manual file removal
+- **Diagnostic log**: the podcasts plugin logs the first 120 characters of the fetched content (`Podcasts: head: …`) — HTML/binary/XML is immediately visible in `logs/musicplayer-core.log` (level Debug)
+
 ## [2026.08.045-c3] — 2026-08-05
 
 ### Added (plugin versions in Settings ▸ Plugins…)

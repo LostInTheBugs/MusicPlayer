@@ -487,6 +487,18 @@ static int add_subscription(const char* url, char* title_out, int title_sz,
         snprintf(m, sizeof(m), "Podcasts: fetched %d o, %d episodes, title '%s'",
                  len, n, title[0] ? title : "(none)");
         log_line(m);
+        /* début du contenu (diagnostic : HTML, binaire, XML…) */
+        char head[160] = "";
+        int hn = 0;
+        for (int i = 0; i < len && hn < 120; i++) {
+            unsigned char ch = (unsigned char)xml[i];
+            if (ch >= 32 && ch < 127) head[hn++] = (char)ch;
+            else if (ch == '\n' || ch == '\r') head[hn++] = ' ';
+            else head[hn++] = '.';
+        }
+        head[hn] = 0;
+        snprintf(m, sizeof(m), "Podcasts: head: %s", head);
+        log_line(m);
     }
     free(xml);
     if (n == 0 && !title[0]) {

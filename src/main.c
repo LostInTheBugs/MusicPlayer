@@ -1567,7 +1567,10 @@ static INT_PTR CALLBACK plugins_dlg_proc(HWND h, UINT m, WPARAM w, LPARAM l)
         NMHDR* nm = (NMHDR*)l;
         if (nm->idFrom == IDC_PLG_LIST && nm->code == LVN_ITEMCHANGING) {
             NMLISTVIEW* nv = (NMLISTVIEW*)l;
-            if (nv->iItem >= g_engine_plugins_start) {
+            /* seule la case à cocher des plugins moteur est verrouillée :
+             * la SÉLECTION (et donc le bouton Delete) reste possible */
+            if (nv->iItem >= g_engine_plugins_start &&
+                (nv->uNewState & LVIS_STATEIMAGEMASK)) {
                 SetWindowLongPtrW(h, DWLP_MSGRESULT, TRUE);
                 return TRUE;
             }

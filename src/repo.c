@@ -225,7 +225,17 @@ int repo_download(const wchar_t* base, const repo_plugin* p)
 
     HANDLE f = CreateFileW(dest, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS,
                            FILE_ATTRIBUTE_NORMAL, NULL);
-    if (f == INVALID_HANDLE_VALUE) { free(body); return -1; }
+    if (f == INVALID_HANDLE_VALUE) {
+        /* le fichier existant peut être verrouillé (plugin chargé par
+         * le moteur) : on tente de le retirer puis on réessaie */
+        DeleteFileW(dest);
+        f = CreateFileW(dest, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS,
+                        FILE_ATTRIBUTE_NORMAL, NULL);
+    }
+    if (f == INVALID_HANDLE_VALUE) {
+        free(body);
+        return -1;
+    }
     DWORD written = 0;
     BOOL ok = WriteFile(f, body, (DWORD)len, &written, NULL);
     CloseHandle(f);
