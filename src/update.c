@@ -210,6 +210,22 @@ int mp_update_download(const char* tag, const wchar_t* out_path)
             /* un zip valide fait ~40 Mo : une réponse plus petite est
              * une erreur (404, page HTML…) → on ne déploie pas */
             if (total < (1u << 20)) rc = -1;
+            /* le magic "PK" doit ouvrir le fichier : sinon ce n'est pas
+             * un zip (page d'erreur, HTML…) */
+            if (rc == 0) {
+                HANDLE chk = CreateFileW(out_path, GENERIC_READ, 0, NULL,
+                                         OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL,
+                                         NULL);
+                if (chk != INVALID_HANDLE_VALUE) {
+                    unsigned char magic[2] = { 0, 0 };
+                    DWORD rd = 0;
+                    ReadFile(chk, magic, 2, &rd, NULL);
+                    CloseHandle(chk);
+                    if (magic[0] != 'P' || magic[1] != 'K') rc = -1;
+                } else {
+                    rc = -1;
+                }
+            }
         }
         InternetCloseHandle(url_h);
     }
@@ -382,7 +398,9 @@ int mp_update_apply_and_restart(void)
         L"  type updater.err >> updater.log\r\n"
         L") else (\r\n"
         L"  if exist MusicPlayer.exe (\r\n"
-        L"    echo OK > updater.log\r\n"
+        L"    setlocal enabledelayedexpansion\r\n"
+        L"    set /p VER=<VERSION\r\n"
+        L"    echo OK: !VER! > updater.log\r\n"
         L"  ) else (\r\n"
         L"    echo FAIL: MusicPlayer.exe absent apres extraction >> updater.log\r\n"
         L"  )\r\n"

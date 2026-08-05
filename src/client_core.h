@@ -57,6 +57,7 @@ void cc_plist_refresh(void);
 /* Pousse la configuration réseau vers le core (le core ne relit pas
  * config.yml de lui-même). */
 void cc_push_web_config(int enabled, int port, const char* ips);
+void cc_push_log_level(int lvl);
 
 /* Chemin complet du morceau courant (depuis la playlist locale). */
 const wchar_t* cc_current_path(void);

@@ -13,7 +13,7 @@
 #   make clean
 # ======================================================================
 
-VERSION := 2026.08.043-c2
+VERSION := 2026.08.043-c3
 
 CROSS    := x86_64-w64-mingw32-
 CC       := $(CROSS)gcc
@@ -60,6 +60,7 @@ $(BIN): $(OBJ) $(RES)
 	cp $(addprefix vendor/ffmpeg/bin/,$(FFMPEG_DLLS)) bin/
 	cp vendor/ffmpeg/LICENSE.txt bin/LICENSE-FFmpeg.txt
 	cp lang/* bin/lang/
+	cp VERSION bin/VERSION
 
 src/musicplayer_res.o: src/musicplayer.rc src/musicplayer.ico src/version_client.rc
 	$(WINDRES) -i src/musicplayer.rc -o $@
@@ -193,7 +194,7 @@ test: all plugins-examples test-samples
 # depuis le téléphone fonctionne dès l'installation.
 # ----------------------------------------------------------------------
 zip: all plugins-examples dirs core
-	cd bin && zip -q ../dist/MusicPlayer-$(VERSION)-win64.zip MusicPlayer.exe musicplayer-core.exe $(FFMPEG_DLLS) LICENSE-FFmpeg.txt core_plugins/webserver.dll lang/*.lang && \
+	cd bin && zip -q ../dist/MusicPlayer-$(VERSION)-win64.zip MusicPlayer.exe musicplayer-core.exe $(FFMPEG_DLLS) LICENSE-FFmpeg.txt core_plugins/webserver.dll lang/*.lang VERSION && \
 	cd .. && echo "Archive : dist/MusicPlayer-$(VERSION)-win64.zip"
 
 # ----------------------------------------------------------------------

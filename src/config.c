@@ -51,6 +51,7 @@ void config_load(void)
     g_cfg.svc_upnp_port = 0; g_cfg.svc_upnp_ips[0] = 0;
     g_cfg.svc_rtp_port = 0;  g_cfg.svc_rtp_ips[0] = 0;
     g_cfg.svc_mr_port = 0;   g_cfg.svc_mr_ips[0] = 0;
+    g_cfg.log_level = 2;                 /* info par défaut */
 
     wchar_t path[MAX_PATH];
     config_path(path, MAX_PATH);
@@ -86,6 +87,7 @@ void config_load(void)
                 else if (!strcmp(key, "svc_rtp_ips"))
                     _snprintf(g_cfg.svc_rtp_ips, sizeof(g_cfg.svc_rtp_ips), "%s", val);
                 else if (!strcmp(key, "svc_mr_port")) g_cfg.svc_mr_port = atoi(val);
+                else if (!strcmp(key, "log_level")) g_cfg.log_level = atoi(val);
                 else if (!strcmp(key, "svc_mr_ips"))
                     _snprintf(g_cfg.svc_mr_ips, sizeof(g_cfg.svc_mr_ips), "%s", val);
             }
@@ -153,5 +155,6 @@ void config_save(void)
     fprintf(f, "svc_rtp_ips: %s\n", g_cfg.svc_rtp_ips);
     fprintf(f, "svc_mr_port: %d\n", g_cfg.svc_mr_port);
     fprintf(f, "svc_mr_ips: %s\n", g_cfg.svc_mr_ips);
+    fprintf(f, "log_level: %d\n", g_cfg.log_level);
     fclose(f);
 }

@@ -114,6 +114,13 @@ void cc_push_web_config(int enabled, int port, const char* ips)
     InternetCloseHandle(inet);
 }
 
+void cc_push_log_level(int lvl)
+{
+    char body[64];
+    snprintf(body, sizeof(body), "{\"log_level\":%d}", lvl);
+    cc_http2("POST", "/api/config", body);
+}
+
 /* ------------------------------------------------------------------ */
 /* Cycle de vie du moteur                                              */
 /* ------------------------------------------------------------------ */

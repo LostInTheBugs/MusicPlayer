@@ -31,6 +31,7 @@ static SOCKET g_socks[8];
 static int    g_nsocks = 0;
 extern HWND g_core_hwnd;
 const unsigned char* core_get_cover(const char* path, size_t* len);
+void core_set_log_level(int lvl);
 
 void core_http_stop(void)
 {
@@ -323,6 +324,13 @@ static DWORD WINAPI client_thread(LPVOID arg)
             if (n >= sizeof(g_cfg.web_ips)) n = sizeof(g_cfg.web_ips) - 1;
             memcpy(g_cfg.web_ips, p, n);
             g_cfg.web_ips[n] = 0;
+        }
+        /* niveau de journalisation (formulaire ou JSON) */
+        if ((p = strstr(body, "log_level=")) != NULL)
+            core_set_log_level(atoi(p + 10));
+        else if ((p = strstr(body, "\"log_level\"")) != NULL) {
+            p = strchr(p, ':');
+            if (p) core_set_log_level(atoi(p + 1));
         }
         /* applique à chaud */
         mp_plugins_service(MP_SERVICE_WEB_APPLY, NULL);

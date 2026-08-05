@@ -31,17 +31,28 @@ void core_http_stop(void);
 void core_plist_init(void);
 
 /* ------------------------------------------------------------------ */
-/* Journal                                                             */
+/* Journal (logs/musicplayer-core.log) : niveau 0 = rien, 1 = erreurs, */
+/* 2 = info, 3 = debug. Le niveau est poussé par le client.            */
 /* ------------------------------------------------------------------ */
+static volatile LONG g_log_level = 2;
+
+void core_set_log_level(int lvl)
+{
+    if (lvl < 0) lvl = 0;
+    if (lvl > 3) lvl = 3;
+    InterlockedExchange(&g_log_level, lvl);
+}
+
 static void core_log(const char* msg)
 {
+    if (g_log_level <= 0) return;
     wchar_t exe[MAX_PATH];
     GetModuleFileNameW(NULL, exe, MAX_PATH);
     wchar_t* slash = wcsrchr(exe, L'\\');
-    if (slash) *slash = 0;
-    wchar_t logpath[MAX_PATH];
-    swprintf(logpath, MAX_PATH, L"%ls\\musicplayer-core.log", exe);
-    FILE* f = _wfopen(logpath, L"a");
+    if (slash) wcscpy(slash + 1, L"logs");
+    CreateDirectoryW(exe, NULL);
+    if (slash) wcscpy(slash + 1, L"logs\\musicplayer-core.log");
+    FILE* f = _wfopen(exe, L"a");
     if (f) {
         SYSTEMTIME st;
         GetLocalTime(&st);

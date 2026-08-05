@@ -28,8 +28,9 @@ typedef struct {
     char  svc_upnp_ips[1024];
     int   svc_rtp_port;        /* RTP/AES67 (0 = 5004) */
     char  svc_rtp_ips[1024];
-    int   svc_mr_port;         /* Multiroom (0 = 5004) */
+    int   svc_mr_port;        /* Multiroom (0 = 5004) */
     char  svc_mr_ips[1024];
+    int   log_level;          /* 0 = rien, 1 = erreurs, 2 = info, 3 = debug */
 } app_config;
 
 extern app_config g_cfg;

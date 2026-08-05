@@ -32,6 +32,34 @@
 #include "plugin_loader.h"
 #include "lang.h"
 #include "update.h"
+
+/* requête HTTP vers le plugin podcasts du moteur (127.0.0.1:8082) —
+ * prototype : défini plus bas, utilisé par le menu (create_menus). */
+static char* podcast_http(const char* method, const char* path,
+                          const char* body, int* out_len);
+
+/* 1 si le plugin podcasts du moteur est présent ET actif (le service
+ * répond sur le port 8082). Résultat mis en cache. */
+static int podcasts_available(void)
+{
+    static int cached = -1;
+    if (cached >= 0) return cached;
+    wchar_t core[MAX_PATH];
+    GetModuleFileNameW(NULL, core, MAX_PATH);
+    wchar_t* sl = wcsrchr(core, L'\\');
+    if (sl) wcscpy(sl + 1, L"core_plugins\\podcasts.dll");
+    if (GetFileAttributesW(core) == INVALID_FILE_ATTRIBUTES) {
+        cached = 0;
+        return 0;
+    }
+    /* le service répond-il ? (plugin chargé et activé par le moteur) */
+    int len = 0;
+    char* r = podcast_http("GET", "/podcasts", NULL, &len);
+    if (!r) { cached = 0; return 0; }
+    free(r);
+    cached = 1;
+    return 1;
+}
 #include "config.h"
 #include "cd.h"
 
@@ -65,7 +93,8 @@ enum {
     IDM_NETWORK = 809,      /* Settings ▸ Network… (services réseau) */
     IDM_REPO = 810,         /* Settings ▸ Plugin repository… */
     IDM_PODCASTS = 811,     /* File ▸ Podcasts… */
-    IDM_ABOUT = 901
+    IDM_ABOUT = 901,
+    IDM_LOGS = 902        /* Help ▸ Logs… (niveau de journalisation) */
 };
 
 #define SPEED_COUNT 4
@@ -254,13 +283,30 @@ static void wide_to_utf8(const wchar_t* in, char* out, int out_bytes)
 }
 
 /* ------------------------------------------------------------------ */
-/* Journal                                                             */
+/* Journal (logs/musicplayer.log) : niveau 0 = rien, 1 = erreurs,      */
+/* 2 = info, 3 = debug. Le niveau vient de la config (Help ▸ Logs…).   */
 /* ------------------------------------------------------------------ */
-static void log_line(const char* msg)
+static volatile LONG g_log_level = 2;
+
+void mp_set_log_level(int lvl)
 {
+    if (lvl < 0) lvl = 0;
+    if (lvl > 3) lvl = 3;
+    InterlockedExchange(&g_log_level, lvl);
+}
+
+static void log_write(int level, const char* msg)
+{
+    if (g_log_level <= 0 || level > g_log_level) return;
     OutputDebugStringA(msg);
     OutputDebugStringA("\n");
-    FILE* f = fopen("musicplayer.log", "a");
+    wchar_t exe[MAX_PATH];
+    GetModuleFileNameW(NULL, exe, MAX_PATH);
+    wchar_t* slash = wcsrchr(exe, L'\\');
+    if (slash) wcscpy(slash + 1, L"logs");
+    CreateDirectoryW(exe, NULL);
+    if (slash) wcscpy(slash + 1, L"logs\\musicplayer.log");
+    FILE* f = _wfopen(exe, L"a");
     if (f) {
         SYSTEMTIME st;
         GetLocalTime(&st);
@@ -268,6 +314,8 @@ static void log_line(const char* msg)
         fclose(f);
     }
 }
+
+static void log_line(const char* msg) { log_write(2, msg); }
 
 /* ------------------------------------------------------------------ */
 /* Serveur web : configuration globale (dialog + config.yml)           */
@@ -883,7 +931,9 @@ static HMENU create_menus(void)
     AppendMenuW(mFile, MF_STRING, IDM_OPEN, lang_get("open"));
     AppendMenuW(mFile, MF_STRING, IDM_OPEN_FOLDER, lang_get("menu_open_folder"));
     AppendMenuW(mFile, MF_STRING, IDM_OPEN_CD, lang_get("menu_open_cd"));
-    AppendMenuW(mFile, MF_STRING, IDM_PODCASTS, L"Podcasts…");
+    /* Podcasts : seulement si le plugin du moteur est présent et actif */
+    if (podcasts_available())
+        AppendMenuW(mFile, MF_STRING, IDM_PODCASTS, L"Podcasts…");
     AppendMenuW(mFile, MF_SEPARATOR, 0, NULL);
     /* commandes de lecture */
     AppendMenuW(mFile, MF_STRING, IDM_PLAYPAUSE, lang_get("menu_play"));
@@ -914,6 +964,7 @@ static HMENU create_menus(void)
     append_bar_item(bar, (HMENU)CreatePopupMenu(), lang_get("menu_plugins"));
 
     HMENU mHelp = CreatePopupMenu();
+    AppendMenuW(mHelp, MF_STRING, IDM_LOGS, L"Logs…");
     AppendMenuW(mHelp, MF_STRING, IDM_ABOUT, lang_get("about"));
     append_bar_item(bar, mHelp, lang_get("menu_help"));
 
@@ -2480,6 +2531,75 @@ static void do_podcast_dialog(void)
 {
     DialogBoxW(GetModuleHandleW(NULL), MAKEINTRESOURCEW(IDD_PODCASTS),
                g_hwnd, podcast_dlg_proc);
+}
+
+/* ------------------------------------------------------------------ */
+/* Dialog Logs (Help ▸ Logs…) : niveau de journalisation + dossier     */
+/* ------------------------------------------------------------------ */
+#define IDD_LOGS        116
+#define IDC_LOG_LEVEL   2001
+#define IDC_LOG_OPEN    2002
+
+void mp_set_log_level(int lvl);
+
+static INT_PTR CALLBACK logs_dlg_proc(HWND h, UINT m, WPARAM w, LPARAM l)
+{
+    (void)l;
+    switch (m) {
+    case WM_CTLCOLORDLG:
+    case WM_CTLCOLORSTATIC:
+        return dlg_skin_color(h, w, l);
+    case WM_INITDIALOG: {
+        HWND cb = GetDlgItem(h, IDC_LOG_LEVEL);
+        static const wchar_t* lvls[] = {
+            L"Nothing", L"Errors only", L"Info", L"Debug"
+        };
+        for (int i = 0; i < 4; i++)
+            SendMessageW(cb, CB_ADDSTRING, 0, (LPARAM)lvls[i]);
+        SendMessageW(cb, CB_SETCURSEL, g_cfg.log_level < 0 ? 0 :
+                      (g_cfg.log_level > 3 ? 3 : g_cfg.log_level), 0);
+        wchar_t msg[400];
+        GetModuleFileNameW(NULL, msg, MAX_PATH);
+        wchar_t* sl = wcsrchr(msg, L'\\');
+        if (sl) wcscpy(sl + 1, L"logs");
+        wchar_t full[440];
+        swprintf(full, 440, L"Logs are written to:\r\n%ls", msg);
+        SetDlgItemTextW(h, 1002, full);
+        return TRUE;
+    }
+    case WM_COMMAND:
+        if (LOWORD(w) == IDOK) {
+            int sel = (int)SendMessageW(GetDlgItem(h, IDC_LOG_LEVEL),
+                                        CB_GETCURSEL, 0, 0);
+            if (sel < 0) sel = 2;
+            g_cfg.log_level = sel;
+            config_save();
+            mp_set_log_level(sel);
+            /* le moteur suit le niveau (POST /api/config) */
+            cc_push_log_level(sel);
+            EndDialog(h, 1);
+        } else if (LOWORD(w) == IDC_LOG_OPEN) {
+            wchar_t msg[400];
+            GetModuleFileNameW(NULL, msg, MAX_PATH);
+            wchar_t* sl = wcsrchr(msg, L'\\');
+            if (sl) wcscpy(sl + 1, L"logs");
+            CreateDirectoryW(msg, NULL);
+            ShellExecuteW(NULL, L"open", msg, NULL, NULL, SW_SHOWNORMAL);
+        } else if (LOWORD(w) == IDCANCEL) {
+            EndDialog(h, 0);
+        }
+        return TRUE;
+    case WM_CLOSE:
+        EndDialog(h, 0);
+        return TRUE;
+    }
+    return FALSE;
+}
+
+static void do_logs_dialog(void)
+{
+    DialogBoxW(GetModuleHandleW(NULL), MAKEINTRESOURCEW(IDD_LOGS),
+               g_hwnd, logs_dlg_proc);
 }
 
 static void do_interface_dialog(void)
@@ -4098,6 +4218,7 @@ static void on_command(int id, HMENU bar)
         do_web_dialog();
         break;
     case IDM_ABOUT:     do_about(); break;
+    case IDM_LOGS:      do_logs_dialog(); break;
 
     case IDM_VOL_UP: {
         float v = sp_get_volume() + 0.05f;
@@ -4571,7 +4692,8 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR lpCmdLine, int nCmdSh
     InitCommonControlsEx(&icc);
 
     /* résultat de la dernière mise à jour (updater.log écrit par le
-     * script de mise à jour) : un échec d'extraction s'affiche ici */
+     * script de mise à jour) : un échec d'extraction — ou une version
+     * incohérente — s'affiche ici */
     {
         wchar_t ulog[MAX_PATH];
         GetModuleFileNameW(NULL, ulog, MAX_PATH);
@@ -4585,6 +4707,24 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR lpCmdLine, int nCmdSh
             DeleteFileW(ulog);
             if (strncmp(buf, "FAIL", 4) == 0) {
                 MessageBoxA(NULL, buf, "MusicPlayer update", MB_ICONERROR);
+            } else if (strncmp(buf, "OK:", 3) == 0) {
+                char ver[64] = "";
+                const char* v = buf + 3;
+                while (*v == ' ' || *v == '\r' || *v == '\n') v++;
+                snprintf(ver, sizeof(ver), "%s", v);
+                if (strcmp(ver, MP_VERSION) != 0) {
+                    char msg[600];
+                    snprintf(msg, sizeof(msg),
+                             "Update mismatch: this binary is %s but the "
+                             "downloaded zip contained %s.\n"
+                             "The extraction did not replace the files "
+                             "(files locked?).\n"
+                             "Download the zip manually from the GitHub "
+                             "release page.",
+                             MP_VERSION, ver);
+                    MessageBoxA(NULL, msg, "MusicPlayer update",
+                                MB_ICONWARNING);
+                }
             }
         }
     }
@@ -4594,6 +4734,7 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR lpCmdLine, int nCmdSh
 
     /* configuration persistante : volume, vitesse, reprise de session */
     config_load();
+    mp_set_log_level(g_cfg.log_level);
     sp_set_volume(g_cfg.volume / 100.0f);
     cc_cmd_val("speed", g_cfg.speed);
     playlist_set_shuffle(g_cfg.shuffle);
