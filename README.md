@@ -28,7 +28,7 @@ cross-compiled from Linux with MinGW-w64.
 
 ## Version
 
-`2026.08.042-c1` — see [CHANGELOG.md](CHANGELOG.md)
+`2026.08.042-c2` — see [CHANGELOG.md](CHANGELOG.md)
 
 ## Run on Windows 11
 
@@ -169,12 +169,12 @@ This project was built entirely through AI-assisted sessions (Hermes Agent, deep
 
 | Metric | Value |
 |---|---|
-| Input tokens | 4 571 477 |
-| Output tokens | 2 929 557 |
-| **Total (input + output)** | **7 501 034** |
-| Cache read (reused at reduced price) | 602 935 296 |
-| API calls | 2076 |
-| **Estimated cost** | **≈ 2.91 USD** |
+| Input tokens | 4 653 537 |
+| Output tokens | 2 937 277 |
+| **Total (input + output)** | **7 590 814** |
+| Cache read (reused at reduced price) | 610 812 416 |
+| API calls | 2109 |
+| **Estimated cost** | **≈ 2.95 USD** |
 
 Full breakdown: [TOKENS.md](TOKENS.md).
 

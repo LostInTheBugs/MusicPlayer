@@ -2,6 +2,16 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.042-c2] — 2026-08-04
+
+### Added (plugin repository + third-party plugin guide)
+- **Plugin repository** (Settings ▸ Plugin repository…): browse and download plugins/skins from remote repositories — **type filter** (Skin/Visual/Effect/Service) + **name search**, click **Download selected** and the file lands in the right folder (`plugins/`, `skins/`, `core_plugins/`)
+- **Default repository = the project's own** (GitHub raw): index `plugins.json` (root) now lists **33 plugins/skins** with name/type/version/description
+- **The zip no longer embeds the optional plugins/skins** (only the essential ones: engine services + TeamSpeak) — they are fetched from the default repository
+- **`make repo`**: stages the binaries into `repo/bin/` (committed to publish the repository); third parties can host their own repository (any HTTP URL serving a `plugins.json` + files)
+- **`PLUGINS.md`**: complete guide for third parties — plugin API v4, the 4 plugin types, building with MinGW, deploying by simple file copy, skins (palette, background, layout, window size), stream readers, lifecycle/threads
+- **CHANGELOG.md fully translated to English** (all documentation is English-first from now on)
+
 ## [2026.08.042-c1] — 2026-08-04
 
 ### Changed (Settings ▸ Interface… : single buttons + compact window)
