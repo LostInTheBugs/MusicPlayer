@@ -11,6 +11,13 @@ All notable changes to MusicPlayer are documented in this file.
 
 ## [2026.08.044-c1] — 2026-08-05
 
+### Fixed (FFmpeg runtime download failure + full zip fallback)
+- Launcher hardened: 3 download retries for the runtime zip, then a fallback downloading the 4 DLLs individually (`repo/ffmpeg/*.dll`, written directly next to the exe, 2 retries each)
+- Detailed error message when everything fails: expected folder + manual fix (full zip from the release page)
+- New `make zip-full` rule and `MusicPlayer-*-win64-full.zip` release asset (program + FFmpeg DLLs) as a manual plan B
+
+## [2026.08.044] — 2026-08-05
+
 ### Changed (FFmpeg 9.0 + runtime as a base plugin)
 - **FFmpeg upgraded to 9.0 "Lei"** (released 2026-08-04): avcodec-63, avformat-63, avutil-61, swresample-7 (BtbN win64-lgpl-shared) — verified: playback, duration detection, selftest all pass
 - **FFmpeg is now a base plugin (runtime)**: the program zip no longer embeds the FFmpeg DLLs (≈ 33 MB saved); the DLLs are downloadable from the plugin repository — `repo/ffmpeg/ffmpeg-win64-lgpl-shared.zip` (DLLs + LGPL license), entry **"FFmpeg runtime (required)"** in `plugins.json`
