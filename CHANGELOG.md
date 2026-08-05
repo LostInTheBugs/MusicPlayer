@@ -2,7 +2,14 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
-## [2026.08.044] — 2026-08-05
+## [2026.08.044-c2] — 2026-08-05
+
+### Fixed (update mismatch: the zip contained the previous version)
+- After a version bump **without** `make clean`, the `bin/VERSION` file stayed stale (only copied by the `bin/runtime` rule, which was already up to date) → the zip embedded the old version and the startup check reported « update mismatch »
+- New dedicated `bin/VERSION: VERSION` rule: the zip now always embeds the current version
+- **Nuanced mismatch message**: if the zip contained an *older* version → informational note (« already applied or newer ») instead of an alarming warning; only a zip *newer* than the binary (extraction failed, files locked) shows the failure message
+
+## [2026.08.044-c1] — 2026-08-05
 
 ### Changed (FFmpeg 9.0 + runtime as a base plugin)
 - **FFmpeg upgraded to 9.0 "Lei"** (released 2026-08-04): avcodec-63, avformat-63, avutil-61, swresample-7 (BtbN win64-lgpl-shared) — verified: playback, duration detection, selftest all pass
