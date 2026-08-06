@@ -503,11 +503,30 @@ static void parse_feed(const char* xml, char* title, int title_sz,
                              sizeof(e->url));
             }
         }
-        if (!e->url[0])
-            tag_text(tmp, "link", e->url, sizeof(e->url));
+        if (!e->url[0]) {
+            /* <link> : seulement si ça ressemble à un média audio
+             * (le lien d'une page web n'est pas un épisode) */
+            char link[512], low[512];
+            tag_text(tmp, "link", link, sizeof(link));
+            int o2 = 0;
+            for (const char* q = link; *q && o2 < (int)sizeof(low) - 1; q++)
+                low[o2++] = (char)((*q >= 'A' && *q <= 'Z') ? *q + 32 : *q);
+            low[o2] = 0;
+            if (strstr(low, ".mp3") || strstr(low, ".mp4") ||
+                strstr(low, ".m4a") || strstr(low, ".ogg") ||
+                strstr(low, ".opus") || strstr(low, ".aac") ||
+                strstr(low, "audio/") || strstr(low, "media."))
+                strncpy(e->url, link, sizeof(e->url) - 1);
+        }
         /* les épisodes sans URL audio (flux de catégorie sans audio) ne
-         * sont pas ajoutés à la liste */
-        if (!e->url[0]) { e->title[0] = 0; continue; }
+         * sont pas ajoutés à la liste : on avance le pointeur pour ne
+         * pas boucler indéfiniment */
+        if (!e->url[0]) {
+            e->title[0] = 0;
+            free(tmp);
+            it = end;
+            continue;
+        }
         /* pubDate : on garde les 3 premiers mots (Mon, 03 Aug 2026) */
         {
             char d[128];
@@ -597,6 +616,20 @@ static int add_subscription(const char* url, char* title_out, int title_sz,
             if (g_ep_n >= MAX_EP) break;
             g_eps[g_ep_n++] = eps[i];
             added++;
+        }
+    }
+    /* purge les épisodes de ce flux qui ne sont plus dans le flux
+     * (URL disparues — ex. épisodes-images stockés avant le filtre
+     * audio, épisodes retirés par l'éditeur) */
+    for (int j = 0; j < g_ep_n; j++) {
+        if (strcmp(g_eps[j].feed, url)) continue;
+        int still = 0;
+        for (int i = 0; i < n; i++)
+            if (!strcmp(g_eps[j].url, eps[i].url)) { still = 1; break; }
+        if (!still) {
+            for (int k = j; k < g_ep_n - 1; k++) g_eps[k] = g_eps[k + 1];
+            g_ep_n--;
+            j--;
         }
     }
     if (new_eps) *new_eps = added;
@@ -1196,12 +1229,34 @@ static const char* pl_description(void)
 }
 static unsigned pl_type(void) { return MP_PLUGIN_SERVICE; }
 
+static DWORD WINAPI startup_refresh(LPVOID arg)
+{
+    (void)arg;
+    int tot = 0;
+    refresh_all(&tot);
+    if (tot > 0) {
+        char m[160];
+        snprintf(m, sizeof(m),
+                 "Podcasts: %d new episode(s) at startup", tot);
+        log_line(m);
+    }
+    return 0;
+}
+
 static int pl_init(mp_plugin* self, const mp_host_api* host)
 {
     (void)self;
     g_h = host;
     store_load();
     source_load();
+    /* re-fetch les flux abonnés au démarrage (en arrière-plan : ne
+     * bloque pas le démarrage du moteur) : nettoie les épisodes
+     * obsolètes (sans audio, retirés par l'éditeur), détecte les
+     * nouveaux */
+    {
+        HANDLE t = CreateThread(NULL, 0, startup_refresh, NULL, 0, NULL);
+        if (t) CloseHandle(t);
+    }
     return 0;
 }
 
