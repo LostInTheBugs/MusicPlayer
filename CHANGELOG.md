@@ -2,6 +2,17 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.046] — 2026-08-07 (pre-release branch)
+
+### Added (offline transcription — transcribe_whisper plugin)
+- New SERVICE plugin `transcribe_whisper` (port 8083): offline speech-to-text via whisper.cpp (`whisper-cli.exe` subprocess)
+- Endpoints: `GET /health`, `GET /models`, `POST /transcribe` (`path`, `lang` default auto, `model` default medium), `GET /transcripts`, `GET /transcript?file=`, `GET /progress`
+- Pipeline: source → ffmpeg (WAV 16 kHz mono PCM, 300 s timeout) → whisper-cli.exe `-oj` (600 s timeout) → JSON parsed into segments
+- Transcripts stored in `%APPDATA%\MusicPlayer\transcripts\<hash>.json` + `transcripts_index.json` (source → hash)
+- Models expected in `%APPDATA%\MusicPlayer\whisper-models\ggml-<model>.bin` (download: separate spec)
+- Verified under Wine: health/models/transcripts/progress + error paths (file not found, path required, forbidden)
+- Not yet: client UI, model download, real transcription test (needs whisper-cli.exe + model)
+
 ## [2026.08.045-c24] — 2026-08-06
 
 ### Added (podcast episode titles in the playlist)
