@@ -2,6 +2,12 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.045-c21] — 2026-08-05
+
+### Fixed (update leaving the client binary behind — « zip contained X but binary is still Y »)
+- The update script killed the 3 processes once and extracted immediately; a process that was still shutting down kept `MusicPlayerApp.exe` locked, so the client stayed on the old version while the launcher was updated (propriétés = new, programme = old)
+- The script now **re-kills the 3 processes 3 times** (1 s apart) before extracting — the files are released, the extraction replaces everything
+
 ## [2026.08.045-c20] — 2026-08-05
 
 ### Fixed (podcast episodes missing from the player playlist)
