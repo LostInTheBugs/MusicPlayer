@@ -2,6 +2,13 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.045-c24] — 2026-08-06
+
+### Added (podcast episode titles in the playlist)
+- The playlist now shows the **episode title** instead of the raw URL for podcast feeds: the client sends `{"url","title"}` objects in the playlist command, the engine stores titles alongside the playlist and exposes them in `/api/plist` (`titles`), and the playlist window displays them
+- URL basenames now handle `/` separators too (previously an URL was shown in full)
+- Verified: « 551 - La Biblinfini », « 550 - Convention pour les savoirs », … shown with their URLs
+
 ## [2026.08.045-c22] — 2026-08-05
 
 ### Fixed (podcast episodes not shown in the playlist window)
