@@ -2,6 +2,12 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.045-c17] — 2026-08-05
+
+### Fixed (podcast Play doing nothing)
+- The Play button re-fetches the episodes to resolve the selected URL; when the re-fetched list was shorter than the displayed one (episodes filtered out — e.g. no-audio entries), the index pointed past the end and the URL came back empty → nothing played. The index is now **clamped to the last available episode**
+- Verified: the engine plays podcast episode URLs correctly (state=1, position advancing)
+
 ## [2026.08.045-c16] — 2026-08-05
 
 ### Fixed (podcasts: image enclosure taken as audio URL + episodes list still clearing)
