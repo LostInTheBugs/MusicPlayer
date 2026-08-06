@@ -148,7 +148,7 @@ static int load_one(const wchar_t* dir, const wchar_t* name, const mp_host_api* 
                           "Plugin %s : invalid image (not MZ), skipped",
                           name_u8);
                 if (host && host->log) host->log(msg);
-                return NULL;
+                return -1;
             }
         }
     }
