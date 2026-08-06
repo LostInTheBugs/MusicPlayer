@@ -8,13 +8,13 @@ LLM token usage for this project, tallied session by session.
 |---|---|---|---|
 | Dev sessions (Hermes) | 1 | 1 | **2** |
 | Scripted agent sessions (API) | 0 | 0 | **0** |
-| Messages | 731 | 233 | **964** |
-| API calls | 2 561 | 104 | **2 665** |
-| Input tokens | 4 990 372 | 294 597 | **5 284 969** |
-| Output tokens | 3 023 631 | 42 005 | **3 065 636** |
-| **Subtotal (input + output)** | **8 014 003** | **336 602** | **8 350 605** |
-| Cache read (reused at reduced price) | 801 717 504 | 12 218 240 | **813 935 744** |
-| **Estimated cost** | **≈ 3.79 USD** | **≈ 0.21 USD** | **≈ 4.00 USD** |
+| Messages | 412 | 233 | **645** |
+| API calls | 2 621 | 104 | **2 725** |
+| Input tokens | 5 176 596 | 294 597 | **5 471 193** |
+| Output tokens | 3 064 273 | 42 005 | **3 106 278** |
+| **Subtotal (input + output)** | **8 240 869** | **336 602** | **8 577 471** |
+| Cache read (reused at reduced price) | 813 276 288 | 12 218 240 | **825 494 528** |
+| **Estimated cost** | **≈ 3.86 USD** | **≈ 0.21 USD** | **≈ 4.07 USD** |
 
 ## How to re-read the counter
 

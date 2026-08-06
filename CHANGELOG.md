@@ -2,6 +2,13 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.045-c20] — 2026-08-05
+
+### Fixed (podcast episodes missing from the player playlist)
+- **Client**: the episodes-to-playlist JSON used a fixed 10 KB buffer — big feeds (Podcast Science: 562 episodes ≈ 56 KB of URLs) got truncated, the engine received an incomplete command and the playlist stayed empty. Now a **dynamic buffer** sized to the actual payload
+- **Engine**: the REST JSON parser required `"cmd":"…"` / `"items":[…]` with no spaces — `json_str`/`json_num` now skip spaces, so both `"cmd": "playlist"` and `"cmd":"playlist"` work
+- Verified: 2 episodes → playlist=2, 78 episodes → playlist=78, playback starts on the chosen episode
+
 ## [2026.08.045-c19] — 2026-08-05
 
 ### Added (podcast episodes as the player playlist)
