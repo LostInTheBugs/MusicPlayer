@@ -2625,7 +2625,7 @@ static void pod_fill_eps(HWND h)
         else
             wcscpy(wdur, L"--");
         wchar_t wstate[16];
-        wcscpy(wstate, atoi(played) ? L"lu" : L"nouveau");
+        wcscpy(wstate, atoi(played) ? L"Played" : L"New");
         LVITEMW li2;
         memset(&li2, 0, sizeof(li2));
         li2.mask = LVIF_TEXT | LVIF_PARAM;
@@ -2653,8 +2653,18 @@ static void pod_fill_eps(HWND h)
 
 static void pod_refresh(HWND h)
 {
+    /* préserve la sélection de l'abonnement : le refill de la liste la
+     * perd, et la liste des épisodes (qui dépend de la sélection) se
+     * viderait */
+    HWND subs = GetDlgItem(h, IDC_POD_SUBS);
+    int ssel = (int)SendMessageW(subs, LVM_GETNEXTITEM, (WPARAM)-1,
+                                 LVNI_SELECTED);
     pod_fill_subs(h);
     pod_fill_eps(h);
+    if (ssel >= 0)
+        ListView_SetItemState(subs, ssel,
+                              LVIS_SELECTED | LVIS_FOCUSED,
+                              LVIS_SELECTED | LVIS_FOCUSED);
 }
 
 /* URL de l'épisode sélectionné (dans la liste) */
