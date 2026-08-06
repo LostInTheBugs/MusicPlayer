@@ -239,6 +239,12 @@ static int fetch_url(const char* url, char** out, int* out_len)
     MultiByteToWideChar(CP_UTF8, 0, url, -1, wurl, 1024);
     /* 2 tentatives : les erreurs réseau sont souvent transitoires */
     for (int attempt = 0; attempt < 2; attempt++) {
+        {
+            char m[400];
+            snprintf(m, sizeof(m), "Podcasts: fetching %s (attempt %d/%d)",
+                     url, attempt + 1, 2);
+            log_line(m);
+        }
         HINTERNET inet = InternetOpenW(L"MusicPlayer-Podcasts",
                                        INTERNET_OPEN_TYPE_DIRECT, NULL, NULL, 0);
         if (!inet) return -1;

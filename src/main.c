@@ -2351,6 +2351,24 @@ static char* podcast_http(const char* method, const char* path,
     InternetCloseHandle(inet);
     resp[len] = 0;
     if (out_len) *out_len = len;
+    /* journal : chaque appel podcasts (diagnostic invalid feed) */
+    {
+        char m[1100];
+        if (body) {
+            char eb[480];
+            _snprintf(eb, sizeof(eb), "%s", body);
+            eb[sizeof(eb) - 1] = 0;
+            char er[480];
+            _snprintf(er, sizeof(er), "%s", resp);
+            er[sizeof(er) - 1] = 0;
+            _snprintf(m, sizeof(m), "Podcasts: POST %s body=%s -> %d o : %s",
+                      path, eb, len, er);
+        } else {
+            _snprintf(m, sizeof(m), "Podcasts: GET %s -> %d o : %.300s",
+                      path, len, resp);
+        }
+        log_line(m);
+    }
     return resp;
 }
 
