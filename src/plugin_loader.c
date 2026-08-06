@@ -131,6 +131,28 @@ static int load_one(const wchar_t* dir, const wchar_t* name, const mp_host_api* 
     wchar_t full[MAX_PATH];
     swprintf(full, MAX_PATH, L"%ls\\%ls", dir, name);
 
+    /* les DLL doivent être de vraies images (magic MZ) : un fichier
+     * corrompu (404 téléchargé, etc.) ne doit pas déclencher le dialog
+     * système ni le chargement */
+    {
+        HANDLE hf = CreateFileW(full, GENERIC_READ, FILE_SHARE_READ, NULL,
+                                OPEN_EXISTING, 0, NULL);
+        if (hf != INVALID_HANDLE_VALUE) {
+            char mz[2] = { 0, 0 };
+            DWORD rd = 0;
+            ReadFile(hf, mz, 2, &rd, NULL);
+            CloseHandle(hf);
+            if (rd != 2 || mz[0] != 'M' || mz[1] != 'Z') {
+                char msg[512];
+                _snprintf(msg, sizeof(msg),
+                          "Plugin %s : invalid image (not MZ), skipped",
+                          name_u8);
+                if (host && host->log) host->log(msg);
+                return NULL;
+            }
+        }
+    }
+
     HMODULE dll = LoadLibraryW(full);
     if (!dll) {
         char msg[512];
