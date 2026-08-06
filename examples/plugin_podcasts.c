@@ -1041,7 +1041,10 @@ static void handle_client(SOCKET c)
     body = body ? body + 4 : "";
 
     if (!strcmp(method, "GET")) {
-        handle_get(c, path, query);
+        /* les vieux clients envoient un GET avec un corps au lieu d'un
+         * vrai POST : on le traite comme un POST par tolérance */
+        if (body[0]) handle_post(c, path, body);
+        else handle_get(c, path, query);
     } else if (!strcmp(method, "POST")) {
         handle_post(c, path, body);
     } else {

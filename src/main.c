@@ -2338,26 +2338,42 @@ static void do_repo_dialog(void)
 static char* podcast_http(const char* method, const char* path,
                           const char* body, int* out_len)
 {
-    (void)method;   /* GET ou POST selon la présence du corps */
-    wchar_t url[1200];
-    char upath[1024];
-    snprintf(upath, sizeof(upath), "http://127.0.0.1:%d%s", PODCAST_PORT, path);
-    MultiByteToWideChar(CP_UTF8, 0, upath, -1, url, 1200);
+    wchar_t wpath[1024];
+    MultiByteToWideChar(CP_UTF8, 0, path, -1, wpath, 1024);
     HINTERNET inet = InternetOpenW(L"MusicPlayer", INTERNET_OPEN_TYPE_DIRECT,
                                    NULL, NULL, 0);
     if (!inet) return NULL;
     DWORD to = 15000;
     InternetSetOptionW(inet, INTERNET_OPTION_CONNECT_TIMEOUT, &to, sizeof(to));
     InternetSetOptionW(inet, INTERNET_OPTION_RECEIVE_TIMEOUT, &to, sizeof(to));
-    const wchar_t* hdrs = body ? L"Content-Type: application/json\r\n" : NULL;
-    HINTERNET uh = InternetOpenUrlW(inet, url, hdrs, -1,
-                                    INTERNET_FLAG_RELOAD |
-                                    INTERNET_FLAG_NO_CACHE_WRITE, 0);
-    if (!uh) { InternetCloseHandle(inet); return NULL; }
+    /* InternetOpenUrlW n'envoie que des GET : pour un POST (body non
+     * vide) on passe par HttpOpenRequestW + HttpSendRequestW */
+    HINTERNET uh;
     if (body) {
-        DWORD wr = 0;
-        InternetWriteFile(uh, body, (DWORD)strlen(body), &wr);
+        HINTERNET conn = InternetConnectW(inet, L"127.0.0.1", PODCAST_PORT,
+                                          NULL, NULL, INTERNET_SERVICE_HTTP,
+                                          0, 0);
+        if (!conn) { InternetCloseHandle(inet); return NULL; }
+        uh = HttpOpenRequestW(conn, L"POST", wpath, NULL, NULL, NULL,
+                              INTERNET_FLAG_RELOAD |
+                              INTERNET_FLAG_NO_CACHE_WRITE, 0);
+        if (uh) {
+            const wchar_t* hdrs = L"Content-Type: application/json\r\n";
+            if (!HttpSendRequestW(uh, hdrs, -1, (LPVOID)body,
+                                  (DWORD)strlen(body))) {
+                InternetCloseHandle(uh);
+                uh = NULL;
+            }
+        }
+        InternetCloseHandle(conn);
+    } else {
+        wchar_t url[1200];
+        swprintf(url, 1200, L"http://127.0.0.1:%d%s", PODCAST_PORT, wpath);
+        uh = InternetOpenUrlW(inet, url, NULL, 0,
+                              INTERNET_FLAG_RELOAD |
+                              INTERNET_FLAG_NO_CACHE_WRITE, 0);
     }
+    if (!uh) { InternetCloseHandle(inet); return NULL; }
     char buf[4096];
     int cap = 8192, len = 0;
     char* resp = (char*)malloc(cap);

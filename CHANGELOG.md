@@ -2,6 +2,14 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.045-c11] — 2026-08-05
+
+### Fixed (podcast subscription never worked — the « POST » was a GET)
+- **Root cause found**: the client's podcast HTTP helper used `InternetOpenUrlW`, which only ever sends **GET** — the « POST /podcasts » (subscribe) was actually a GET with a body. The engine replied with the subscription list (`{"podcasts":[]}`), the client misread it as « Invalid feed URL », and no fetch ever appeared in the engine logs
+- The client now sends a **real POST** (`HttpOpenRequestW` + `HttpSendRequestW`) for requests with a body
+- The engine tolerates legacy clients: a GET with a body is treated as a POST
+- Verified under Wine: subscribe to `https://www.radiofrance.fr/rss/economie` → `{"ok":1,"title":"Économie : podcasts…","new":17}` with full fetch logs
+
 ## [2026.08.045-c10] — 2026-08-05
 
 ### Fixed (Update all leaving plugins locked by the engine)
