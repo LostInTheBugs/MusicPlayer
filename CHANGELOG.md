@@ -2,6 +2,11 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.045-c8] — 2026-08-05
+
+### Fixed (engine robustness against corrupt plugins)
+- The engine now **checks the MZ magic before loading any plugin DLL** — a corrupt file (e.g. a downloaded 404) is skipped with a log line (« invalid image (not MZ), skipped ») instead of triggering the Windows system dialog (0xc000012f)
+
 ## [2026.08.045-c7] — 2026-08-05
 
 ### Fixed (corrupt plugin file from the repository — 0xc000012f)
