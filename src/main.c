@@ -235,6 +235,7 @@ static void playlist_win_highlight(void);
 /* ------------------------------------------------------------------ */
 #define PLAYLIST_MAX 4096
 wchar_t* g_plist[PLAYLIST_MAX];
+wchar_t* g_plist_title[PLAYLIST_MAX];   /* titres d'épisodes (podcasts) */
 int      g_plist_n = 0;
 int      g_plist_idx = -1;
 static wchar_t  g_plist_dir[MAX_PATH] = { 0 };   /* dossier de la playlist */
@@ -242,7 +243,10 @@ static wchar_t  g_plist_dir[MAX_PATH] = { 0 };   /* dossier de la playlist */
 static void playlist_clear(void)
 {
     g_cd_mode = 0;   /* la playliste fichier remplace le mode CD */
-    for (int i = 0; i < g_plist_n; i++) free(g_plist[i]);
+    for (int i = 0; i < g_plist_n; i++) {
+        free(g_plist[i]);
+        if (g_plist_title[i]) { free(g_plist_title[i]); g_plist_title[i] = NULL; }
+    }
     g_plist_n = 0;
     g_plist_idx = -1;
     playlist_win_rebuild();
@@ -498,7 +502,12 @@ static int         host_plist_count(void) { return g_plist_n; }
 static const wchar_t* host_plist_name(int i)
 {
     if (i < 0 || i >= g_plist_n) return L"";
+    if (g_plist_title[i] && g_plist_title[i][0])
+        return g_plist_title[i];
+    /* basename : séparateur Windows ou URL */
     const wchar_t* s = wcsrchr(g_plist[i], L'\\');
+    const wchar_t* s2 = wcsrchr(g_plist[i], L'/');
+    if (s2 && (!s || s2 > s)) s = s2;
     return s ? s + 1 : g_plist[i];
 }
 static int         host_plist_index(void) { return g_plist_idx; }
@@ -2812,13 +2821,20 @@ static void pod_play_episode(HWND h)
                                 olen = (int)sizeof(tmp) - 1;
                             memcpy(tmp, p2, olen);
                             tmp[olen] = 0;
-                            char u[600];
+                            char u[600], t[600];
                             pod_json_str(tmp, "url", u, sizeof(u));
                             if (u[0]) {
+                                pod_json_str(tmp, "title", t, sizeof(t));
                                 if (!strcmp(u, url)) found = idx;
                                 if (o > 1) items[o++] = ',';
-                                o += snprintf(items + o, cap - o,
-                                              "\"%s\"", u);
+                                if (t[0])
+                                    o += snprintf(items + o, cap - o,
+                                                  "{\"url\":\"%s\","
+                                                  "\"title\":\"%s\"}",
+                                                  u, t);
+                                else
+                                    o += snprintf(items + o, cap - o,
+                                                  "\"%s\"", u);
                                 idx++;
                             }
                             p2 = end + 1;

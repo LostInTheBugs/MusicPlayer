@@ -229,21 +229,53 @@ static void handle_cmd(SOCKET c, const char* body)
                     core_plist_clear();
                     const char* p = items;
                     int n = 0;
-                    while (n < 512 && (p = strchr(p, '"')) != NULL) {
-                        const char* e = strchr(p + 1, '"');
-                        if (!e) break;
-                        char one[MAX_PATH * 2];
-                        int ol = (int)(e - p - 1);
-                        if (ol > (int)sizeof(one) - 1)
-                            ol = (int)sizeof(one) - 1;
-                        memcpy(one, p + 1, ol);
-                        one[ol] = 0;
-                        wchar_t wo[MAX_PATH * 2];
-                        MultiByteToWideChar(CP_UTF8, 0, one, -1, wo,
+                    while (n < 512 && (p = strchr(p, '{')) != NULL) {
+                        /* objet {"url":"...","title":"..."} */
+                        const char* end = strchr(p, '}');
+                        if (!end) break;
+                        char obj[8192];
+                        int ol = (int)(end - p + 1);
+                        if (ol > (int)sizeof(obj) - 1)
+                            ol = (int)sizeof(obj) - 1;
+                        memcpy(obj, p, ol);
+                        obj[ol] = 0;
+                        char u[MAX_PATH * 2] = "", t[MAX_PATH * 2] = "";
+                        const char* uq = strstr(obj, "url");
+                        if (uq && (uq = strchr(uq, ':'))) {
+                            uq++;
+                            while (*uq == ' ' || *uq == '\t') uq++;
+                            if (*uq == '"') uq++;
+                            const char* ue = strchr(uq, '"');
+                            if (ue) {
+                                int ul = (int)(ue - uq);
+                                if (ul > (int)sizeof(u) - 1)
+                                    ul = (int)sizeof(u) - 1;
+                                memcpy(u, uq, ul);
+                                u[ul] = 0;
+                            }
+                        }
+                        const char* tq = strstr(obj, "title");
+                        if (tq && (tq = strchr(tq, ':'))) {
+                            tq++;
+                            while (*tq == ' ' || *tq == '\t') tq++;
+                            if (*tq == '"') tq++;
+                            const char* te = strchr(tq, '"');
+                            if (te) {
+                                int tl = (int)(te - tq);
+                                if (tl > (int)sizeof(t) - 1)
+                                    tl = (int)sizeof(t) - 1;
+                                memcpy(t, tq, tl);
+                                t[tl] = 0;
+                            }
+                        }
+                        wchar_t wu[MAX_PATH * 2], wt[MAX_PATH * 2];
+                        MultiByteToWideChar(CP_UTF8, 0, u, -1, wu,
                                             MAX_PATH * 2);
-                        core_plist_add(wo);
+                        MultiByteToWideChar(CP_UTF8, 0, t, -1, wt,
+                                            MAX_PATH * 2);
+                        core_plist_add2(wu, wt);
                         n++;
-                        p = e + 1;
+                        p = end + 1;
                     }
                     int start = 0;
                     char st[16] = "";
@@ -328,17 +360,31 @@ static DWORD WINAPI client_thread(LPVOID arg)
         build_state(js, sizeof(js));
         http_response(c, 200, "application/json", js);
     } else if (!strcmp(method, "GET") && !strcmp(path, "/api/plist")) {
-        char* js = (char*)malloc(PLAYLIST_MAX * (MAX_PATH * 2 + 32));
+        char* js = (char*)malloc(PLAYLIST_MAX * (MAX_PATH * 4 + 64));
         if (js) {
             char* p = js;
-            int left = PLAYLIST_MAX * (MAX_PATH * 2 + 32);
+            int left = PLAYLIST_MAX * (MAX_PATH * 4 + 64);
             int n = snprintf(p, (size_t)left, "{\"items\":[");
             p += n; left -= n;
             core_plist_lock();
-            for (int i = 0; i < g_plist_n && left > 64; i++) {
+            for (int i = 0; i < g_plist_n && left > 128; i++) {
                 char esc[MAX_PATH * 2];
                 char utf8[MAX_PATH * 3];
                 WideCharToMultiByte(CP_UTF8, 0, g_plist[i], -1,
+                                    utf8, sizeof(utf8), NULL, NULL);
+                json_escape(utf8, esc, sizeof(esc));
+                n = snprintf(p, (size_t)left, "%s\"%s\"",
+                             i ? "," : "", esc);
+                p += n; left -= n;
+            }
+            /* titres d'épisodes (podcasts) */
+            n = snprintf(p, (size_t)left, "],\"titles\":[");
+            p += n; left -= n;
+            for (int i = 0; i < g_plist_n && left > 128; i++) {
+                if (!g_plist_title[i]) continue;
+                char esc[MAX_PATH * 2];
+                char utf8[MAX_PATH * 3];
+                WideCharToMultiByte(CP_UTF8, 0, g_plist_title[i], -1,
                                     utf8, sizeof(utf8), NULL, NULL);
                 json_escape(utf8, esc, sizeof(esc));
                 n = snprintf(p, (size_t)left, "%s\"%s\"",

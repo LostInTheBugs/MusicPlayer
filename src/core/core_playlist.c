@@ -12,6 +12,7 @@
 #include "../cd.h"
 
 wchar_t* g_plist[PLAYLIST_MAX];
+wchar_t* g_plist_title[PLAYLIST_MAX];   /* titre d'épisode (podcasts) */
 int  g_plist_n = 0;
 int  g_plist_idx = -1;
 int  g_cd_mode = 0;
@@ -38,17 +39,31 @@ void core_plist_unlock(void) { LeaveCriticalSection(&g_plist_cs); }
 
 void core_plist_clear(void)
 {
-    for (int i = 0; i < g_plist_n; i++)
+    for (int i = 0; i < g_plist_n; i++) {
         free(g_plist[i]);
+        free(g_plist_title[i]);
+        g_plist_title[i] = NULL;
+    }
     g_plist_n = 0;
     g_plist_idx = -1;
 }
 
 void core_plist_add(const wchar_t* path)
 {
+    core_plist_add2(path, NULL);
+}
+
+void core_plist_add2(const wchar_t* path, const wchar_t* title)
+{
     if (g_plist_n >= PLAYLIST_MAX) return;
     g_plist[g_plist_n] = _wcsdup(path);
+    g_plist_title[g_plist_n] = title && title[0]
+        ? _wcsdup(title) : NULL;
     if (g_plist[g_plist_n]) g_plist_n++;
+    else {
+        free(g_plist_title[g_plist_n]);
+        g_plist_title[g_plist_n] = NULL;
+    }
 }
 
 static void playlist_scan(const wchar_t* dir)

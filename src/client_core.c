@@ -18,6 +18,7 @@
 /* playlist locale du client (cache de /api/plist) */
 #define PLAYLIST_MAX 512
 extern wchar_t* g_plist[PLAYLIST_MAX];
+extern wchar_t* g_plist_title[PLAYLIST_MAX];   /* titres d'épisodes */
 extern int g_plist_n;
 extern int g_plist_idx;
 
@@ -293,9 +294,12 @@ void cc_plist_refresh(void)
 {
     http_resp r = cc_http2("GET", "/api/plist", NULL);
     if (!r.body || r.code != 200) { free(r.body); return; }
-    /* {"items":["path1","path2",...]} — remplit le cache local.
-     * Accès mono-thread (thread UI) : pas de verrou nécessaire. */
-    for (int i = 0; i < g_plist_n; i++) free(g_plist[i]);
+    /* {"items":["path1","path2",...],"titles":["t1",...]} — remplit le
+     * cache local. Accès mono-thread (thread UI) : pas de verrou. */
+    for (int i = 0; i < g_plist_n; i++) {
+        free(g_plist[i]);
+        if (g_plist_title[i]) { free(g_plist_title[i]); g_plist_title[i] = NULL; }
+    }
     g_plist_n = 0;
     const char* p = strstr(r.body, "\"items\":[");
     if (p) {
@@ -312,7 +316,35 @@ void cc_plist_refresh(void)
                 item[o] = 0;
                 wchar_t wp[MAX_PATH * 2];
                 MultiByteToWideChar(CP_UTF8, 0, item, -1, wp, MAX_PATH * 2);
-                g_plist[g_plist_n++] = _wcsdup(wp);
+                g_plist[g_plist_n] = _wcsdup(wp);
+                g_plist_title[g_plist_n] = NULL;
+                g_plist_n++;
+                if (*p == '"') p++;
+            } else p++;
+        }
+    }
+    /* titres d'épisodes : le tableau "titles" suit le même ordre */
+    p = strstr(r.body, "\"titles\":[");
+    if (p) {
+        p += 10;
+        int i = 0;
+        while (*p && *p != ']' && i < g_plist_n) {
+            if (*p == '"') {
+                p++;
+                char item[MAX_PATH * 2];
+                int o = 0;
+                while (*p && *p != '"' && o < (int)sizeof(item) - 1) {
+                    if (*p == '\\' && p[1]) { p++; }
+                    item[o++] = *p++;
+                }
+                item[o] = 0;
+                if (item[0]) {
+                    wchar_t wt[MAX_PATH * 2];
+                    MultiByteToWideChar(CP_UTF8, 0, item, -1, wt,
+                                        MAX_PATH * 2);
+                    g_plist_title[i] = _wcsdup(wt);
+                }
+                i++;
                 if (*p == '"') p++;
             } else p++;
         }

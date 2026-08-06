@@ -9,6 +9,7 @@
 #define PLAYLIST_MAX 512
 
 extern wchar_t* g_plist[PLAYLIST_MAX];
+extern wchar_t* g_plist_title[PLAYLIST_MAX];
 extern int  g_plist_n;
 extern int  g_plist_idx;
 extern int  g_cd_mode;      /* 1 = lecture CD audio (MCI) */
@@ -18,6 +19,7 @@ void core_plist_clear(void);
 
 /* Ajoute un chemin (copié). */
 void core_plist_add(const wchar_t* path);
+void core_plist_add2(const wchar_t* path, const wchar_t* title);
 
 /* Scan récursif d'un dossier (mp3/mp4), tri alphabétique, puis lit le
  * premier morceau. Retourne 0 si OK, -1 si aucun fichier. */

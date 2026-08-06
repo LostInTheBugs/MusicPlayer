@@ -462,13 +462,33 @@ int mp_update_apply_and_restart(void)
         L"del \"%~f0\"\r\n");
     fclose(f);
 
-    SHELLEXECUTEINFOW sei;
-    memset(&sei, 0, sizeof(sei));
-    sei.cbSize = sizeof(sei);
-    sei.fMask = SEE_MASK_NOCLOSEPROCESS;
-    sei.lpFile = bat;
-    sei.nShow = SW_HIDE;
-    if (!ShellExecuteExW(&sei)) return -1;
-    if (sei.hProcess) CloseHandle(sei.hProcess);
+    /* lancement direct via cmd.exe : plus fiable que ShellExecute
+     * (qui peut ne pas exécuter le .bat selon le shell/l'association) ;
+     * le cwd est le dossier d'installation pour que le script trouve
+     * update.zip */
+    wchar_t cmdline[MAX_PATH + 32];
+    swprintf(cmdline, MAX_PATH + 32, L"cmd.exe /c \\\"%ls\\\"", bat);
+    STARTUPINFOW si;
+    PROCESS_INFORMATION pi;
+    memset(&si, 0, sizeof(si));
+    memset(&pi, 0, sizeof(pi));
+    si.cb = sizeof(si);
+    if (!CreateProcessW(NULL, cmdline, NULL, NULL, FALSE,
+                        CREATE_NO_WINDOW, NULL, appdir, &si, &pi)) {
+        /* repli : ShellExecute */
+        SHELLEXECUTEINFOW sei;
+        memset(&sei, 0, sizeof(sei));
+        sei.cbSize = sizeof(sei);
+        sei.fMask = SEE_MASK_NOCLOSEPROCESS;
+        sei.lpVerb = L"open";
+        sei.lpFile = bat;
+        sei.lpDirectory = appdir;
+        sei.nShow = SW_HIDE;
+        if (!ShellExecuteExW(&sei)) return -1;
+        if (sei.hProcess) CloseHandle(sei.hProcess);
+        return 0;
+    }
+    CloseHandle(pi.hThread);
+    CloseHandle(pi.hProcess);
     return 0;
 }
