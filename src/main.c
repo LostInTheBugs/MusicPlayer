@@ -2239,7 +2239,8 @@ static INT_PTR CALLBACK repo_dlg_proc(HWND h, UINT m, WPARAM w, LPARAM l)
             }
         } else if (LOWORD(w) == IDC_REPO_DLALL) {
             /* Update all : télécharge tous les plugins moteur/runtime
-             * du repository (les fichiers verrouillés sont signalés) */
+             * du repository ; les fichiers verrouillés par le moteur
+             * sont retentés après un arrêt/redémarrage automatique */
             int ok_n = 0, fail_n = 0;
             for (int i = 0; i < g_repo_n; i++) {
                 const char* ty = g_repo_list[i].type;
@@ -2251,12 +2252,38 @@ static INT_PTR CALLBACK repo_dlg_proc(HWND h, UINT m, WPARAM w, LPARAM l)
                 }
             }
             if (fail_n > 0) {
-                wchar_t msg[400];
-                swprintf(msg, 400,
+                wchar_t msg[500];
+                swprintf(msg, 500,
                     L"Updated: %d, failed: %d (files probably locked by "
-                    L"the engine).\nRestart the engine and retry.",
+                    L"the engine).\n"
+                    L"Stop the engine, retry and restart it? Playback "
+                    L"will be interrupted briefly.",
                     ok_n, fail_n);
-                MessageBoxW(h, msg, L"Plugin repository", MB_ICONWARNING);
+                int r = MessageBoxW(h, msg, L"Plugin repository",
+                                    MB_YESNO | MB_ICONQUESTION);
+                if (r == IDYES) {
+                    cc_stop();
+                    Sleep(800);
+                    ok_n = 0;
+                    fail_n = 0;
+                    for (int i = 0; i < g_repo_n; i++) {
+                        const char* ty = g_repo_list[i].type;
+                        if (ty && (ty[0] == 's' || ty[0] == 'r' ||
+                                   ty[0] == 'e')) {
+                            if (repo_download(g_repo_base,
+                                              &g_repo_list[i]) == 0)
+                                ok_n++;
+                            else
+                                fail_n++;
+                        }
+                    }
+                    cc_start();
+                    swprintf(msg, 500,
+                        L"Engine restarted. Updated: %d, failed: %d.",
+                        ok_n, fail_n);
+                    MessageBoxW(h, msg, L"Plugin repository",
+                                fail_n ? MB_ICONWARNING : MB_OK);
+                }
             } else {
                 wchar_t msg[400];
                 swprintf(msg, 400,
