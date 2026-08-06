@@ -212,6 +212,12 @@ void cc_cmd_val(const char* cmd, double value)
     free(r.body);
 }
 
+void cc_cmd_raw(const char* body)
+{
+    http_resp r = cc_http2("POST", "/api/cmd", body);
+    free(r.body);
+}
+
 void cc_cmd_path(const char* cmd, const char* path)
 {
     /* échappement JSON du chemin */

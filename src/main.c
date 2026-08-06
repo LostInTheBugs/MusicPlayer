@@ -2748,6 +2748,106 @@ static void pod_selected_episode(HWND h, char* url_out, int url_sz,
     free(resp);
 }
 
+/* Joue un épisode : la playlist du player devient la liste des
+ * épisodes du podcast (enchaînement), puis lance l'épisode choisi */
+static void pod_play_episode(HWND h)
+{
+    char url[512], played[8];
+    pod_selected_episode(h, url, sizeof(url), played, sizeof(played));
+    if (!url[0]) return;
+    /* re-fetch les épisodes du flux sélectionné pour la playlist */
+    HWND subs = GetDlgItem(h, IDC_POD_SUBS);
+    int ssel = (int)SendMessageW(subs, LVM_GETNEXTITEM, (WPARAM)-1,
+                                 LVNI_SELECTED);
+    int start = 0;
+    if (ssel >= 0) {
+        LVITEMW ls;
+        memset(&ls, 0, sizeof(ls));
+        ls.mask = LVIF_PARAM;
+        ls.iItem = ssel;
+        SendMessageW(subs, LVM_GETITEMW, 0, (LPARAM)&ls);
+        int len = 0;
+        char* resp = podcast_http("GET", "/podcasts", NULL, &len);
+        if (resp) {
+            char feed[512] = "";
+            const char* p = resp;
+            for (int i = 0; i <= (int)ls.lParam; i++) {
+                const char* obj = strstr(p, "{\"url\":");
+                if (!obj) break;
+                const char* end = strchr(obj, '}');
+                if (!end) break;
+                if (i == (int)ls.lParam) {
+                    char tmp[4096];
+                    int olen = (int)(end - obj) + 1;
+                    if (olen > (int)sizeof(tmp) - 1)
+                        olen = (int)sizeof(tmp) - 1;
+                    memcpy(tmp, obj, olen);
+                    tmp[olen] = 0;
+                    pod_json_str(tmp, "url", feed, sizeof(feed));
+                }
+                p = end + 1;
+            }
+            free(resp);
+            if (feed[0]) {
+                char q[1200], path[1800];
+                pod_urlencode(feed, q, sizeof(q));
+                snprintf(path, sizeof(path), "/podcasts/episodes?feed=%s", q);
+                resp = podcast_http("GET", path, NULL, &len);
+                if (resp) {
+                    /* construit le tableau des URL */
+                    char items[10000] = "[";
+                    int o = 1, idx = 0, found = -1;
+                    const char* p2 = resp;
+                    while ((p2 = strstr(p2, "{\"url\":")) != NULL &&
+                           o < (int)sizeof(items) - 900) {
+                        const char* end = strchr(p2, '}');
+                        if (!end) break;
+                        char tmp[8192];
+                        int olen = (int)(end - p2) + 1;
+                        if (olen > (int)sizeof(tmp) - 1)
+                            olen = (int)sizeof(tmp) - 1;
+                        memcpy(tmp, p2, olen);
+                        tmp[olen] = 0;
+                        char u[600];
+                        pod_json_str(tmp, "url", u, sizeof(u));
+                        if (u[0]) {
+                            if (!strcmp(u, url)) found = idx;
+                            if (o > 1) items[o++] = ',';
+                            o += snprintf(items + o, sizeof(items) - o,
+                                          "\"%s\"", u);
+                            idx++;
+                        }
+                        p2 = end + 1;
+                    }
+                    if (o > 1) {
+                        items[o] = 0;
+                        strncat(items, "]", sizeof(items) - strlen(items) - 1);
+                        char body[10600];
+                        snprintf(body, sizeof(body),
+                                 "{\"cmd\":\"playlist\",\"items\":%s,"
+                                 "\"start\":%d}", items,
+                                 found >= 0 ? found : 0);
+                        /* envoi au moteur via le REST (comme cc_cmd_path) */
+                        extern void cc_cmd_raw(const char* body);
+                        cc_cmd_raw(body);
+                        start = found >= 0 ? found : 0;
+                    }
+                    free(resp);
+                }
+            }
+        }
+    }
+    (void)start;
+    /* marque lu + rafraîchit */
+    {
+        char body[1200];
+        snprintf(body, sizeof(body),
+                 "{\"url\":\"%s\",\"played\":1}", url);
+        podcast_http("POST", "/episodes", body, NULL);
+    }
+    pod_refresh(h);
+}
+
 static INT_PTR CALLBACK podcast_add_proc(HWND h, UINT m, WPARAM w, LPARAM l)
 {
     (void)l;
@@ -2835,17 +2935,8 @@ static INT_PTR CALLBACK podcast_dlg_proc(HWND h, UINT m, WPARAM w, LPARAM l)
         if (nm->idFrom == IDC_POD_SUBS && nm->code == NM_CLICK)
             pod_fill_eps(h);
         if (nm->idFrom == IDC_POD_EPS && nm->code == NM_DBLCLK) {
-            /* double-clic : jouer l'épisode */
-            char url[512], played[8];
-            pod_selected_episode(h, url, sizeof(url), played, sizeof(played));
-            if (url[0]) {
-                cc_cmd_path("open", url);
-                char body[1200];
-                snprintf(body, sizeof(body),
-                         "{\"url\":\"%s\",\"played\":1}", url);
-                podcast_http("POST", "/episodes", body, NULL);
-                pod_refresh(h);
-            }
+            /* double-clic : jouer l'épisode (playlist du podcast) */
+            pod_play_episode(h);
         }
         break;
     }
@@ -2910,16 +3001,8 @@ static INT_PTR CALLBACK podcast_dlg_proc(HWND h, UINT m, WPARAM w, LPARAM l)
             podcast_http("POST", "/refresh", NULL, NULL);
             pod_refresh(h);
         } else if (LOWORD(w) == IDC_POD_PLAY) {
-            char url[512], played[8];
-            pod_selected_episode(h, url, sizeof(url), played, sizeof(played));
-            if (url[0]) {
-                cc_cmd_path("open", url);
-                char body[1200];
-                snprintf(body, sizeof(body),
-                         "{\"url\":\"%s\",\"played\":1}", url);
-                podcast_http("POST", "/episodes", body, NULL);
-                pod_refresh(h);
-            }
+            /* Play : playlist du podcast + lecture de l'épisode choisi */
+            pod_play_episode(h);
         } else if (LOWORD(w) == IDC_POD_MARK) {
             char url[512], played[8];
             pod_selected_episode(h, url, sizeof(url), played, sizeof(played));

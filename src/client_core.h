@@ -33,6 +33,7 @@ void cc_cmd_val(const char* cmd, double value);
 
 /* Envoie une commande avec chemin : open */
 void cc_cmd_path(const char* cmd, const char* path);
+void cc_cmd_raw(const char* body);   /* corps JSON brut vers /api/cmd */
 
 /* Rafraîchit le cache d'état (GET /api/state). */
 void cc_poll(void);
