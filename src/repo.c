@@ -203,6 +203,15 @@ int repo_download(const wchar_t* base, const repo_plugin* p)
     if (repo_http_get(url, &body, &len) != 0) return -1;
     if (len == 0) { free(body); return -1; }
 
+    /* les DLL/EXE doivent être de vraies images (magic MZ) : un 404
+     * (ou une page d'erreur) ne doit JAMAIS remplacer un fichier */
+    const char* dot = strrchr(p->file, '.');
+    int is_pe = dot && (!strcmp(dot, ".dll") || !strcmp(dot, ".exe"));
+    if (is_pe && (len < 1024 || body[0] != 'M' || body[1] != 'Z')) {
+        free(body);
+        return -1;
+    }
+
     /* destination : <exedir>\ + chemin sans le préfixe "bin/" */
     wchar_t exe[MAX_PATH];
     GetModuleFileNameW(NULL, exe, MAX_PATH);

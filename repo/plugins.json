@@ -226,14 +226,6 @@
       "url": "https://raw.githubusercontent.com/LostInTheBugs/MusicPlayer/master/repo/bin/core_plugins/webserver.dll"
     },
     {
-      "name": "REST API (engine)",
-      "type": "service",
-      "version": "2026.08.042",
-      "file": "bin/core_plugins/restapi.dll",
-      "desc": "JSON HTTP API (port 8080)",
-      "url": "https://raw.githubusercontent.com/LostInTheBugs/MusicPlayer/master/repo/bin/core_plugins/restapi.dll"
-    },
-    {
       "name": "DLNA/UPnP (engine)",
       "type": "service",
       "version": "2026.08.042",

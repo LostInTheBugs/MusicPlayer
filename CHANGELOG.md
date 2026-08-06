@@ -2,6 +2,13 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.045-c7] — 2026-08-05
+
+### Fixed (corrupt plugin file from the repository — 0xc000012f)
+- **The repository download no longer writes a non-DLL body into a .dll file**: a 404 (or any error page) used to be saved as `restapi.dll` (14 bytes of text) — Windows then refused to load it (0xc000012f « not a valid Windows image »). DLL/EXE downloads are now checked (MZ magic + minimum size) and rejected
+- **Removed the stale « REST API (engine) » entry from the repository index** (the REST server on port 8080 is built into the engine — the plugin was a dead duplicate pointing to a non-existent file)
+- If you already have a broken `restapi.dll` in `core_plugins/`: delete it (Settings ▸ Plugins… ▸ select the row ▸ Delete selected...)
+
 ## [2026.08.045-c6] — 2026-08-05
 
 ### Added / Fixed
