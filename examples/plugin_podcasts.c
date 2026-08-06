@@ -1039,6 +1039,17 @@ static void handle_client(SOCKET c)
     /* corps (après la fin des en-têtes) */
     const char* body = strstr(req, "\r\n\r\n");
     body = body ? body + 4 : "";
+    /* journal : la ligne de requête (diagnostic du routage) */
+    {
+        char m[160];
+        int ln = (int)(sp2 - req);
+        if (ln > 150) ln = 150;
+        char line[160];
+        memcpy(line, req, ln);
+        line[ln] = 0;
+        snprintf(m, sizeof(m), "Podcasts: req: %s", line);
+        log_line(m);
+    }
 
     if (!strcmp(method, "GET")) {
         /* les vieux clients envoient un GET avec un corps au lieu d'un

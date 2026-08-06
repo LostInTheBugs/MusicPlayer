@@ -2334,66 +2334,75 @@ static void do_repo_dialog(void)
 #define PODCAST_PORT 8082
 
 /* requête HTTP vers le plugin podcasts du moteur (127.0.0.1:8082).
- * Retourne le corps de réponse (malloc) ou NULL. */
+ * Sockets bruts (le WinINet déforme le chemin et rate les réponses
+ * du serveur du plugin). Retourne le corps de réponse (malloc) ou NULL. */
 static char* podcast_http(const char* method, const char* path,
                           const char* body, int* out_len)
 {
-    wchar_t wpath[1024];
-    MultiByteToWideChar(CP_UTF8, 0, path, -1, wpath, 1024);
-    HINTERNET inet = InternetOpenW(L"MusicPlayer", INTERNET_OPEN_TYPE_DIRECT,
-                                   NULL, NULL, 0);
-    if (!inet) return NULL;
-    DWORD to = 15000;
-    InternetSetOptionW(inet, INTERNET_OPTION_CONNECT_TIMEOUT, &to, sizeof(to));
-    InternetSetOptionW(inet, INTERNET_OPTION_RECEIVE_TIMEOUT, &to, sizeof(to));
-    /* InternetOpenUrlW n'envoie que des GET : pour un POST (body non
-     * vide) on passe par HttpOpenRequestW + HttpSendRequestW */
-    HINTERNET uh;
-    if (body) {
-        HINTERNET conn = InternetConnectW(inet, L"127.0.0.1", PODCAST_PORT,
-                                          NULL, NULL, INTERNET_SERVICE_HTTP,
-                                          0, 0);
-        if (!conn) { InternetCloseHandle(inet); return NULL; }
-        uh = HttpOpenRequestW(conn, L"POST", wpath, NULL, NULL, NULL,
-                              INTERNET_FLAG_RELOAD |
-                              INTERNET_FLAG_NO_CACHE_WRITE, 0);
-        if (uh) {
-            const wchar_t* hdrs = L"Content-Type: application/json\r\n";
-            if (!HttpSendRequestW(uh, hdrs, -1, (LPVOID)body,
-                                  (DWORD)strlen(body))) {
-                InternetCloseHandle(uh);
-                uh = NULL;
-            }
-        }
-        InternetCloseHandle(conn);
-    } else {
-        wchar_t url[1200];
-        swprintf(url, 1200, L"http://127.0.0.1:%d%s", PODCAST_PORT, wpath);
-        uh = InternetOpenUrlW(inet, url, NULL, 0,
-                              INTERNET_FLAG_RELOAD |
-                              INTERNET_FLAG_NO_CACHE_WRITE, 0);
+    (void)method;
+    WSADATA wsa;
+    if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0) return NULL;
+    SOCKET s = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    if (s == INVALID_SOCKET) { WSACleanup(); return NULL; }
+    struct sockaddr_in a;
+    memset(&a, 0, sizeof(a));
+    a.sin_family = AF_INET;
+    a.sin_addr.s_addr = inet_addr("127.0.0.1");
+    a.sin_port = htons(PODCAST_PORT);
+    if (connect(s, (struct sockaddr*)&a, sizeof(a)) != 0) {
+        closesocket(s);
+        WSACleanup();
+        return NULL;
     }
-    if (!uh) { InternetCloseHandle(inet); return NULL; }
-    char buf[4096];
-    int cap = 8192, len = 0;
+    int to = 15000;
+    setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, (const char*)&to, sizeof(to));
+    setsockopt(s, SOL_SOCKET, SO_SNDTIMEO, (const char*)&to, sizeof(to));
+    char req[2200];
+    int rl;
+    if (body) {
+        rl = snprintf(req, sizeof(req),
+                      "POST %s HTTP/1.1\r\nHost: 127.0.0.1:%d\r\n"
+                      "Content-Type: application/json\r\n"
+                      "Content-Length: %d\r\nConnection: close\r\n\r\n%s",
+                      path, PODCAST_PORT, (int)strlen(body), body);
+    } else {
+        rl = snprintf(req, sizeof(req),
+                      "GET %s HTTP/1.1\r\nHost: 127.0.0.1:%d\r\n"
+                      "Connection: close\r\n\r\n",
+                      path, PODCAST_PORT);
+    }
+    if (send(s, req, rl, 0) == SOCKET_ERROR) {
+        closesocket(s);
+        WSACleanup();
+        return NULL;
+    }
+    char buf[8192];
+    int cap = 16384, len = 0;
     char* resp = (char*)malloc(cap);
-    if (!resp) { InternetCloseHandle(uh); InternetCloseHandle(inet); return NULL; }
+    if (!resp) { closesocket(s); WSACleanup(); return NULL; }
     for (;;) {
-        DWORD got = 0;
-        if (!InternetReadFile(uh, buf, sizeof(buf), &got) || got == 0) break;
-        if (len + (int)got + 1 > cap) {
-            cap = (len + (int)got + 1) * 2;
+        int got = recv(s, buf, sizeof(buf), 0);
+        if (got <= 0) break;
+        if (len + got + 1 > cap) {
+            cap = (len + got + 1) * 2;
             char* nb = (char*)realloc(resp, cap);
-            if (!nb) { free(resp); InternetCloseHandle(uh); InternetCloseHandle(inet); return NULL; }
+            if (!nb) break;
             resp = nb;
         }
         memcpy(resp + len, buf, got);
-        len += (int)got;
+        len += got;
     }
-    InternetCloseHandle(uh);
-    InternetCloseHandle(inet);
+    closesocket(s);
+    WSACleanup();
+    if (len <= 0) { free(resp); return NULL; }
     resp[len] = 0;
-    if (out_len) *out_len = len;
+    /* isole le corps (après la fin des en-têtes) */
+    char* hd = strstr(resp, "\r\n\r\n");
+    if (hd) {
+        hd += 4;
+        memmove(resp, hd, strlen(hd) + 1);
+    }
+    if (out_len) *out_len = (int)strlen(resp);
     /* journal : chaque appel podcasts (diagnostic invalid feed) */
     {
         char m[1100];

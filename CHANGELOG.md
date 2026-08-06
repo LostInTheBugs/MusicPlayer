@@ -2,6 +2,12 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.045-c12] — 2026-08-05
+
+### Fixed (podcast client↔engine communication — WinINet unreliable)
+- The client's podcast HTTP calls (list, subscribe, search, sources) are now sent over **raw sockets** (same approach as the engine): WinINet was corrupting the request path (`GET /` instead of `GET /podcasts`) and dropping the responses (0 bytes) — making subscription and even the availability check fail on some systems
+- Verified under Wine with the real client: `GET /podcasts` returns the full subscription list (589 bytes) and the engine logs show the fetch working
+
 ## [2026.08.045-c11] — 2026-08-05
 
 ### Fixed (podcast subscription never worked — the « POST » was a GET)
