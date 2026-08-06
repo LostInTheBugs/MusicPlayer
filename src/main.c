@@ -2720,13 +2720,20 @@ static void pod_selected_episode(HWND h, char* url_out, int url_sz,
     resp = podcast_http("GET", path, NULL, &len);
     if (!resp) return;
     {
+        /* compte les objets (la liste refetchée peut être plus courte
+         * que la liste affichée : épisodes filtrés, etc.) */
+        int n = 0;
+        const char* pc = resp;
+        while ((pc = strstr(pc, "{\"url\":")) != NULL) { n++; pc += 5; }
+        int want = (int)li.lParam;
+        if (want >= n) want = n - 1;   /* clamp : dernier disponible */
         const char* p = resp;
-        for (int i = 0; i <= (int)li.lParam; i++) {
+        for (int i = 0; i <= want; i++) {
             const char* obj = strstr(p, "{\"url\":");
             if (!obj) break;
             const char* end = strchr(obj, '}');
             if (!end) break;
-            if (i == (int)li.lParam) {
+            if (i == want) {
                 char tmp[8192];
                 int olen = (int)(end - obj) + 1;
                 if (olen > (int)sizeof(tmp) - 1) olen = (int)sizeof(tmp) - 1;

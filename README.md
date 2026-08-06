@@ -30,7 +30,7 @@ cross-compiled from Linux with MinGW-w64.
 
 ## Version
 
-`2026.08.045-c16` — see [CHANGELOG.md](CHANGELOG.md)
+`2026.08.045-c17` — see [CHANGELOG.md](CHANGELOG.md)
 
 ## Run on Windows 11
 
