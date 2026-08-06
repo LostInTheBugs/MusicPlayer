@@ -2424,6 +2424,26 @@ static char* podcast_http(const char* method, const char* path,
     return resp;
 }
 
+/* extrait les valeurs numériques du JSON (ex: "dur":600) */
+static void pod_json_num(const char* body, const char* key, char* out,
+                         int outsz)
+{
+    out[0] = 0;
+    char pat[64];
+    snprintf(pat, sizeof(pat), "\"%s\"", key);
+    const char* p = strstr(body, pat);
+    if (!p) return;
+    p = strchr(p, ':');
+    if (!p) return;
+    p++;
+    while (*p == ' ' || *p == '\t') p++;
+    if (*p == '"') p++;   /* tolère les valeurs en chaîne */
+    int n = 0;
+    while (*p && *p != ',' && *p != '}' && *p != '"' && n < outsz - 1)
+        out[n++] = *p++;
+    out[n] = 0;
+}
+
 /* extrait les chaînes du JSON de réponse (même style que le moteur) */
 static void pod_json_str(const char* body, const char* key, char* out, int outsz)
 {
@@ -2593,7 +2613,7 @@ static void pod_fill_eps(HWND h)
         pod_json_str(tmp, "url", url, sizeof(url));
         pod_json_str(tmp, "title", title, sizeof(title));
         pod_json_str(tmp, "date", date, sizeof(date));
-        pod_json_str(tmp, "dur", dur, sizeof(dur));
+        pod_json_num(tmp, "dur", dur, sizeof(dur));
         pod_json_str(tmp, "played", played, sizeof(played));
         pod_json_str(tmp, "pos", pos, sizeof(pos));
         pod_json_unescape(title);
@@ -2603,7 +2623,7 @@ static void pod_fill_eps(HWND h)
         if (atoi(dur) > 0)
             swprintf(wdur, 32, L"%d:%02d", atoi(dur) / 60, atoi(dur) % 60);
         else
-            wcscpy(wdur, L"?");
+            wcscpy(wdur, L"--");
         wchar_t wstate[16];
         wcscpy(wstate, atoi(played) ? L"lu" : L"nouveau");
         LVITEMW li2;
@@ -2786,7 +2806,7 @@ static INT_PTR CALLBACK podcast_dlg_proc(HWND h, UINT m, WPARAM w, LPARAM l)
         SendMessageW(le, LVM_INSERTCOLUMNW, 0, (LPARAM)&col);
         col.cx = 90; col.pszText = L"Date";
         SendMessageW(le, LVM_INSERTCOLUMNW, 1, (LPARAM)&col);
-        col.cx = 60; col.pszText = L"Dur";
+        col.cx = 60; col.pszText = L"Length";
         SendMessageW(le, LVM_INSERTCOLUMNW, 2, (LPARAM)&col);
         col.cx = 70; col.pszText = L"State";
         SendMessageW(le, LVM_INSERTCOLUMNW, 3, (LPARAM)&col);
@@ -3304,6 +3324,8 @@ static INT_PTR CALLBACK updcfg_dlg_proc(HWND h, UINT m, WPARAM w, LPARAM l)
         CheckRadioButton(h, 1027, 1030,
                          lag >= 30 ? 1030 : lag >= 7 ? 1029 :
                          lag >= 1 ? 1028 : 1027);
+        CheckDlgButton(h, 2003, mp_update_get_plugins() ? BST_CHECKED
+                                                        : BST_UNCHECKED);
         return TRUE;
     }
     case WM_COMMAND:
@@ -3318,6 +3340,7 @@ static INT_PTR CALLBACK updcfg_dlg_proc(HWND h, UINT m, WPARAM w, LPARAM l)
                       IsDlgButtonChecked(h, 1029) ? 7 :
                       IsDlgButtonChecked(h, 1030) ? 30 : 0;
             mp_update_set_lag(lag);
+            mp_update_set_plugins(IsDlgButtonChecked(h, 2003) ? 1 : 0);
             EndDialog(h, 1);
         } else if (LOWORD(w) == IDC_UPD_CHECK) {
             EndDialog(h, 2);   /* vérifier maintenant */
@@ -5359,6 +5382,24 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR lpCmdLine, int nCmdSh
         char* tok = strtok(cmdline, " \t");
         while (tok && argc < 63) { argv[argc++] = tok; tok = strtok(NULL, " \t"); }
         return run_selftest(argc, argv);
+    }
+
+    /* mode : mise à jour des plugins du repository (lancé par le script
+     * de mise à jour quand « Update plugins with the program » est coché) */
+    if (lpCmdLine && strstr(lpCmdLine, "--update-plugins")) {
+        wchar_t json_url[1024];
+        swprintf(json_url, 1024, L"%ls/plugins.json", REPO_DEFAULT_BASE);
+        repo_plugin* list = NULL;
+        int n = 0;
+        if (repo_fetch(json_url, &list, &n) == 0) {
+            for (int i = 0; i < n; i++) {
+                const char* ty = list[i].type;
+                if (ty && (ty[0] == 's' || ty[0] == 'r' || ty[0] == 'e'))
+                    repo_download(REPO_DEFAULT_BASE, &list[i]);
+            }
+            repo_free(list, n);
+        }
+        ExitProcess(0);
     }
 
     INITCOMMONCONTROLSEX icc;

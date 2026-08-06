@@ -2,6 +2,13 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.045-c13] — 2026-08-05
+
+### Added / Fixed
+- **Podcast episodes duration fixed**: the client now parses numeric JSON values — durations (e.g. acast: 63:35, 102:47…) display correctly; feeds without a duration tag (radiofrance) show « -- »
+- **Column label « Dur » → « Length »** (interface stays English)
+- **Settings ▸ Update… ▸ « Update plugins with the program »** checkbox (default on): after the program update applies, the launcher runs in `--update-plugins` mode and downloads every engine/runtime plugin from the repository (no locked-file issues: the engine is stopped at that point)
+
 ## [2026.08.045-c12] — 2026-08-05
 
 ### Fixed (podcast client↔engine communication — WinINet unreliable)

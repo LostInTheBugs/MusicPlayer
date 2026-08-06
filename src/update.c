@@ -24,6 +24,7 @@ static volatile LONG g_checking = 0;
 static int           g_mode = -1;   /* cache : 0 désactivé, 1 auto, 2 manuel, 3 autonome */
 static int           g_type = -1;   /* 0 toutes, 1 correctives (-cX) */
 static int           g_lag = -1;    /* jours : 0, 1, 7, 30 */
+static int           g_plugins = -1; /* 0 seul, 1 plugins avec le programme */
 
 /* ------------------------------------------------------------------ */
 /* Comparaison de versions "AAAA.MM.NNN[-cX]"                          */
@@ -67,7 +68,8 @@ static void cfg_save(void)
     appdata_path(path, MAX_PATH, L"\\upd.txt");
     FILE* f = _wfopen(path, L"wb");
     if (f) {
-        fprintf(f, "mode=%d\ntype=%d\nlag=%d\n", g_mode, g_type, g_lag);
+        fprintf(f, "mode=%d\ntype=%d\nlag=%d\nplugins=%d\n",
+                g_mode, g_type, g_lag, g_plugins > 0 ? 1 : 0);
         fclose(f);
     }
 }
@@ -80,6 +82,7 @@ static void cfg_load(void)
     g_mode = 1;                    /* défaut : automatique */
     g_type = 0;                    /* défaut : toutes les mises à jour */
     g_lag = 7;                     /* défaut : 1 semaine */
+    g_plugins = 1;                 /* défaut : plugins avec le programme */
     if (f) {
         char buf[128] = "";
         size_t n = fread(buf, 1, sizeof(buf) - 1, f);
@@ -89,6 +92,7 @@ static void cfg_load(void)
         if ((p = strstr(buf, "mode="))) g_mode = atoi(p + 5);
         if ((p = strstr(buf, "type="))) g_type = atoi(p + 5);
         if ((p = strstr(buf, "lag=")))  g_lag  = atoi(p + 4);
+        if ((p = strstr(buf, "plugins="))) g_plugins = atoi(p + 8);
         if (!strstr(buf, "mode=")) {
             /* ancien format : un seul caractère '0'/'1'/'2' */
             int c = buf[0];
@@ -119,6 +123,18 @@ int mp_update_get_type(void)
 void mp_update_set_type(int type)
 {
     g_type = type ? 1 : 0;
+    cfg_save();
+}
+
+int mp_update_get_plugins(void)
+{
+    if (g_plugins < 0) cfg_load();
+    return g_plugins > 0 ? 1 : 0;
+}
+
+void mp_update_set_plugins(int on)
+{
+    g_plugins = on ? 1 : 0;
     cfg_save();
 }
 
@@ -408,7 +424,7 @@ int mp_update_apply_and_restart(void)
         L")\r\n"
         L"del update.zip >nul 2>&1\r\n"
         L"del updater.err >nul 2>&1\r\n"
-        L"start \"\" \"%~dp0MusicPlayer.exe\"\r\n"
+        L"start \"\" \"%~dp0MusicPlayer.exe\" --update-plugins\r\n"
         L"del \"%~f0\"\r\n");
     fclose(f);
 

@@ -29,6 +29,8 @@ void mp_update_set_type(int type);
 /* Délai avant d'appliquer / de signaler une nouvelle version
  * (jours) : 0 = aucun, 1, 7, 30. Défaut : 7. */
 int  mp_update_get_lag(void);
+int  mp_update_get_plugins(void);
+void mp_update_set_plugins(int on);
 void mp_update_set_lag(int days);
 
 /* Équivalents simplifiés (compatibilité) : auto = mode 1 ; set_auto(on)
