@@ -2,6 +2,13 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.045-c9] — 2026-08-05
+
+### Added (unmissable podcasts diagnostics)
+- The **client logs every podcast API call** (`logs/musicplayer.log`): `Podcasts: POST /podcasts body={...} -> N o : {raw response}` — the raw server reply is visible even when the engine logs nothing
+- The **podcasts plugin logs every fetch attempt** (`logs/musicplayer-core.log`): `Podcasts: fetching <url> (attempt 1/2)` before each attempt, then `fetched N o, M episodes` + `head: <first 120 chars>`
+- With these lines, an « Invalid feed URL » is always explainable: network error (no head), HTML page (head shows `<!DOCTYPE`), binary (head shows dots) or valid XML (head shows `<?xml`)
+
 ## [2026.08.045-c8] — 2026-08-05
 
 ### Fixed (engine robustness against corrupt plugins)
