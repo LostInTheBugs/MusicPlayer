@@ -57,7 +57,7 @@ all: dirs $(BIN)
 dirs:
 	mkdir -p bin/plugins bin/lang plugins test dist
 
-$(APP_BIN): $(OBJ) $(RES)
+$(APP_BIN): $(OBJ) $(RES) Makefile
 	$(CC) $(CFLAGS) -o $@ $(OBJ) $(RES) $(LDFLAGS)
 
 $(BIN): $(APP_BIN) $(LAUNCHER_OBJ) bin/runtime
@@ -75,7 +75,7 @@ bin/runtime: bin/VERSION
 bin/VERSION: VERSION
 	cp VERSION bin/VERSION
 
-build/launcher_res.o: src/version_client.rc
+build/launcher_res.o: src/version_client.rc Makefile
 	@mkdir -p build
 	$(WINDRES) -i src/version_client.rc -o $@
 
@@ -85,41 +85,41 @@ src/musicplayer_res.o: src/musicplayer.rc src/musicplayer.ico src/version_client
 src/version_client.rc: VERSION tools/vergen.py
 	python3 tools/vergen.py VERSION src/version_client.rc client
 
-%.o: %.c
+%.o: %.c Makefile
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 # --- core (objets séparés dans build/, -DMP_CORE pour player.c) ---
 core: dirs $(CORE_BIN)
 
-$(CORE_BIN): $(CORE_OBJ) build/core_res.o
+$(CORE_BIN): $(CORE_OBJ) build/core_res.o Makefile
 	$(CC) $(CFLAGS) -o $@ $(CORE_OBJ) build/core_res.o $(LDFLAGS)
 
-build/core_res.o: src/version_core.rc
+build/core_res.o: src/version_core.rc Makefile
 	@mkdir -p build
 	$(WINDRES) -i src/version_core.rc -o $@
 
 src/version_core.rc: VERSION tools/vergen.py
 	python3 tools/vergen.py VERSION src/version_core.rc core
 
-build/core_main.o: src/core/core_main.c
+build/core_main.o: src/core/core_main.c Makefile
 	@mkdir -p build
 	$(CC) $(CFLAGS) -c -o $@ $<
-build/core_http.o: src/core/core_http.c
+build/core_http.o: src/core/core_http.c Makefile
 	@mkdir -p build
 	$(CC) $(CFLAGS) -c -o $@ $<
-build/core_playlist.o: src/core/core_playlist.c
+build/core_playlist.o: src/core/core_playlist.c Makefile
 	@mkdir -p build
 	$(CC) $(CFLAGS) -c -o $@ $<
-build/core_player.o: src/player.c
+build/core_player.o: src/player.c Makefile
 	@mkdir -p build
 	$(CC) $(CFLAGS) -DMP_CORE -c -o $@ $<
-build/core_plugin_loader.o: src/plugin_loader.c
+build/core_plugin_loader.o: src/plugin_loader.c Makefile
 	@mkdir -p build
 	$(CC) $(CFLAGS) -c -o $@ $<
-build/core_config.o: src/config.c
+build/core_config.o: src/config.c Makefile
 	@mkdir -p build
 	$(CC) $(CFLAGS) -c -o $@ $<
-build/core_cd.o: src/cd.c
+build/core_cd.o: src/cd.c Makefile
 	@mkdir -p build
 	$(CC) $(CFLAGS) -c -o $@ $<
 
