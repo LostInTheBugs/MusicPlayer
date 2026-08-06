@@ -2199,8 +2199,42 @@ static INT_PTR CALLBACK repo_dlg_proc(HWND h, UINT m, WPARAM w, LPARAM l)
                          g_repo_list[pi].name);
                 MessageBoxW(h, msg, L"Plugin repository", MB_OK);
             } else {
-                MessageBoxW(h, L"Download failed.", L"Plugin repository",
-                            MB_ICONERROR);
+                /* le fichier est probablement verrouillé par le moteur
+                 * (plugin chargé ou DLL FFmpeg en cours d'utilisation) :
+                 * on propose de l'arrêter, retenter, et le relancer */
+                const char* ty = g_repo_list[pi].type;
+                /* catégories chargées comme DLL (service/engine, runtime,
+                 * skin, visual, effect) : le fichier peut être verrouillé */
+                int locked = ty && (ty[0] == 'e' || ty[0] == 'r' ||
+                                    ty[0] == 's' || ty[0] == 'v');
+                if (locked) {
+                    int r = MessageBoxW(h,
+                        L"Download failed: the file is probably locked by "
+                        L"the engine (currently loaded).\n"
+                        L"Stop the engine, retry the download and restart "
+                        L"it? Playback will be interrupted briefly.",
+                        L"Plugin repository",
+                        MB_YESNO | MB_ICONQUESTION);
+                    if (r == IDYES) {
+                        cc_stop();
+                        Sleep(800);
+                        rc = repo_download(g_repo_base, &g_repo_list[pi]);
+                        cc_start();
+                        if (rc == 0)
+                            MessageBoxW(h,
+                                L"Downloaded and engine restarted.\n"
+                                L"The new version is now loaded.",
+                                L"Plugin repository", MB_OK);
+                        else
+                            MessageBoxW(h,
+                                L"Download failed again.\nCheck your "
+                                L"connection and retry.",
+                                L"Plugin repository", MB_ICONERROR);
+                    }
+                } else {
+                    MessageBoxW(h, L"Download failed.", L"Plugin repository",
+                                MB_ICONERROR);
+                }
             }
         } else if (LOWORD(w) == IDC_REPO_SEARCH) {
             if (HIWORD(w) == EN_CHANGE) repo_fill_list(h);

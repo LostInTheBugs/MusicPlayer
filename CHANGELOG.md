@@ -2,6 +2,12 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.045-c5] — 2026-08-05
+
+### Fixed (downloading a plugin loaded by the engine)
+- When a repository download fails because the file is locked by the running engine (loaded plugin — e.g. Podcasts — or FFmpeg DLL in use), the client now **offers to stop the engine, retry the download and restart it automatically** (playback is interrupted briefly). The new plugin version is loaded right away — no more « download failed » requiring manual file deletion
+- Applies to every DLL-type category: service/engine, runtime, skin, visual, effect
+
 ## [2026.08.045-c4] — 2026-08-05
 
 ### Fixed (plugins list selection + repository download of a loaded plugin)
