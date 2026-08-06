@@ -2,6 +2,13 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.045-c22] — 2026-08-05
+
+### Fixed (podcast episodes not shown in the playlist window)
+- The podcast Play filled the engine's playlist but the **client window displays its own local copy** (synchronised via `/api/plist` for folders only) — the episodes never appeared in the Playlist window
+- The client now calls `cc_plist_refresh()` right after the podcast playlist command: opening a podcast feed behaves like opening a folder — the episodes appear in the Playlist window
+- Also: `make test` now rebuilds the core binary (it was missing after `make clean`)
+
 ## [2026.08.045-c21] — 2026-08-05
 
 ### Fixed (update leaving the client binary behind — « zip contained X but binary is still Y »)
