@@ -2,6 +2,12 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.045-c19] — 2026-08-05
+
+### Added (podcast episodes as the player playlist)
+- **Play (or double-click) on an episode now fills the player playlist with all the podcast's episodes** (new engine command `playlist` with `items` + `start`): playback continues episode after episode (Next, auto-advance) even after closing the Podcasts window
+- Verified: playlist of 2 episodes, state=1, Next switches to the following episode
+
 ## [2026.08.045-c18] — 2026-08-05
 
 ### Fixed (podcast Play silent + infinite loop in the parser)
