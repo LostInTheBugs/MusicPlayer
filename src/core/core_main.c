@@ -43,7 +43,7 @@ void core_set_log_level(int lvl)
     InterlockedExchange(&g_log_level, lvl);
 }
 
-static void core_log(const char* msg)
+void core_log(const char* msg)
 {
     if (g_log_level <= 0) return;
     wchar_t exe[MAX_PATH];

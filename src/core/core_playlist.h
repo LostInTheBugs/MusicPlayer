@@ -42,3 +42,6 @@ void core_plist_lock(void);
 void core_plist_unlock(void);
 
 #endif /* MP_CORE_PLAYLIST_H */
+
+/* log du moteur (fichier logs/musicplayer-core.log) */
+void core_log(const char* msg);

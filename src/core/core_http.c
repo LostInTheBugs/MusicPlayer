@@ -101,10 +101,16 @@ static const char* json_str(const char* body, const char* key,
                             char* out, int outsz)
 {
     char pat[64];
-    snprintf(pat, sizeof(pat), "\"%s\":\"", key);
+    snprintf(pat, sizeof(pat), "\"%s\"", key);
     const char* p = strstr(body, pat);
     if (!p) return NULL;
     p += strlen(pat);
+    while (*p == ' ' || *p == '\t') p++;
+    if (*p != ':') return NULL;
+    p++;
+    while (*p == ' ' || *p == '\t') p++;
+    if (*p != '"') return NULL;
+    p++;
     const char* e = strchr(p, '"');
     if (!e) return NULL;
     int n = (int)(e - p);
@@ -117,16 +123,27 @@ static const char* json_str(const char* body, const char* key,
 static double json_num(const char* body, const char* key, double def)
 {
     char pat[64];
-    snprintf(pat, sizeof(pat), "\"%s\":", key);
+    snprintf(pat, sizeof(pat), "\"%s\"", key);
     const char* p = strstr(body, pat);
     if (!p) return def;
-    return atof(p + strlen(pat));
+    p += strlen(pat);
+    while (*p == ' ' || *p == '\t') p++;
+    if (*p != ':') return def;
+    p++;
+    while (*p == ' ' || *p == '\t') p++;
+    return atof(p);
 }
 
 static void handle_cmd(SOCKET c, const char* body)
 {
     char cmd[64] = "";
     json_str(body, "cmd", cmd, sizeof(cmd));
+    {
+        char dbg[256];
+        snprintf(dbg, sizeof(dbg), "cmd: %s | body: %.80s",
+                 cmd[0] ? cmd : "(vide)", body);
+        core_log(dbg);
+    }
 
     if (!strcmp(cmd, "play")) {
         if (mp_get_state() != MP_STATE_PLAYING) mp_play_pause();
@@ -195,42 +212,46 @@ static void handle_cmd(SOCKET c, const char* body)
     } else if (!strcmp(cmd, "playlist")) {
         /* {"items":["url1","url2",...],"start":N} : remplace la
          * playlist par ces éléments et lance l'élément start */
-        const char* ob = strstr(body, "\"items\":[");
+        const char* ob = strstr(body, "\"items\"");
         if (ob) {
-            const char* cb = strchr(ob + 9, ']');
-            if (cb) {
-                char items[4096];
-                int il = (int)(cb - (ob + 9));
-                if (il > (int)sizeof(items) - 1)
-                    il = (int)sizeof(items) - 1;
-                memcpy(items, ob + 9, il);
-                items[il] = 0;
-                core_plist_lock();
-                core_plist_clear();
-                const char* p = items;
-                int n = 0;
-                while (n < 512 && (p = strchr(p, '"')) != NULL) {
-                    const char* e = strchr(p + 1, '"');
-                    if (!e) break;
-                    char one[MAX_PATH * 2];
-                    int ol = (int)(e - p - 1);
-                    if (ol > (int)sizeof(one) - 1)
-                        ol = (int)sizeof(one) - 1;
-                    memcpy(one, p + 1, ol);
-                    one[ol] = 0;
-                    wchar_t wo[MAX_PATH * 2];
-                    MultiByteToWideChar(CP_UTF8, 0, one, -1, wo,
-                                        MAX_PATH * 2);
-                    core_plist_add(wo);
-                    n++;
-                    p = e + 1;
+            /* tolère les espaces : "items": [ ... ou "items":[...] */
+            const char* br = strchr(ob + 7, '[');
+            if (br) {
+                const char* cb = strchr(br + 1, ']');
+                if (cb) {
+                    char items[65536];
+                    int il = (int)(cb - (br + 1));
+                    if (il > (int)sizeof(items) - 1)
+                        il = (int)sizeof(items) - 1;
+                    memcpy(items, br + 1, il);
+                    items[il] = 0;
+                    core_plist_lock();
+                    core_plist_clear();
+                    const char* p = items;
+                    int n = 0;
+                    while (n < 512 && (p = strchr(p, '"')) != NULL) {
+                        const char* e = strchr(p + 1, '"');
+                        if (!e) break;
+                        char one[MAX_PATH * 2];
+                        int ol = (int)(e - p - 1);
+                        if (ol > (int)sizeof(one) - 1)
+                            ol = (int)sizeof(one) - 1;
+                        memcpy(one, p + 1, ol);
+                        one[ol] = 0;
+                        wchar_t wo[MAX_PATH * 2];
+                        MultiByteToWideChar(CP_UTF8, 0, one, -1, wo,
+                                            MAX_PATH * 2);
+                        core_plist_add(wo);
+                        n++;
+                        p = e + 1;
+                    }
+                    int start = 0;
+                    char st[16] = "";
+                    json_str(body, "start", st, sizeof(st));
+                    if (st[0]) start = atoi(st);
+                    core_plist_unlock();
+                    if (n > 0) core_plist_play_index(start);
                 }
-                int start = 0;
-                char st[16] = "";
-                json_str(body, "start", st, sizeof(st));
-                if (st[0]) start = atoi(st);
-                core_plist_unlock();
-                if (n > 0) core_plist_play_index(start);
             }
         }
     } else if (!strcmp(cmd, "shutdown")) {

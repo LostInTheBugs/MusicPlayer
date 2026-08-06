@@ -2794,43 +2794,51 @@ static void pod_play_episode(HWND h)
                 snprintf(path, sizeof(path), "/podcasts/episodes?feed=%s", q);
                 resp = podcast_http("GET", path, NULL, &len);
                 if (resp) {
-                    /* construit le tableau des URL */
-                    char items[10000] = "[";
-                    int o = 1, idx = 0, found = -1;
-                    const char* p2 = resp;
-                    while ((p2 = strstr(p2, "{\"url\":")) != NULL &&
-                           o < (int)sizeof(items) - 900) {
-                        const char* end = strchr(p2, '}');
-                        if (!end) break;
-                        char tmp[8192];
-                        int olen = (int)(end - p2) + 1;
-                        if (olen > (int)sizeof(tmp) - 1)
-                            olen = (int)sizeof(tmp) - 1;
-                        memcpy(tmp, p2, olen);
-                        tmp[olen] = 0;
-                        char u[600];
-                        pod_json_str(tmp, "url", u, sizeof(u));
-                        if (u[0]) {
-                            if (!strcmp(u, url)) found = idx;
-                            if (o > 1) items[o++] = ',';
-                            o += snprintf(items + o, sizeof(items) - o,
-                                          "\"%s\"", u);
-                            idx++;
+                    /* construit le tableau des URL : buffer dynamique
+                     * (les gros flux ont des centaines d'épisodes) */
+                    int cap = len > 4096 ? len + 4096 : 16384;
+                    char* items = (char*)malloc((size_t)cap);
+                    if (items) {
+                        int o = 1, idx = 0, found = -1;
+                        items[0] = '[';
+                        const char* p2 = resp;
+                        while ((p2 = strstr(p2, "{\"url\":")) != NULL &&
+                               o < cap - 700) {
+                            const char* end = strchr(p2, '}');
+                            if (!end) break;
+                            char tmp[8192];
+                            int olen = (int)(end - p2) + 1;
+                            if (olen > (int)sizeof(tmp) - 1)
+                                olen = (int)sizeof(tmp) - 1;
+                            memcpy(tmp, p2, olen);
+                            tmp[olen] = 0;
+                            char u[600];
+                            pod_json_str(tmp, "url", u, sizeof(u));
+                            if (u[0]) {
+                                if (!strcmp(u, url)) found = idx;
+                                if (o > 1) items[o++] = ',';
+                                o += snprintf(items + o, cap - o,
+                                              "\"%s\"", u);
+                                idx++;
+                            }
+                            p2 = end + 1;
                         }
-                        p2 = end + 1;
-                    }
-                    if (o > 1) {
-                        items[o] = 0;
-                        strncat(items, "]", sizeof(items) - strlen(items) - 1);
-                        char body[10600];
-                        snprintf(body, sizeof(body),
-                                 "{\"cmd\":\"playlist\",\"items\":%s,"
-                                 "\"start\":%d}", items,
-                                 found >= 0 ? found : 0);
-                        /* envoi au moteur via le REST (comme cc_cmd_path) */
-                        extern void cc_cmd_raw(const char* body);
-                        cc_cmd_raw(body);
-                        start = found >= 0 ? found : 0;
+                        if (o > 1) {
+                            items[o++] = ']';
+                            items[o] = 0;
+                            char* body = (char*)malloc((size_t)cap + 256);
+                            if (body) {
+                                snprintf(body, cap + 256,
+                                         "{\"cmd\":\"playlist\","
+                                         "\"items\":%s,\"start\":%d}",
+                                         items, found >= 0 ? found : 0);
+                                extern void cc_cmd_raw(const char* b);
+                                cc_cmd_raw(body);
+                                free(body);
+                                start = found >= 0 ? found : 0;
+                            }
+                        }
+                        free(items);
                     }
                     free(resp);
                 }
