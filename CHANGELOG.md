@@ -2,6 +2,12 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.045-c14] — 2026-08-05
+
+### Fixed (podcasts: episodes list clearing after Play / double-click)
+- After playing an episode (Play button or double-click), the refresh rebuilt the subscription list and **lost the selection** — the episodes list then stayed empty. The selection is now preserved across the refresh
+- Episode state labels are now English: « Played » / « New » (was « lu » / « nouveau »)
+
 ## [2026.08.045-c13] — 2026-08-05
 
 ### Added / Fixed
