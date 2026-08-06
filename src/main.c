@@ -2660,11 +2660,11 @@ static void pod_refresh(HWND h)
     int ssel = (int)SendMessageW(subs, LVM_GETNEXTITEM, (WPARAM)-1,
                                  LVNI_SELECTED);
     pod_fill_subs(h);
-    pod_fill_eps(h);
     if (ssel >= 0)
         ListView_SetItemState(subs, ssel,
                               LVIS_SELECTED | LVIS_FOCUSED,
                               LVIS_SELECTED | LVIS_FOCUSED);
+    pod_fill_eps(h);
 }
 
 /* URL de l'épisode sélectionné (dans la liste) */

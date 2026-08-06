@@ -2,6 +2,12 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.045-c16] — 2026-08-05
+
+### Fixed (podcasts: image enclosure taken as audio URL + episodes list still clearing)
+- **Audio URL selection**: the parser now prefers an `<enclosure type="audio/*">` (iterating past image enclosures), falls back to `media:content` audio, then the first enclosure, then `<link>`. Episodes **without any audio URL are skipped** — category/channel feeds that only carry images (e.g. some radiofrance feeds) now show an empty list instead of broken Play/Download entries
+- **Episodes list clearing fixed for real**: the subscription selection is now restored **before** the episodes list is rebuilt (the previous fix restored it after, so the list still went empty)
+
 ## [2026.08.045-c15] — 2026-08-05
 
 ### Added (software life cycle: release / pre-release channels)

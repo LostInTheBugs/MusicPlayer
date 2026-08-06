@@ -362,6 +362,34 @@ static void tag_text(const char* xml, const char* tag, char* out, int outsz)
     *w = 0;
 }
 
+/* extrait un attribut depuis une position pointée sur une balise :
+ * retourne 1 si trouvé (out rempli), 0 sinon */
+static int tag_attr_at(const char* a, const char* attr, char* out, int outsz)
+{
+    out[0] = 0;
+    const char* e = strchr(a, '>');
+    if (!e) return 0;
+    char tmp[1024];
+    {
+        int tl = (int)(e - a);
+        if (tl > (int)sizeof(tmp) - 1) tl = (int)sizeof(tmp) - 1;
+        memcpy(tmp, a, tl);
+        tmp[tl] = 0;
+    }
+    char pat[96];
+    snprintf(pat, sizeof(pat), "%s=", attr);
+    const char* v = strstr(tmp, pat);
+    if (!v) return 0;
+    v += strlen(pat);
+    while (*v == ' ' || *v == '\t') v++;
+    if (*v != '"') return 0;
+    v++;
+    int n = 0;
+    while (*v && *v != '"' && n < outsz - 1) out[n++] = *v++;
+    out[n] = 0;
+    return n > 0 ? 1 : 0;
+}
+
 /* extrait l'attribut attr="..." de la balise <tag ...> */
 static void tag_attr(const char* xml, const char* tag, const char* attr,
                      char* out, int outsz)
@@ -443,9 +471,43 @@ static void parse_feed(const char* xml, char* title, int title_sz,
         memset(e, 0, sizeof(*e));
         strncpy(e->feed, feed_url, sizeof(e->feed) - 1);
         tag_text(tmp, "title", e->title, sizeof(e->title));
-        tag_attr(tmp, "enclosure", "url", e->url, sizeof(e->url));
+        /* l'URL audio : on préfère un <enclosure> de type audio/* (le
+         * premier enclosure est parfois une image), puis media:content,
+         * puis le premier enclosure, puis <link> */
+        {
+            char et[64];
+            tag_attr(tmp, "enclosure", "type", et, sizeof(et));
+            if (et[0] && strncmp(et, "audio", 5) != 0) {
+                /* le premier enclosure n'est pas audio : chercher les
+                 * suivants */
+                const char* p2 = tmp;
+                for (int k = 0; k < 8 && !e->url[0]; k++) {
+                    p2 = strstr(p2, "<enclosure");
+                    if (!p2) break;
+                    char ty2[64], ur2[512];
+                    if (tag_attr_at(p2, "type", ty2, sizeof(ty2)) &&
+                        strncmp(ty2, "audio", 5) == 0 &&
+                        tag_attr_at(p2, "url", ur2, sizeof(ur2)))
+                        strncpy(e->url, ur2, sizeof(e->url) - 1);
+                    p2 += 10;
+                }
+            } else {
+                tag_attr(tmp, "enclosure", "url", e->url, sizeof(e->url));
+            }
+            if (!e->url[0]) {
+                /* media:content (certains flux n'utilisent que ça) */
+                char mc[64];
+                tag_attr(tmp, "media:content", "type", mc, sizeof(mc));
+                if (mc[0] && strncmp(mc, "audio", 5) == 0)
+                    tag_attr(tmp, "media:content", "url", e->url,
+                             sizeof(e->url));
+            }
+        }
         if (!e->url[0])
             tag_text(tmp, "link", e->url, sizeof(e->url));
+        /* les épisodes sans URL audio (flux de catégorie sans audio) ne
+         * sont pas ajoutés à la liste */
+        if (!e->url[0]) { e->title[0] = 0; continue; }
         /* pubDate : on garde les 3 premiers mots (Mon, 03 Aug 2026) */
         {
             char d[128];
