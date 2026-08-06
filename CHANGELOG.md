@@ -2,6 +2,14 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.045-c18] — 2026-08-05
+
+### Fixed (podcast Play silent + infinite loop in the parser)
+- **Infinite loop fixed**: when every item of a feed was filtered out (no-audio category feeds), the parser looped forever on the first item — the startup refresh appeared stuck
+- **Page links no longer accepted as audio URLs**: the `<link>` fallback now only accepts URLs that look like media (.mp3, .mp4, .m4a, .ogg, .opus, .aac, audio/, media.) — a radiofrance article page is no longer mistaken for an episode
+- **Automatic refresh at startup** (background thread, doesn't slow the engine): subscriptions are re-fetched and stale episodes purged — the old image-URL episodes stored before the audio filter are removed, so Play/Download no longer target images silently
+- Verified: radiofrance/economie → 0 episodes (feed has no audio), acast → 78 playable episodes
+
 ## [2026.08.045-c17] — 2026-08-05
 
 ### Fixed (podcast Play doing nothing)
