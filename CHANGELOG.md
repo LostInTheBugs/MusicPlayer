@@ -2,6 +2,11 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.045-c10] — 2026-08-05
+
+### Fixed (Update all leaving plugins locked by the engine)
+- **« Update all » now retries the locked files automatically**: after the first pass, if some downloads failed (files locked by the running engine), the client proposes to stop the engine, retry and restart it — the previously locked plugins (e.g. Podcasts) get replaced and the new versions are loaded right away
+
 ## [2026.08.045-c9] — 2026-08-05
 
 ### Added (unmissable podcasts diagnostics)
