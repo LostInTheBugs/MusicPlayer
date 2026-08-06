@@ -204,7 +204,14 @@ static void rtp_stop(void)
 
 /* ------------------------------------------------------------------ */
 static const char* pl_name(void) { return "RTP/AES67 Output"; }
-static const char* pl_version(void) { return "1.0"; }
+static const char* pl_version(void)
+{
+#ifdef MP_BUILD_VERSION
+    return MP_BUILD_VERSION;
+#else
+    return "1.0";
+#endif
+}
 static const char* pl_description(void)
 { return "Streams the audio as RTP L16 multicast (239.255.0.1:5004) with SAP announce (AES67)"; }
 static unsigned pl_type(void) { return MP_PLUGIN_SERVICE; }

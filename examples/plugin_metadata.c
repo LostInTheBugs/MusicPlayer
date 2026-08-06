@@ -123,7 +123,14 @@ static const char* pl_get_metadata(mp_plugin* self, const char* path,
 }
 
 static const char* pl_name(void)    { return "Metadata (MP3 tags)"; }
-static const char* pl_version(void) { return "1.0"; }
+static const char* pl_version(void)
+{
+#ifdef MP_BUILD_VERSION
+    return MP_BUILD_VERSION;
+#else
+    return "1.0";
+#endif
+}
 static const char* pl_description(void)
 { return "Reads MP3 ID3 tags (title) to display the track title instead of the file name"; }
 static unsigned    pl_type(void)    { return MP_PLUGIN_SERVICE; }

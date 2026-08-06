@@ -492,7 +492,14 @@ static void upnp_stop(void)
 
 /* ------------------------------------------------------------------ */
 static const char* pl_name(void) { return "DLNA/UPnP Media Server"; }
-static const char* pl_version(void) { return "1.0"; }
+static const char* pl_version(void)
+{
+#ifdef MP_BUILD_VERSION
+    return MP_BUILD_VERSION;
+#else
+    return "1.0";
+#endif
+}
 static const char* pl_description(void)
 { return "UPnP AV media server (SSDP + ContentDirectory) exposing the playlist to DLNA devices"; }
 static unsigned pl_type(void) { return MP_PLUGIN_SERVICE; }

@@ -377,7 +377,14 @@ static void server_stop(void)
 
 /* ------------------------------------------------------------------ */
 static const char* pl_name(void) { return "REST API"; }
-static const char* pl_version(void) { return "1.0"; }
+static const char* pl_version(void)
+{
+#ifdef MP_BUILD_VERSION
+    return MP_BUILD_VERSION;
+#else
+    return "1.0";
+#endif
+}
 static const char* pl_description(void)
 { return "HTTP JSON API on port 8080 (state, playlist, cover, commands, stream)"; }
 static unsigned pl_type(void) { return MP_PLUGIN_SERVICE; }

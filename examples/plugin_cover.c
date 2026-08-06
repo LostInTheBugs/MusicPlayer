@@ -20,7 +20,14 @@ static ULONG_PTR g_gdi_token = 0;
 static GpImage* g_img = NULL;
 
 static const char* pl_name(void)    { return "Cover art"; }
-static const char* pl_version(void) { return "1.0"; }
+static const char* pl_version(void)
+{
+#ifdef MP_BUILD_VERSION
+    return MP_BUILD_VERSION;
+#else
+    return "1.0";
+#endif
+}
 static const char* pl_description(void)
 { return "Shows the track cover art (APIC tag or cover.jpg next to the track)"; }
 static unsigned pl_type(void) { return MP_PLUGIN_SERVICE; }

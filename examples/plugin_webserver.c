@@ -772,7 +772,14 @@ static int server_start(int port, const char* ips)
 /* Plugin                                                              */
 /* ------------------------------------------------------------------ */
 static const char* pl_name(void)        { return "Web Server"; }
-static const char* pl_version(void)     { return "1.0"; }
+static const char* pl_version(void)
+{
+#ifdef MP_BUILD_VERSION
+    return MP_BUILD_VERSION;
+#else
+    return "1.0";
+#endif
+}
 static const char* pl_description(void)
 { return "Remote control web page (phone/tablet) + audio stream"; }
 static unsigned    pl_type(void)        { return MP_PLUGIN_SERVICE; }

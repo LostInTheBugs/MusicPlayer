@@ -159,7 +159,14 @@ static void mr_stop(void)
 
 /* ------------------------------------------------------------------ */
 static const char* pl_name(void) { return "Multiroom"; }
-static const char* pl_version(void) { return "1.0"; }
+static const char* pl_version(void)
+{
+#ifdef MP_BUILD_VERSION
+    return MP_BUILD_VERSION;
+#else
+    return "1.0";
+#endif
+}
 static const char* pl_description(void)
 { return "Streams the audio to several rooms at once (RTP multicast 239.255.0.2:5004 + multiroom.txt targets)"; }
 static unsigned pl_type(void) { return MP_PLUGIN_SERVICE; }

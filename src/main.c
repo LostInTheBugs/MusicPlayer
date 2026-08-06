@@ -2008,6 +2008,7 @@ static INT_PTR CALLBACK interface_dlg_proc(HWND h, UINT m, WPARAM w, LPARAM l)
 #define IDC_REPO_TYPE   2004
 #define IDC_REPO_LIST   2005
 #define IDC_REPO_DL     2006
+#define IDC_REPO_DLALL   2010
 
 static repo_plugin* g_repo_list = NULL;
 static int g_repo_n = 0;
@@ -2235,6 +2236,33 @@ static INT_PTR CALLBACK repo_dlg_proc(HWND h, UINT m, WPARAM w, LPARAM l)
                     MessageBoxW(h, L"Download failed.", L"Plugin repository",
                                 MB_ICONERROR);
                 }
+            }
+        } else if (LOWORD(w) == IDC_REPO_DLALL) {
+            /* Update all : télécharge tous les plugins moteur/runtime
+             * du repository (les fichiers verrouillés sont signalés) */
+            int ok_n = 0, fail_n = 0;
+            for (int i = 0; i < g_repo_n; i++) {
+                const char* ty = g_repo_list[i].type;
+                if (ty && (ty[0] == 's' || ty[0] == 'r' || ty[0] == 'e')) {
+                    if (repo_download(g_repo_base, &g_repo_list[i]) == 0)
+                        ok_n++;
+                    else
+                        fail_n++;
+                }
+            }
+            if (fail_n > 0) {
+                wchar_t msg[400];
+                swprintf(msg, 400,
+                    L"Updated: %d, failed: %d (files probably locked by "
+                    L"the engine).\nRestart the engine and retry.",
+                    ok_n, fail_n);
+                MessageBoxW(h, msg, L"Plugin repository", MB_ICONWARNING);
+            } else {
+                wchar_t msg[400];
+                swprintf(msg, 400,
+                    L"All engine plugins are up to date (%d updated).",
+                    ok_n);
+                MessageBoxW(h, msg, L"Plugin repository", MB_OK);
             }
         } else if (LOWORD(w) == IDC_REPO_SEARCH) {
             if (HIWORD(w) == EN_CHANGE) repo_fill_list(h);
@@ -5289,6 +5317,11 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR lpCmdLine, int nCmdSh
                 const char* v = buf + 3;
                 while (*v == ' ' || *v == '\r' || *v == '\n') v++;
                 snprintf(ver, sizeof(ver), "%s", v);
+                ver[strcspn(ver, "\r\n")] = 0;   /* pas de \n final */
+                while (ver[0] && (ver[strlen(ver)-1] == ' ' ||
+                                  ver[strlen(ver)-1] == '\r' ||
+                                  ver[strlen(ver)-1] == '\n'))
+                    ver[strlen(ver)-1] = 0;
                 if (strcmp(ver, MP_VERSION) != 0) {
                     /* le zip contenait une autre version que le binaire :
                      * zip plus récent = extraction ratée (fichiers

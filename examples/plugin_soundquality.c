@@ -114,7 +114,14 @@ static void ensure_filters(int rate)
 
 /* ------------------------------------------------------------------ */
 static const char* pl_name(void) { return "Sound Quality"; }
-static const char* pl_version(void) { return "1.0"; }
+static const char* pl_version(void)
+{
+#ifdef MP_BUILD_VERSION
+    return MP_BUILD_VERSION;
+#else
+    return "1.0";
+#endif
+}
 static const char* pl_description(void)
 { return "Warm, punchy sound: sub-bass filter, bass boost, presence, soft limiter"; }
 static unsigned pl_type(void) { return MP_PLUGIN_AUDIO_EFFECT; }

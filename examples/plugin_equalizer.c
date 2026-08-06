@@ -408,7 +408,14 @@ static void eq_close(void)
 
 /* ------------------------------------------------------------------ */
 static const char* pl_name(void) { return "Equalizer"; }
-static const char* pl_version(void) { return "1.0"; }
+static const char* pl_version(void)
+{
+#ifdef MP_BUILD_VERSION
+    return MP_BUILD_VERSION;
+#else
+    return "1.0";
+#endif
+}
 static const char* pl_description(void)
 { return "10-band Winamp-style equalizer with a detachable window docked under the main window"; }
 static unsigned pl_type(void)

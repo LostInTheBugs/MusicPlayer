@@ -2,6 +2,13 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.045-c6] — 2026-08-05
+
+### Added / Fixed
+- **All plugins now expose their build version** (`MP_BUILD_VERSION` baked in — the Web Server plugin no longer shows « 1.0 »)
+- **« Update all » button** in Settings ▸ Plugin repository…: downloads every engine/runtime plugin of the repository in one click (locked files are reported)
+- **Fixed the misleading post-update message**: the zip version comparison now strips trailing newlines — « Update failed… » no longer appears when the update actually succeeded
+
 ## [2026.08.045-c5] — 2026-08-05
 
 ### Fixed (downloading a plugin loaded by the engine)

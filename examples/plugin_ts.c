@@ -118,7 +118,14 @@ static void ts_stop(void)
 
 /* ------------------------------------------------------------------ */
 static const char* pl_name(void) { return "TeamSpeak Broadcast"; }
-static const char* pl_version(void) { return "1.0"; }
+static const char* pl_version(void)
+{
+#ifdef MP_BUILD_VERSION
+    return MP_BUILD_VERSION;
+#else
+    return "1.0";
+#endif
+}
 static const char* pl_description(void)
 { return "Sends the audio to an output device (e.g. Virtual Audio Cable) to broadcast music on TeamSpeak 3"; }
 static unsigned pl_type(void) { return MP_PLUGIN_SERVICE; }

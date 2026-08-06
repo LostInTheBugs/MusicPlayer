@@ -7,7 +7,14 @@
 static const mp_host_api* g_h = NULL;
 
 static const char* pl_name(void)    { return "Kitsch"; }
-static const char* pl_version(void) { return "1.0"; }
+static const char* pl_version(void)
+{
+#ifdef MP_BUILD_VERSION
+    return MP_BUILD_VERSION;
+#else
+    return "1.0";
+#endif
+}
 static const char* pl_description(void)
 { return "Candy pink, purple & gold — gloriously kitsch"; }
 static unsigned pl_type(void) { return MP_PLUGIN_SKIN; }

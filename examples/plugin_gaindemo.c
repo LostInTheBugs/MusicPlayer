@@ -8,7 +8,14 @@
 static const mp_host_api* g_host = NULL;
 
 static const char* pl_name(void)    { return "Volume booster"; }
-static const char* pl_version(void) { return "1.0"; }
+static const char* pl_version(void)
+{
+#ifdef MP_BUILD_VERSION
+    return MP_BUILD_VERSION;
+#else
+    return "1.0";
+#endif
+}
 static const char* pl_description(void)
 { return "Boosts the sound level (audio effect, +25 %)"; }
 static unsigned pl_type(void) { return MP_PLUGIN_AUDIO_EFFECT; }

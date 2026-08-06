@@ -13,7 +13,7 @@
 #   make clean
 # ======================================================================
 
-VERSION := 2026.08.045-c5
+VERSION := 2026.08.045-c6
 
 CROSS    := x86_64-w64-mingw32-
 CC       := $(CROSS)gcc
@@ -154,43 +154,43 @@ test-samples: dirs
 # Plugins d'exemple (compilés dans bin/plugins/)
 # ----------------------------------------------------------------------
 plugins-examples: $(BIN)
-	$(CC) -O2 -shared -o bin/plugins/gaindemo.dll examples/plugin_gaindemo.c -Isrc -static-libgcc
-	$(CC) -O2 -shared -o bin/plugins/spectrum.dll examples/plugin_spectrum.c -Isrc -static-libgcc -lgdi32 -lm
-	$(CC) -O2 -shared -o bin/plugins/vumeter.dll examples/plugin_vumeter.c -Isrc -static-libgcc -lgdi32 -lm
-	$(CC) -O2 -shared -o bin/plugins/fireworks.dll examples/plugin_fireworks.c -Isrc -static-libgcc -lgdi32 -lm
-	$(CC) -O2 -shared -o bin/plugins/3dspectrum.dll examples/plugin_3dspectrum.c -Isrc -static-libgcc -lgdi32 -lm
-	$(CC) -O2 -shared -o bin/plugins/3diso.dll examples/plugin_3diso.c -Isrc -static-libgcc -lgdi32 -lm
-	$(CC) -O2 -shared -o bin/plugins/fractal.dll examples/plugin_fractal.c -Isrc -static-libgcc -lgdi32 -lm
-	$(CC) -O2 -shared -o bin/plugins/hypnotic.dll examples/plugin_hypnotic.c -Isrc -static-libgcc -lgdi32 -lm
-	$(CC) -O2 -shared -o bin/plugins/webserver.dll examples/plugin_webserver.c -Isrc -Ivendor/ffmpeg/include -Lvendor/ffmpeg/lib -Wl,-Bdynamic -lavformat -lavcodec -lavutil -lswresample -Wl,-Bstatic -lws2_32 -static-libgcc -static
-	$(CC) -O2 -shared -o bin/plugins/restapi.dll examples/plugin_restapi.c -Isrc -lws2_32 -static-libgcc
-	$(CC) -O2 -shared -o bin/plugins/rtp.dll examples/plugin_rtp.c -Isrc -lws2_32 -static-libgcc
-	$(CC) -O2 -shared -o bin/plugins/upnp.dll examples/plugin_upnp.c -Isrc -lws2_32 -static-libgcc
-	$(CC) -O2 -shared -o bin/plugins/multiroom.dll examples/plugin_multiroom.c -Isrc -lws2_32 -static-libgcc
-	$(CC) -O2 -shared -o bin/plugins/soundquality.dll examples/plugin_soundquality.c -Isrc -static-libgcc -lm
-	$(CC) -O2 -shared -o bin/plugins/equalizer.dll examples/plugin_equalizer.c -Isrc -static-libgcc -lgdi32 -lm
-	$(CC) -O2 -shared -o bin/plugins/ts.dll examples/plugin_ts.c -Isrc -Ivendor -static-libgcc -lole32 -lwinmm
+	$(CC) -O2 -shared -o bin/plugins/gaindemo.dll examples/plugin_gaindemo.c -Isrc -static-libgcc -DMP_BUILD_VERSION=\"$(VERSION)\"
+	$(CC) -O2 -shared -o bin/plugins/spectrum.dll examples/plugin_spectrum.c -Isrc -static-libgcc -DMP_BUILD_VERSION=\"$(VERSION)\" -lgdi32 -lm
+	$(CC) -O2 -shared -o bin/plugins/vumeter.dll examples/plugin_vumeter.c -Isrc -static-libgcc -DMP_BUILD_VERSION=\"$(VERSION)\" -lgdi32 -lm
+	$(CC) -O2 -shared -o bin/plugins/fireworks.dll examples/plugin_fireworks.c -Isrc -static-libgcc -DMP_BUILD_VERSION=\"$(VERSION)\" -lgdi32 -lm
+	$(CC) -O2 -shared -o bin/plugins/3dspectrum.dll examples/plugin_3dspectrum.c -Isrc -static-libgcc -DMP_BUILD_VERSION=\"$(VERSION)\" -lgdi32 -lm
+	$(CC) -O2 -shared -o bin/plugins/3diso.dll examples/plugin_3diso.c -Isrc -static-libgcc -DMP_BUILD_VERSION=\"$(VERSION)\" -lgdi32 -lm
+	$(CC) -O2 -shared -o bin/plugins/fractal.dll examples/plugin_fractal.c -Isrc -static-libgcc -DMP_BUILD_VERSION=\"$(VERSION)\" -lgdi32 -lm
+	$(CC) -O2 -shared -o bin/plugins/hypnotic.dll examples/plugin_hypnotic.c -Isrc -static-libgcc -DMP_BUILD_VERSION=\"$(VERSION)\" -lgdi32 -lm
+	$(CC) -O2 -shared -o bin/plugins/webserver.dll examples/plugin_webserver.c -Isrc -Ivendor/ffmpeg/include -Lvendor/ffmpeg/lib -Wl,-Bdynamic -lavformat -lavcodec -lavutil -lswresample -Wl,-Bstatic -lws2_32 -static-libgcc -DMP_BUILD_VERSION=\"$(VERSION)\" -static
+	$(CC) -O2 -shared -o bin/plugins/restapi.dll examples/plugin_restapi.c -Isrc -lws2_32 -static-libgcc -DMP_BUILD_VERSION=\"$(VERSION)\"
+	$(CC) -O2 -shared -o bin/plugins/rtp.dll examples/plugin_rtp.c -Isrc -lws2_32 -static-libgcc -DMP_BUILD_VERSION=\"$(VERSION)\"
+	$(CC) -O2 -shared -o bin/plugins/upnp.dll examples/plugin_upnp.c -Isrc -lws2_32 -static-libgcc -DMP_BUILD_VERSION=\"$(VERSION)\"
+	$(CC) -O2 -shared -o bin/plugins/multiroom.dll examples/plugin_multiroom.c -Isrc -lws2_32 -static-libgcc -DMP_BUILD_VERSION=\"$(VERSION)\"
+	$(CC) -O2 -shared -o bin/plugins/soundquality.dll examples/plugin_soundquality.c -Isrc -static-libgcc -DMP_BUILD_VERSION=\"$(VERSION)\" -lm
+	$(CC) -O2 -shared -o bin/plugins/equalizer.dll examples/plugin_equalizer.c -Isrc -static-libgcc -DMP_BUILD_VERSION=\"$(VERSION)\" -lgdi32 -lm
+	$(CC) -O2 -shared -o bin/plugins/ts.dll examples/plugin_ts.c -Isrc -Ivendor -static-libgcc -DMP_BUILD_VERSION=\"$(VERSION)\" -lole32 -lwinmm
 	cp -f examples/multiroom.txt bin/plugins/multiroom.txt
-	$(CC) -O2 -shared -o bin/plugins/metadata.dll examples/plugin_metadata.c -Isrc -static-libgcc
-	$(CC) -O2 -shared -o bin/plugins/podcasts.dll examples/plugin_podcasts.c -Isrc -lws2_32 -lwininet -static-libgcc -DMP_BUILD_VERSION=\"$(VERSION)\"
-	$(CC) -O2 -shared -o bin/plugins/lyrics.dll examples/plugin_lyrics.c -Isrc -static-libgcc -luser32 -lgdi32
-	$(CC) -O2 -shared -o bin/plugins/cover.dll examples/plugin_cover.c -Isrc -static-libgcc -luser32 -lgdi32 -lgdiplus -Wno-incompatible-pointer-types
+	$(CC) -O2 -shared -o bin/plugins/metadata.dll examples/plugin_metadata.c -Isrc -static-libgcc -DMP_BUILD_VERSION=\"$(VERSION)\"
+	$(CC) -O2 -shared -o bin/plugins/podcasts.dll examples/plugin_podcasts.c -Isrc -lws2_32 -lwininet -static-libgcc -DMP_BUILD_VERSION=\"$(VERSION)\" -DMP_BUILD_VERSION=\"$(VERSION)\"
+	$(CC) -O2 -shared -o bin/plugins/lyrics.dll examples/plugin_lyrics.c -Isrc -static-libgcc -DMP_BUILD_VERSION=\"$(VERSION)\" -luser32 -lgdi32
+	$(CC) -O2 -shared -o bin/plugins/cover.dll examples/plugin_cover.c -Isrc -static-libgcc -DMP_BUILD_VERSION=\"$(VERSION)\" -luser32 -lgdi32 -lgdiplus -Wno-incompatible-pointer-types
 	@mkdir -p bin/core_plugins
 	cp -f bin/plugins/webserver.dll bin/plugins/metadata.dll bin/plugins/cover.dll \
 	      bin/plugins/upnp.dll bin/plugins/rtp.dll bin/plugins/multiroom.dll bin/plugins/podcasts.dll bin/core_plugins/
 	cp -f examples/multiroom.txt bin/core_plugins/multiroom.txt
 	mkdir -p bin/skins
-	$(CC) -O2 -shared -o bin/skins/skin_retro60.dll examples/plugin_skin_retro60.c -Isrc -static-libgcc
-	$(CC) -O2 -shared -o bin/skins/skin_retro70.dll examples/plugin_skin_retro70.c -Isrc -static-libgcc
-	$(CC) -O2 -shared -o bin/skins/skin_retro80.dll examples/plugin_skin_retro80.c -Isrc -static-libgcc
-	$(CC) -O2 -shared -o bin/skins/skin_retro90.dll examples/plugin_skin_retro90.c -Isrc -static-libgcc
-	$(CC) -O2 -shared -o bin/skins/skin_2000s.dll examples/plugin_skin_2000s.c -Isrc -static-libgcc
-	$(CC) -O2 -shared -o bin/skins/skin_radio.dll examples/plugin_skin_radio.c -Isrc -static-libgcc
-	$(CC) -O2 -shared -o bin/skins/skin_winamp.dll examples/plugin_skin_winamp.c -Isrc -static-libgcc
-	$(CC) -O2 -shared -o bin/skins/skin_clean.dll examples/plugin_skin_clean.c -Isrc -static-libgcc
-	$(CC) -O2 -shared -o bin/skins/skin_kitsch.dll examples/plugin_skin_kitsch.c -Isrc -static-libgcc
-	$(CC) -O2 -shared -o bin/skins/skin_cartoon.dll examples/plugin_skin_cartoon.c -Isrc -static-libgcc
-	$(CC) -O2 -shared -o bin/skins/skin_bnw.dll examples/plugin_skin_bnw.c -Isrc -static-libgcc
+	$(CC) -O2 -shared -o bin/skins/skin_retro60.dll examples/plugin_skin_retro60.c -Isrc -static-libgcc -DMP_BUILD_VERSION=\"$(VERSION)\"
+	$(CC) -O2 -shared -o bin/skins/skin_retro70.dll examples/plugin_skin_retro70.c -Isrc -static-libgcc -DMP_BUILD_VERSION=\"$(VERSION)\"
+	$(CC) -O2 -shared -o bin/skins/skin_retro80.dll examples/plugin_skin_retro80.c -Isrc -static-libgcc -DMP_BUILD_VERSION=\"$(VERSION)\"
+	$(CC) -O2 -shared -o bin/skins/skin_retro90.dll examples/plugin_skin_retro90.c -Isrc -static-libgcc -DMP_BUILD_VERSION=\"$(VERSION)\"
+	$(CC) -O2 -shared -o bin/skins/skin_2000s.dll examples/plugin_skin_2000s.c -Isrc -static-libgcc -DMP_BUILD_VERSION=\"$(VERSION)\"
+	$(CC) -O2 -shared -o bin/skins/skin_radio.dll examples/plugin_skin_radio.c -Isrc -static-libgcc -DMP_BUILD_VERSION=\"$(VERSION)\"
+	$(CC) -O2 -shared -o bin/skins/skin_winamp.dll examples/plugin_skin_winamp.c -Isrc -static-libgcc -DMP_BUILD_VERSION=\"$(VERSION)\"
+	$(CC) -O2 -shared -o bin/skins/skin_clean.dll examples/plugin_skin_clean.c -Isrc -static-libgcc -DMP_BUILD_VERSION=\"$(VERSION)\"
+	$(CC) -O2 -shared -o bin/skins/skin_kitsch.dll examples/plugin_skin_kitsch.c -Isrc -static-libgcc -DMP_BUILD_VERSION=\"$(VERSION)\"
+	$(CC) -O2 -shared -o bin/skins/skin_cartoon.dll examples/plugin_skin_cartoon.c -Isrc -static-libgcc -DMP_BUILD_VERSION=\"$(VERSION)\"
+	$(CC) -O2 -shared -o bin/skins/skin_bnw.dll examples/plugin_skin_bnw.c -Isrc -static-libgcc -DMP_BUILD_VERSION=\"$(VERSION)\"
 	cp -f examples/radio_bg.png bin/skins/radio_bg.png
 	cp -f examples/winamp_bg.png bin/skins/winamp_bg.png
 	@echo "Plugins d'exemple compilés dans bin/plugins/ et skins dans bin/skins/"
