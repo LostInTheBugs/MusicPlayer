@@ -31,6 +31,8 @@ void mp_update_set_type(int type);
 int  mp_update_get_lag(void);
 int  mp_update_get_plugins(void);
 void mp_update_set_plugins(int on);
+int  mp_update_get_channel(void);
+void mp_update_set_channel(int ch);
 void mp_update_set_lag(int days);
 
 /* Équivalents simplifiés (compatibilité) : auto = mode 1 ; set_auto(on)

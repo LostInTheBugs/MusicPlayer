@@ -3336,6 +3336,8 @@ static INT_PTR CALLBACK updcfg_dlg_proc(HWND h, UINT m, WPARAM w, LPARAM l)
                          lag >= 1 ? 1028 : 1027);
         CheckDlgButton(h, 2003, mp_update_get_plugins() ? BST_CHECKED
                                                         : BST_UNCHECKED);
+        CheckRadioButton(h, 2005, 2006,
+                         mp_update_get_channel() ? 2006 : 2005);
         return TRUE;
     }
     case WM_COMMAND:
@@ -3351,6 +3353,7 @@ static INT_PTR CALLBACK updcfg_dlg_proc(HWND h, UINT m, WPARAM w, LPARAM l)
                       IsDlgButtonChecked(h, 1030) ? 30 : 0;
             mp_update_set_lag(lag);
             mp_update_set_plugins(IsDlgButtonChecked(h, 2003) ? 1 : 0);
+            mp_update_set_channel(IsDlgButtonChecked(h, 2006) ? 1 : 0);
             EndDialog(h, 1);
         } else if (LOWORD(w) == IDC_UPD_CHECK) {
             EndDialog(h, 2);   /* vérifier maintenant */

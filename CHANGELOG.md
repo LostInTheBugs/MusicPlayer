@@ -2,6 +2,15 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.045-c15] — 2026-08-05
+
+### Added (software life cycle: release / pre-release channels)
+- **Settings ▸ Update… ▸ « Release channel »**: the user chooses between
+  - **Release (stable)** — only the latest non-pre-release (current behaviour)
+  - **Pre-release (test)** — the latest published release, pre-releases included (for testing new builds before they go stable)
+- Channel persisted in `upd.txt` (`channel=0|1`)
+- Publishing workflow: test builds are tagged and uploaded as **GitHub pre-releases** (`gh release create --prerelease`), stable builds as normal releases — stable-channel users only ever get production versions
+
 ## [2026.08.045-c14] — 2026-08-05
 
 ### Fixed (podcasts: episodes list clearing after Play / double-click)

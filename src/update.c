@@ -25,6 +25,7 @@ static int           g_mode = -1;   /* cache : 0 désactivé, 1 auto, 2 manuel, 
 static int           g_type = -1;   /* 0 toutes, 1 correctives (-cX) */
 static int           g_lag = -1;    /* jours : 0, 1, 7, 30 */
 static int           g_plugins = -1; /* 0 seul, 1 plugins avec le programme */
+static int           g_channel = -1; /* 0 release (stable), 1 pre-release (test) */
 
 /* ------------------------------------------------------------------ */
 /* Comparaison de versions "AAAA.MM.NNN[-cX]"                          */
@@ -68,8 +69,9 @@ static void cfg_save(void)
     appdata_path(path, MAX_PATH, L"\\upd.txt");
     FILE* f = _wfopen(path, L"wb");
     if (f) {
-        fprintf(f, "mode=%d\ntype=%d\nlag=%d\nplugins=%d\n",
-                g_mode, g_type, g_lag, g_plugins > 0 ? 1 : 0);
+        fprintf(f, "mode=%d\ntype=%d\nlag=%d\nplugins=%d\nchannel=%d\n",
+                g_mode, g_type, g_lag, g_plugins > 0 ? 1 : 0,
+                g_channel > 0 ? 1 : 0);
         fclose(f);
     }
 }
@@ -83,6 +85,7 @@ static void cfg_load(void)
     g_type = 0;                    /* défaut : toutes les mises à jour */
     g_lag = 7;                     /* défaut : 1 semaine */
     g_plugins = 1;                 /* défaut : plugins avec le programme */
+    g_channel = 0;                 /* défaut : release (stable) */
     if (f) {
         char buf[128] = "";
         size_t n = fread(buf, 1, sizeof(buf) - 1, f);
@@ -93,6 +96,7 @@ static void cfg_load(void)
         if ((p = strstr(buf, "type="))) g_type = atoi(p + 5);
         if ((p = strstr(buf, "lag=")))  g_lag  = atoi(p + 4);
         if ((p = strstr(buf, "plugins="))) g_plugins = atoi(p + 8);
+        if ((p = strstr(buf, "channel="))) g_channel = atoi(p + 8);
         if (!strstr(buf, "mode=")) {
             /* ancien format : un seul caractère '0'/'1'/'2' */
             int c = buf[0];
@@ -135,6 +139,18 @@ int mp_update_get_plugins(void)
 void mp_update_set_plugins(int on)
 {
     g_plugins = on ? 1 : 0;
+    cfg_save();
+}
+
+int mp_update_get_channel(void)
+{
+    if (g_channel < 0) cfg_load();
+    return g_channel > 0 ? 1 : 0;
+}
+
+void mp_update_set_channel(int ch)
+{
+    g_channel = ch ? 1 : 0;
     cfg_save();
 }
 
@@ -308,7 +324,17 @@ static DWORD WINAPI upd_thread(LPVOID arg)
         InternetSetOptionW(inet, INTERNET_OPTION_CONNECT_TIMEOUT, &to, sizeof(to));
         InternetSetOptionW(inet, INTERNET_OPTION_RECEIVE_TIMEOUT, &to, sizeof(to));
 
-        HINTERNET url = InternetOpenUrlW(inet, UPDATE_URL, NULL, 0,
+        wchar_t check_url[256];
+        if (mp_update_get_channel() == 1) {
+            /* canal test : la DERNIÈRE release (pre-release comprise) */
+            wcscpy(check_url,
+                   L"https://api.github.com/repos/LostInTheBugs/"
+                   L"MusicPlayer/releases?per_page=1");
+        } else {
+            /* canal stable : la dernière release non-pre-release */
+            wcscpy(check_url, UPDATE_URL);
+        }
+        HINTERNET url = InternetOpenUrlW(inet, check_url, NULL, 0,
                                          INTERNET_FLAG_RELOAD |
                                          INTERNET_FLAG_NO_CACHE_WRITE |
                                          INTERNET_FLAG_SECURE, 0);
