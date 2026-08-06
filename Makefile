@@ -13,7 +13,7 @@
 #   make clean
 # ======================================================================
 
-VERSION := 2026.08.045-c21
+VERSION := 2026.08.045-c22
 
 CROSS    := x86_64-w64-mingw32-
 CC       := $(CROSS)gcc
@@ -198,7 +198,7 @@ plugins-examples: $(BIN)
 # ----------------------------------------------------------------------
 # Tests sous Wine (lecture, vitesse, pause, stop, fin de fichier)
 # ----------------------------------------------------------------------
-test: all plugins-examples test-samples
+test: all core plugins-examples test-samples
 	cd bin && wine64 ./MusicPlayer.exe --selftest ../test/test.mp3 ../test/test.mp4; \
 	echo "exit code = $$?"; \
 	echo "--- selftest.log ---"; cat selftest.log

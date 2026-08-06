@@ -2835,6 +2835,10 @@ static void pod_play_episode(HWND h)
                                 extern void cc_cmd_raw(const char* b);
                                 cc_cmd_raw(body);
                                 free(body);
+                                /* synchronise la copie locale de la
+                                 * playlist (l'affichage du client) */
+                                extern void cc_plist_refresh(void);
+                                cc_plist_refresh();
                                 start = found >= 0 ? found : 0;
                             }
                         }
