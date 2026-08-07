@@ -2,6 +2,16 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.046-c10] — 2026-08-07
+
+### Changed — Now playing panel layout (podcasts)
+- The episode description now sits **immediately below the title** (the
+  previous layout reserved a fixed-height box under the title, leaving a
+  large empty gap before the description).
+- Slightly larger fonts: title 17→18, description 12→13.
+- The horizontal separator is now drawn **right under the description**,
+  above the transcription area (button / status / transcript text).
+
 ## [2026.08.046-c9] — 2026-08-07
 
 ### Added — automatic plugin repair when the engine still runs outdated plugins

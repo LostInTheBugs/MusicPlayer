@@ -2915,10 +2915,10 @@ static void now_panel_paint(HDC hdc, const RECT* rc)
     int w = rc->right - rc->left - 28;
     int y = rc->top + 12;
 
-    HFONT ft_title = CreateFontW(17, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
+    HFONT ft_title = CreateFontW(18, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
         DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
         CLEARTYPE_QUALITY, DEFAULT_PITCH, L"Segoe UI");
-    HFONT ft_desc = CreateFontW(12, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+    HFONT ft_desc = CreateFontW(13, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
         DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
         CLEARTYPE_QUALITY, DEFAULT_PITCH, L"Segoe UI");
     HFONT ft_small = CreateFontW(11, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
@@ -2926,27 +2926,29 @@ static void now_panel_paint(HDC hdc, const RECT* rc)
         CLEARTYPE_QUALITY, DEFAULT_PITCH, L"Segoe UI");
     SetBkMode(hdc, TRANSPARENT);
 
-    /* 1) titre de l'épisode */
+    /* 1) titre de l'épisode — la description suit IMMÉDIATEMENT :
+     * la hauteur utilisée est celle retournée par DrawText (le rect
+     * n'est qu'une limite, pas un espace réservé) */
     if (g_now_title[0]) {
         wchar_t wt[520];
         utf8_to_wide(g_now_title, wt, 520);
         HFONT old = (HFONT)SelectObject(hdc, ft_title);
         SetTextColor(hdc, g_skin.text);
         RECT r = { x, y, x + w, y + 90 };
-        DrawTextW(hdc, wt, -1, &r, DT_WORDBREAK | DT_LEFT | DT_TOP);
+        int h = DrawTextW(hdc, wt, -1, &r, DT_WORDBREAK | DT_LEFT | DT_TOP);
         SelectObject(hdc, old);
-        y = r.bottom + 6;
+        y += h + 6;
     }
-    /* 2) description de l'épisode (5 lignes max) */
+    /* 2) description de l'épisode (5 lignes max) — juste sous le titre */
     if (g_now_desc[0]) {
         wchar_t wd[9000];
         utf8_to_wide(g_now_desc, wd, 9000);
         HFONT old = (HFONT)SelectObject(hdc, ft_desc);
         SetTextColor(hdc, g_skin.text);
-        RECT r = { x, y, x + w, y + 78 };
-        DrawTextW(hdc, wd, -1, &r, DT_WORDBREAK | DT_LEFT | DT_TOP);
+        RECT r = { x, y, x + w, y + 90 };
+        int h = DrawTextW(hdc, wd, -1, &r, DT_WORDBREAK | DT_LEFT | DT_TOP);
         SelectObject(hdc, old);
-        y = r.bottom + 8;
+        y += h + 8;
     }
     /* séparateur */
     {
