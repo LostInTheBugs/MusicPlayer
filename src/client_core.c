@@ -197,6 +197,34 @@ void cc_stop(void)
     InterlockedExchange(&g_started, 0);
 }
 
+/* Arrêt du moteur AVANT une mise à jour. cc_stop laisse le SERVICE
+ * Windows tourner (24/7 voulu), mais la MAJ doit remplacer les DLL de
+ * core_plugins/ : un moteur vivant (surtout un service LocalSystem que
+ * le taskkill du script ne peut pas tuer sans elevation) verrouille les
+ * fichiers → extraction impossible. Le shutdown REST fonctionne dans les
+ * deux cas (même utilisateur ou service) : c'est l'arrêt de référence. */
+void cc_stop_engine(void)
+{
+    cc_http2("POST", "/api/cmd", "{\"cmd\":\"shutdown\"}");
+    if (g_core_proc) {
+        /* moteur lancé par CE client : attendre l'arrêt propre, sinon
+         * arrêt forcé (le moteur est conçu pour être relancé) */
+        if (WaitForSingleObject(g_core_proc, 2000) != WAIT_OBJECT_0)
+            TerminateProcess(g_core_proc, 0);
+        CloseHandle(g_core_proc);
+        g_core_proc = NULL;
+    } else {
+        /* moteur = service : attendre qu'il ne réponde plus (jusqu'à
+         * ~6 s), puis repli sur un arrêt SCM propre si besoin */
+        for (int i = 0; i < 30; i++) {
+            if (cc_ping() == 0) break;
+            Sleep(200);
+        }
+        if (svc_running() == 1) svc_stop();
+    }
+    InterlockedExchange(&g_started, 0);
+}
+
 void cc_cmd(const char* cmd)
 {
     char body[128];

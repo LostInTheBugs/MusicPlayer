@@ -11,6 +11,7 @@
 #include <string.h>
 #include <time.h>
 #include "update.h"
+#include "client_core.h"
 
 #ifndef MP_VERSION
 #define MP_VERSION "0.0.0"
@@ -416,6 +417,13 @@ int mp_update_apply_and_restart(void)
     wcscat(zip_path, L"\\update.zip");
     if (mp_update_download(mp_update_latest(), zip_path) != 0) return -1;
 
+    /* arrête le moteur (enfant OU service Windows) : un moteur vivant
+     * verrouille les DLL de core_plugins et ferait échouer l'extraction.
+     * cc_stop ne suffit pas : il laisse le SERVICE tourner (24/7 voulu) ;
+     * le taskkill du script, lui, échoue sur un service LocalSystem sans
+     * elevation. Le shutdown REST couvre les deux cas. */
+    cc_stop_engine();
+
     /* script : arrête le client ET le moteur (le moteur lancé au login
      * verrouille les DLL des core_plugins et ferait échouer
      * l'extraction), extrait le zip avec tar.exe (intégré à Windows 10+,
@@ -430,20 +438,27 @@ int mp_update_apply_and_restart(void)
     fwprintf(f,
         L"@echo off\r\n"
         L"rem ===== MusicPlayer updater =====\r\n"
+        L"rem arrete le moteur : service Windows d'abord (un taskkill sans\r\n"
+        L"rem elevation echoue sur un service LocalSystem), puis kill des\r\n"
+        L"rem processus avec VERIFICATION (le tar ne doit jamais partir en\r\n"
+        L"rem course avec un processus mourant qui verrouille ses fichiers)\r\n"
+        L"sc stop MusicPlayerCore >nul 2>&1\r\n"
         L"taskkill /IM MusicPlayer.exe /F >nul 2>&1\r\n"
         L"taskkill /IM MusicPlayerApp.exe /F >nul 2>&1\r\n"
         L"taskkill /IM musicplayer-core.exe /F >nul 2>&1\r\n"
-        L"rem nouveau : re-tue 3x (un process peut mettre du temps à\r\n"
-        L"rem libérer son exe, sinon l'extraction échoue sur le fichier)\r\n"
-        L"rem (ping = sommeil fiable SANS console : timeout.exe exige une\r\n"
-        L"rem console et échoue instantanément ici, lancement CREATE_NO_WINDOW)\r\n"
-        L"for /l %%i in (1,1,3) do (\r\n"
-        L"  ping -n 2 127.0.0.1 >nul\r\n"
-        L"  taskkill /IM MusicPlayer.exe /F >nul 2>&1\r\n"
+        L"for /l %%%%i in (1,1,10) do (\r\n"
+        L"  tasklist /FI \"IMAGENAME eq MusicPlayerApp.exe\" 2>nul | find /i \"MusicPlayerApp.exe\" >nul || goto :apps_dead\r\n"
         L"  taskkill /IM MusicPlayerApp.exe /F >nul 2>&1\r\n"
-        L"  taskkill /IM musicplayer-core.exe /F >nul 2>&1\r\n"
+        L"  ping -n 2 127.0.0.1 >nul\r\n"
         L")\r\n"
-        L"ping -n 3 127.0.0.1 >nul\r\n"
+        L":apps_dead\r\n"
+        L"for /l %%%%i in (1,1,10) do (\r\n"
+        L"  tasklist /FI \"IMAGENAME eq musicplayer-core.exe\" 2>nul | find /i \"musicplayer-core.exe\" >nul || goto :core_dead\r\n"
+        L"  taskkill /IM musicplayer-core.exe /F >nul 2>&1\r\n"
+        L"  ping -n 2 127.0.0.1 >nul\r\n"
+        L")\r\n"
+        L":core_dead\r\n"
+        L"ping -n 2 127.0.0.1 >nul\r\n"
         L"cd /d \"%~dp0\"\r\n"
         L"tar -xf update.zip >updater.err 2>&1\r\n"
         L"if errorlevel 1 (\r\n"

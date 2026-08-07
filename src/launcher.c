@@ -11,7 +11,7 @@
  * Séquence de téléchargement :
  *   1. zip du runtime (repo/ffmpeg/ffmpeg-win64-lgpl-shared.zip),
  *      extrait avec le tar.exe natif — 3 tentatives ;
- *   2. en cas d'échec : les 4 DLL individuellement (repo/ffmpeg/*.dll),
+ *   2. en cas d'échec : les 4 DLL individuellement (dossier repo/ffmpeg),
  *      écrites directement à côté de l'exe — 2 tentatives chacune ;
  *   3. échec total : message détaillé (dossier attendu + plan B manuel).
  */
@@ -103,7 +103,7 @@ static int ffmpeg_download(void)
     wchar_t* slash = wcsrchr(exe, L'\\');
     if (slash) *slash = 0;
     wchar_t base[512];
-    MultiByteToWideChar(CP_UTF8, 0, REPO_DEFAULT_BASE, -1, base, 512);
+    wcscpy(base, REPO_DEFAULT_BASE);   /* déjà en wchar_t : pas de conversion */
 
     /* 1) le zip (3 tentatives) puis extraction tar */
     wchar_t url[1024], zpath[MAX_PATH];

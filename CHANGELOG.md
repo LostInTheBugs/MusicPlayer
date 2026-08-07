@@ -2,6 +2,15 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.046-c3] — 2026-08-07
+
+### Fixed (update blocked by the running engine — « a program has files open »)
+- The update now **stops the engine before applying**, including when it runs as a **Windows service** (`MusicPlayerCore`): the client sends the REST shutdown (`POST /api/cmd shutdown`), waits for the process to die (child: wait + forced stop fallback; service: health poll + SCM stop fallback). Previously the service kept running (24/7 by design) and locked `core_plugins/*.dll` — `taskkill` in the script cannot kill a LocalSystem service without elevation, so the extraction always failed
+- The script now also stops the service (`sc stop MusicPlayerCore`) and **verifies each process is really gone** (`tasklist` loop, up to 10 tries) before extracting — no more race with a dying process still locking its files
+- **`fwprintf` collapsed `%%i` → `%i`**: every generated `updater.bat` since 045-c21 contained `for /l %i in (…)` — invalid batch syntax, so the re-kill/verification loop was **silently skipped** on real Windows (the timeout sleeps were already no-ops without a console). The escape is now correct (`%%%%i` → `%%i` in the file)
+- **Launcher runtime download URL broken since v044**: `REPO_DEFAULT_BASE` is a wide string but was passed to `MultiByteToWideChar` as ANSI — the FFmpeg runtime download from a fresh minimal-zip install always failed (fallback DLLs too). Now copied directly (`wcscpy`)
+- After an update the engine service stays stopped until the next boot or a manual start (Settings ▸ Interface ▸ Windows service ▸ Start); the client starts the engine as a normal process in the meantime
+
 ## [2026.08.046-c2] — 2026-08-07 (pre-release branch)
 
 ### Fixed (plugin repository follows the release channel)

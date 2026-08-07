@@ -25,6 +25,12 @@ int cc_start(void);
 /* Arrête le moteur (POST /api/cmd shutdown). */
 void cc_stop(void);
 
+/* Arrêt du moteur AVANT une mise à jour : contrairement à cc_stop (qui
+ * laisse le SERVICE tourner 24/7), la MAJ exige un moteur MORT (il
+ * verrouille les DLL de core_plugins sinon). Couvre le moteur enfant ET
+ * le service (shutdown REST + attente + repli SCM). */
+void cc_stop_engine(void);
+
 /* Envoie une commande sans valeur : play, pause, stop, next, prev… */
 void cc_cmd(const char* cmd);
 
