@@ -2,6 +2,20 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.046-c7] — 2026-08-07
+
+### Fixed — episode description now appears even with an outdated engine
+- When the episode lookup fails because the running engine still has
+  **outdated plugins in memory** (the `MusicPlayerCore` Windows service keeps
+  the old DLLs loaded even after an update), the client now **restarts the
+  engine automatically**: it sends the REST shutdown (works for both the child
+  process and the service), relaunches its own core from the updated install
+  folder, and resends the playlist so playback continues. Happens once per
+  session, after ~24 s of failed lookups.
+- The podcasts plugin now answers `{"error":"episode not found"}` (distinct
+  from the generic `not found`) when the episode is simply not in the
+  subscriptions — the client knows not to restart the engine in that case.
+
 ## [2026.08.046-c6] — 2026-08-07
 
 ### Fixed — podcasts plugin never updated by automatic updates

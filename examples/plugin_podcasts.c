@@ -1046,7 +1046,13 @@ static void handle_get(SOCKET c, const char* path, const char* query)
         for (int i = 0; i < g_ep_n; i++) {
             if (!strcmp(g_eps[i].url, url)) { found = i; break; }
         }
-        if (found < 0) { send_json(c, 404, "{\"error\":\"not found\"}"); return; }
+        if (found < 0) {
+            /* erreur DISTINCTE : le client distingue « épisode pas dans
+             * les abonnements » (core à jour) de « endpoint absent »
+             * (plugins obsolètes → redémarrage du moteur par le client) */
+            send_json(c, 404, "{\"error\":\"episode not found\"}");
+            return;
+        }
         {
             char eurl[1024], etitle[1024], edesc[8192];
             json_escape_a(g_eps[found].url, eurl, sizeof(eurl));

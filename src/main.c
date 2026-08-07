@@ -2464,6 +2464,8 @@ static char* podcast_http(const char* method, const char* path,
 
 static char  g_now_url[512];        /* URL de la piste courante (cache) */
 static int   g_now_retry = 0;       /* re-tentatives du fetch épisode */
+static int   g_now_stale = 0;       /* échecs « endpoint absent » consécutifs */
+static int   g_now_restarted = 0;   /* moteur déjà redémarré (1 fois/session) */
 static char  g_now_title[512];
 static char  g_now_desc[8192];
 static int   g_now_ok = 0;          /* 1 = le panneau podcasts s'affiche */
@@ -2615,8 +2617,11 @@ static void strip_html_tags(char* s)
 }
 
 /* infos de l'épisode courant (titre + description) via le plugin
- * podcasts ; remplit g_now_title/g_now_desc/g_now_ok */
-static void now_fetch_episode(const char* url)
+ * podcasts ; retour : 0 = chargées, 1 = épisode inconnu du plugin
+ * (moteur à jour), -1 = endpoint absent ou injoignable (moteur ou
+ * plugins obsolètes — l'erreur « not found » générique des vieux
+ * plugins, ou connexion refusée) */
+static int now_fetch_episode(const char* url)
 {
     g_now_title[0] = 0;
     g_now_desc[0] = 0;
@@ -2627,7 +2632,8 @@ static void now_fetch_episode(const char* url)
     snprintf(path, sizeof(path), "/podcasts/episode?url=%s", enc);
     int len = 0;
     char* resp = podcast_http("GET", path, NULL, &len);
-    if (!resp) return;
+    if (!resp) return -1;
+    int rc = -1;
     if (strstr(resp, "\"ok\":1")) {
         pod_json_str(resp, "title", g_now_title, sizeof(g_now_title));
         pod_json_str(resp, "desc", g_now_desc, sizeof(g_now_desc));
@@ -2635,8 +2641,12 @@ static void now_fetch_episode(const char* url)
         now_json_unescape(g_now_desc);
         strip_html_tags(g_now_desc);
         g_now_ok = 1;
+        rc = 0;
+    } else if (strstr(resp, "episode not found")) {
+        rc = 1;   /* moteur à jour, épisode pas dans les abonnements */
     }
     free(resp);
+    return rc;
 }
 
 /* charge la transcription sauvegardée d'une source ; 0 si trouvée */
@@ -2715,6 +2725,61 @@ static void now_transcribe_start(void)
     InvalidateRect(g_hwnd, NULL, FALSE);
 }
 
+/* renvoie la playlist complète au moteur (perdue au redémarrage) et
+ * relance l'épisode courant */
+static void now_resend_playlist(void)
+{
+    if (g_plist_n <= 0 || g_plist_idx < 0 || g_plist_idx >= g_plist_n)
+        return;
+    int cap = 64;
+    for (int i = 0; i < g_plist_n; i++)
+        cap += (int)wcslen(g_plist[i]) + 96;
+    char* items = (char*)malloc((size_t)cap + 64);
+    if (!items) return;
+    int o = 0;
+    items[o++] = '[';
+    for (int i = 0; i < g_plist_n; i++) {
+        char u[MAX_PATH * 4], t[MAX_PATH * 4];
+        wide_to_utf8(g_plist[i], u, sizeof(u));
+        if (i > 0) items[o++] = ',';
+        if (g_plist_title[i] && g_plist_title[i][0]) {
+            wide_to_utf8(g_plist_title[i], t, sizeof(t));
+            o += snprintf(items + o, cap - o, "{\"url\":\"%s\",\"title\":\"%s\"}",
+                          u, t);
+        } else {
+            o += snprintf(items + o, cap - o, "\"%s\"", u);
+        }
+    }
+    items[o++] = ']';
+    items[o] = 0;
+    char* body = (char*)malloc((size_t)cap + 128);
+    if (body) {
+        snprintf(body, (size_t)cap + 128,
+                 "{\"cmd\":\"playlist\",\"items\":%s,\"start\":%d}",
+                 items, g_plist_idx);
+        extern void cc_cmd_raw(const char* b);
+        cc_cmd_raw(body);
+        free(body);
+    }
+    free(items);
+}
+
+/* le moteur répond mais avec des plugins obsolètes (le service Windows
+ * garde les anciennes DLL en mémoire) : on l'arrête (shutdown REST,
+ * fonctionne enfant ET service) et on relance SON core — depuis le
+ * dossier du client, à jour. Une seule fois par session. */
+static void now_restart_engine(void)
+{
+    g_now_restarted = 1;
+    log_line("Now: engine restart (outdated plugins, episode lookup failing)");
+    cc_stop_engine();
+    cc_start();
+    now_resend_playlist();
+    g_now_stale = 0;
+    g_now_retry = 0;
+    InvalidateRect(g_hwnd, NULL, FALSE);
+}
+
 /* appelé à chaque tick : détection de changement de piste + poll de la
  * tâche de transcription */
 static void now_panel_update(void)
@@ -2729,6 +2794,7 @@ static void now_panel_update(void)
         g_trans_err[0] = 0;
         g_trans_scroll = 0;
         g_now_retry = 0;
+        g_now_stale = 0;
         int is_url = _strnicmp(name, "http://", 7) == 0 ||
                      _strnicmp(name, "https://", 8) == 0;
         if (is_url) {
@@ -2745,9 +2811,21 @@ static void now_panel_update(void)
     if (!g_now_ok && ++g_now_retry % 8 == 0 &&
         (_strnicmp(g_now_url, "http://", 7) == 0 ||
          _strnicmp(g_now_url, "https://", 8) == 0)) {
-        now_fetch_episode(g_now_url);
-        if (g_now_ok && now_fetch_transcript(g_now_url) == 0)
-            g_trans_state = 2;
+        int rc = now_fetch_episode(g_now_url);
+        if (rc == 0) {
+            g_now_stale = 0;
+            if (now_fetch_transcript(g_now_url) == 0)
+                g_trans_state = 2;
+        } else if (rc == -1) {
+            /* endpoint absent ou injoignable : moteur/plugins obsolètes
+             * (le service Windows garde les anciennes DLL en mémoire).
+             * Après ~12 échecs (~24 s), on redémarre le moteur une fois :
+             * le client relance SON core, depuis son dossier à jour. */
+            if (++g_now_stale >= 12 && !g_now_restarted)
+                now_restart_engine();
+        } else {
+            g_now_stale = 0;   /* épisode inconnu : rien à redémarrer */
+        }
         InvalidateRect(g_hwnd, NULL, FALSE);
     }
     if (g_trans_state == 1) {
