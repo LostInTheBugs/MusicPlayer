@@ -2466,6 +2466,8 @@ static char  g_now_url[512];        /* URL de la piste courante (cache) */
 static int   g_now_retry = 0;       /* re-tentatives du fetch épisode */
 static int   g_now_stale = 0;       /* échecs « endpoint absent » consécutifs */
 static int   g_now_restarted = 0;   /* moteur déjà redémarré (1 fois/session) */
+static int   g_now_repaired = 0;    /* auto-réparation déjà tentée (1 fois) */
+static int   g_now_repairing = 0;   /* réparation en cours (affichage) */
 static char  g_now_title[512];
 static char  g_now_desc[8192];
 static int   g_now_ok = 0;          /* 1 = le panneau podcasts s'affiche */
@@ -2780,6 +2782,53 @@ static void now_restart_engine(void)
     InvalidateRect(g_hwnd, NULL, FALSE);
 }
 
+/* auto-réparation : le dossier d'installation contient de vieux plugins
+ * (MAJ partielle — extraction pendant que le moteur verrouillait les
+ * DLL) : télécharge le zip de la version courante et remplace les
+ * plugins du core + les fichiers de langue. Retour 0 si OK. */
+static int now_repair_plugins(void)
+{
+    wchar_t exe[MAX_PATH], zip[MAX_PATH];
+    GetModuleFileNameW(NULL, exe, MAX_PATH);
+    wchar_t* slash = wcsrchr(exe, L'\\');
+    if (!slash) return -1;
+    wcscpy(slash + 1, L"repair.zip");
+    wcscpy(zip, exe);
+    if (mp_update_download(MP_VERSION, zip) != 0) return -1;
+    *slash = 0;   /* exe = dossier d'installation */
+    wchar_t cmd[900];
+    swprintf(cmd, 900,
+        L"cmd.exe /c cd /d \"%ls\" && tar -xf \"%ls\" "
+        L"core_plugins/podcasts.dll core_plugins/webserver.dll "
+        L"core_plugins/transcribe_whisper.dll lang/en.lang lang/fr.lang",
+        exe, zip);
+    int rc = _wsystem(cmd);
+    DeleteFileW(zip);
+    return rc == 0 ? 0 : -1;
+}
+
+/* moteur redémarré mais le dossier est toujours obsolète : répare les
+ * plugins du core puis relance le moteur (une seule fois par session) */
+static void now_repair_engine(void)
+{
+    g_now_repaired = 1;
+    g_now_repairing = 1;
+    log_line("Now: engine repair (outdated plugins, downloading own zip)");
+    InvalidateRect(g_hwnd, NULL, FALSE);
+    cc_stop_engine();
+    if (now_repair_plugins() == 0) {
+        cc_start();
+        now_resend_playlist();
+        g_now_stale = 0;
+        g_now_retry = 0;
+        log_line("Now: engine repair done");
+    } else {
+        log_line("Now: engine repair failed");
+    }
+    g_now_repairing = 0;
+    InvalidateRect(g_hwnd, NULL, FALSE);
+}
+
 /* appelé à chaque tick : détection de changement de piste + poll de la
  * tâche de transcription */
 static void now_panel_update(void)
@@ -2820,9 +2869,15 @@ static void now_panel_update(void)
             /* endpoint absent ou injoignable : moteur/plugins obsolètes
              * (le service Windows garde les anciennes DLL en mémoire).
              * Après ~12 échecs (~24 s), on redémarre le moteur une fois :
-             * le client relance SON core, depuis son dossier à jour. */
+             * le client relance SON core, depuis son dossier à jour. Si
+             * le dossier contient encore de vieux plugins (MAJ partielle),
+             * on télécharge le zip de la version courante et on remplace
+             * les plugins du core + les fichiers de langue. */
             if (++g_now_stale >= 12 && !g_now_restarted)
                 now_restart_engine();
+            else if (g_now_restarted && g_now_stale >= 12 &&
+                     !g_now_repaired)
+                now_repair_engine();
         } else {
             g_now_stale = 0;   /* épisode inconnu : rien à redémarrer */
         }
@@ -5024,11 +5079,19 @@ static void paint_center(HDC hdc, RECT* rc)
         }
         /* moteur redémarré mais toujours obsolète (dossier d'install
          * jamais mis à jour) : message explicite au lieu d'un échec
-         * silencieux */
+         * silencieux (fallback codé en dur si le fichier de langue est
+         * lui-même obsolète) */
         if (g_now_restarted && g_now_stale >= 10) {
             HFONT old = (HFONT)SelectObject(hdc, small);
             SetTextColor(hdc, g_skin.text);
-            const wchar_t* warn = lang_get("now_plugins_outdated");
+            const wchar_t* warn;
+            if (g_now_repairing)
+                warn = L"Repairing engine plugins…";
+            else {
+                warn = lang_get("now_plugins_outdated");
+                if (wcsncmp(warn, L"now_plugins_outdated", 21) == 0)
+                    warn = L"Engine plugins are outdated — close MusicPlayer, extract the update zip over the install folder, then restart";
+            }
             RECT r = vis_rc;
             r.top = vis_rc.top + 62;
             DrawTextW(hdc, warn, -1, &r,

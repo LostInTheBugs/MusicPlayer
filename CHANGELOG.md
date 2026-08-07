@@ -2,6 +2,19 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.046-c9] — 2026-08-07
+
+### Added — automatic plugin repair when the engine still runs outdated plugins
+- When the engine was restarted but still runs outdated core plugins (a
+  partial update left new executables + old DLLs), the client now **repairs
+  itself**: it stops the engine, downloads the zip of its own version,
+  extracts `core_plugins/*` and the language files over the install folder,
+  restarts the engine and resumes the playlist. One attempt per session.
+- The « engine plugins are outdated » message now has a **hard-coded
+  fallback** (in English) when the local language file is itself outdated —
+  no more raw key shown on screen (e.g. after a partial extraction that
+  didn't replace `lang/fr.lang`).
+
 ## [2026.08.046-c8] — 2026-08-07
 
 ### Fixed — update script aborts cleanly when the engine cannot be stopped
