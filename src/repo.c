@@ -27,6 +27,30 @@ static void repo_appdata_path(wchar_t* out, size_t cap, const wchar_t* file)
     }
 }
 
+/* Canal pre-release ? (lu directement dans upd.txt : utilisable par le
+ * lanceur et le moteur, qui ne linkent pas update.c) */
+int repo_is_pre_channel(void)
+{
+    wchar_t path[MAX_PATH];
+    repo_appdata_path(path, MAX_PATH, L"\\upd.txt");
+    FILE* f = _wfopen(path, L"r");
+    if (!f) return 0;
+    char buf[256];
+    int pre = 0;
+    while (fgets(buf, sizeof(buf), f)) {
+        if (strncmp(buf, "channel=1", 9) == 0) { pre = 1; break; }
+    }
+    fclose(f);
+    return pre;
+}
+
+const wchar_t* repo_default_base(void)
+{
+    if (repo_is_pre_channel())
+        return REPO_PRE_BASE;
+    return REPO_DEFAULT_BASE;
+}
+
 int repo_list_load(wchar_t urls[][512], int max)
 {
     int n = 0;
@@ -47,7 +71,9 @@ int repo_list_load(wchar_t urls[][512], int max)
         fclose(f);
     }
     if (n == 0) {
-        wcscpy(urls[0], REPO_DEFAULT_BASE);
+        /* premier démarrage : le repo par défaut du canal courant
+         * (pre-release → branche pre-release, sinon master) */
+        wcscpy(urls[0], repo_default_base());
         n = 1;
     }
     return n;

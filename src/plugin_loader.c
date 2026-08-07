@@ -342,9 +342,39 @@ const char* mp_plugins_get_title(const char* path)
 /* seul le plugin (la DLL) est téléchargé, pas le programme.           */
 /* ------------------------------------------------------------------ */
 #include <wininet.h>
+#include <shlobj.h>
 
 #define PLUGIN_MANIFEST_URL \
     L"https://raw.githubusercontent.com/LostInTheBugs/MusicPlayer/master/repo/plugins.json"
+
+/* Canal pre-release ? (lecture locale de upd.txt : le moteur ne linke
+ * pas repo.c/update.c) */
+static int pre_channel_local(void)
+{
+    wchar_t path[MAX_PATH];
+    if (SHGetFolderPathW(NULL, CSIDL_APPDATA, NULL, 0, path) != S_OK)
+        return 0;
+    wcscat_s(path, MAX_PATH, L"\\MusicPlayer\\upd.txt");
+    FILE* f = _wfopen(path, L"r");
+    if (!f) return 0;
+    char buf[256];
+    int pre = 0;
+    while (fgets(buf, sizeof(buf), f)) {
+        if (strncmp(buf, "channel=1", 9) == 0) { pre = 1; break; }
+    }
+    fclose(f);
+    return pre;
+}
+
+/* manifeste selon le canal de mise à jour (pre-release → branche
+ * pre-release) ; la branche peut ne pas exister : 404 géré plus bas */
+static const wchar_t* plugin_manifest_url(void)
+{
+    if (pre_channel_local())
+        return L"https://raw.githubusercontent.com/LostInTheBugs/"
+               L"MusicPlayer/pre-release/repo/plugins.json";
+    return PLUGIN_MANIFEST_URL;
+}
 
 static int json_str(const char* json, const char* key, char* out, int max)
 {
@@ -405,7 +435,7 @@ int mp_plugins_check_updates(void)
     DWORD to = 15000;
     InternetSetOptionW(inet, INTERNET_OPTION_CONNECT_TIMEOUT, &to, sizeof(to));
     InternetSetOptionW(inet, INTERNET_OPTION_RECEIVE_TIMEOUT, &to, sizeof(to));
-    HINTERNET uh = InternetOpenUrlW(inet, PLUGIN_MANIFEST_URL, NULL, 0,
+    HINTERNET uh = InternetOpenUrlW(inet, plugin_manifest_url(), NULL, 0,
                                     INTERNET_FLAG_RELOAD |
                                     INTERNET_FLAG_NO_CACHE_WRITE, 0);
     if (uh) {

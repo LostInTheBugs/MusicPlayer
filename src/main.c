@@ -2087,6 +2087,17 @@ static void repo_fetch_current(HWND h)
     g_repo_list = NULL;
     g_repo_n = 0;
     int rc = repo_fetch(json_url, &g_repo_list, &g_repo_n);
+    if (rc != 0 && wcsstr(g_repo_base, L"pre-release")) {
+        /* la branche pre-release peut ne pas exister (volontairement) :
+         * repli sur le repo master */
+        log_line("repo pre-release indisponible — repli sur master");
+        wcscpy(g_repo_base, REPO_DEFAULT_BASE);
+        swprintf(json_url, 1024, L"%ls/plugins.json", g_repo_base);
+        repo_free(g_repo_list, g_repo_n);
+        g_repo_list = NULL;
+        g_repo_n = 0;
+        rc = repo_fetch(json_url, &g_repo_list, &g_repo_n);
+    }
     SetCursor(cur);
     if (rc != 0)
         MessageBoxW(h, rc == -1 ? L"Network error (check the URL)."
@@ -5522,15 +5533,25 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR lpCmdLine, int nCmdSh
      * TOUJOURS revenir à l'écran (avant : ExitProcess(0) → l'appli
      * restait fermée après chaque mise à jour) */
     if (lpCmdLine && strstr(lpCmdLine, "--update-plugins")) {
+        /* base selon le canal : pre-release → branche pre-release ;
+         * si cette branche n'existe pas (404), repli sur master */
+        const wchar_t* base = repo_default_base();
         wchar_t json_url[1024];
-        swprintf(json_url, 1024, L"%ls/plugins.json", REPO_DEFAULT_BASE);
+        swprintf(json_url, 1024, L"%ls/plugins.json", base);
         repo_plugin* list = NULL;
         int n = 0;
-        if (repo_fetch(json_url, &list, &n) == 0) {
+        if (repo_fetch(json_url, &list, &n) != 0 &&
+            wcsstr(base, L"pre-release")) {
+            log_line("repo pre-release indisponible — repli sur master");
+            base = REPO_DEFAULT_BASE;
+            swprintf(json_url, 1024, L"%ls/plugins.json", base);
+            repo_fetch(json_url, &list, &n);
+        }
+        if (n > 0) {
             for (int i = 0; i < n; i++) {
                 const char* ty = list[i].type;
                 if (ty && (ty[0] == 's' || ty[0] == 'r' || ty[0] == 'e'))
-                    repo_download(REPO_DEFAULT_BASE, &list[i]);
+                    repo_download(base, &list[i]);
             }
             repo_free(list, n);
         }

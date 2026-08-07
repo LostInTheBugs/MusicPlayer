@@ -19,6 +19,17 @@
 #define REPO_DEFAULT_BASE \
     L"https://raw.githubusercontent.com/LostInTheBugs/MusicPlayer/master/repo"
 
+#define REPO_PRE_BASE \
+    L"https://raw.githubusercontent.com/LostInTheBugs/MusicPlayer/pre-release/repo"
+
+/* Base du repository par défaut selon le canal de mise à jour :
+ *   - canal pre-release → branche pre-release (plugins de test)
+ *   - canal release     → master (production)
+ * La branche pre-release peut ne pas exister sur GitHub (404) : les
+ * appels gèrent l'échec (message + repli éventuel sur master). */
+const wchar_t* repo_default_base(void);
+int repo_is_pre_channel(void);
+
 #define REPO_MAX_PLUGINS 128
 #define REPO_MAX_URLS 16
 

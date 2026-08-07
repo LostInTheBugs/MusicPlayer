@@ -13,7 +13,7 @@
 #   make clean
 # ======================================================================
 
-VERSION := 2026.08.046-c1
+VERSION := 2026.08.046-c2
 
 CROSS    := x86_64-w64-mingw32-
 CC       := $(CROSS)gcc
@@ -212,7 +212,7 @@ test: all core plugins-examples test-samples
 # depuis le téléphone fonctionne dès l'installation.
 # ----------------------------------------------------------------------
 zip: all plugins-examples dirs core
-	cd bin && zip -q ../dist/MusicPlayer-$(VERSION)-win64.zip MusicPlayer.exe MusicPlayerApp.exe musicplayer-core.exe LICENSE-FFmpeg.txt core_plugins/webserver.dll lang/*.lang VERSION && \
+	cd bin && zip -q ../dist/MusicPlayer-$(VERSION)-win64.zip MusicPlayer.exe MusicPlayerApp.exe musicplayer-core.exe LICENSE-FFmpeg.txt core_plugins/webserver.dll core_plugins/transcribe_whisper.dll lang/*.lang VERSION && \
 	cd .. && echo "Archive : dist/MusicPlayer-$(VERSION)-win64.zip"
 
 # zip COMPLET avec les DLL FFmpeg et TOUS les plugins du moteur

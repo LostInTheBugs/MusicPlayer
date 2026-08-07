@@ -1,5 +1,5 @@
 {
- "core": "2026.08.046",
+ "core": "2026.08.046-c2",
  "repo": "MusicPlayer official plugins & skins",
  "plugins": [
   {
@@ -276,7 +276,7 @@
   {
    "name": "Transcribe (Whisper) (engine)",
    "type": "service",
-   "version": "2026.08.046",
+   "version": "2026.08.046-c2",
    "file": "bin/core_plugins/transcribe_whisper.dll",
    "desc": "Offline speech-to-text transcription via whisper.cpp (port 8083)",
    "url": "https://raw.githubusercontent.com/LostInTheBugs/MusicPlayer/master/repo/bin/core_plugins/transcribe_whisper.dll"
