@@ -2,6 +2,17 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.046-c6] — 2026-08-07
+
+### Fixed — podcasts plugin never updated by automatic updates
+- The **minimal zip** (used by the auto-updater) now includes
+  `core_plugins/podcasts.dll`. Since c2 it was missing, so automatic updates
+  never replaced the podcasts plugin: users kept the old version in memory,
+  without the episode description endpoint — the episode title was shown but
+  the **description never appeared**. A c6 update replaces the plugin, and the
+  client's automatic retry (c5) then displays the full panel (title +
+  description + Transcribe) without any manual step.
+
 ## [2026.08.046-c5] — 2026-08-07
 
 ### Fixed — podcast URL no longer displayed
