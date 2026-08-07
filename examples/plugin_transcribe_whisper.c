@@ -149,7 +149,10 @@ static void hash_hex(const char* s, char* out, int outsz)
 static int appdata_path(const wchar_t* sub, wchar_t* out, int out_chars)
 {
     wchar_t base[MAX_PATH];
-    if (!SHGetFolderPathW(NULL, CSIDL_APPDATA, NULL, 0, base))
+    /* S_OK == 0 : le test était INVERSÉ (!resultat) → appdata jamais
+     * trouvé → ffmpeg.exe / whisper-cli.exe / modèles dans %APPDATA%
+     * jamais localisés (bug depuis la création du plugin) */
+    if (SHGetFolderPathW(NULL, CSIDL_APPDATA, NULL, 0, base) != S_OK)
         return -1;
     _snwprintf(out, out_chars, L"%ls\\MusicPlayer\\%ls", base, sub);
     return 0;
@@ -354,8 +357,23 @@ static int extract_audio(const wchar_t* input, const wchar_t* wav,
     int len = 0;
     int rc = run_proc(cmd, EXTRACT_TIMEOUT, &out, &len);
     if (rc == 0) {
-        /* vérifie le header RIFF */
-        if (len < 44 || out[0] != 'R' || out[1] != 'I') rc = -1;
+        /* vérifie le header RIFF du FICHIER WAV produit — la sortie du
+         * process est textuelle (logs ffmpeg), le check sur le pipe ne
+         * peut jamais passer */
+        HANDLE hf = CreateFileW(wav, GENERIC_READ, FILE_SHARE_READ, NULL,
+                                OPEN_EXISTING, 0, NULL);
+        if (hf != INVALID_HANDLE_VALUE) {
+            char hdr[12];
+            DWORD rd = 0;
+            BOOL ok = ReadFile(hf, hdr, sizeof(hdr), &rd, NULL) &&
+                      rd == sizeof(hdr);
+            CloseHandle(hf);
+            if (!ok || memcmp(hdr, "RIFF", 4) != 0 ||
+                memcmp(hdr + 8, "WAVE", 4) != 0)
+                rc = -1;
+        } else {
+            rc = -1;   /* pas de fichier produit : extraction ratée */
+        }
     }
     if (rc != 0 && err_out) {
         char msg[512];
@@ -710,7 +728,11 @@ static void handle_transcribe(SOCKET c, const char* body)
     }
     wchar_t wpath[MAX_PATH * 2];
     MultiByteToWideChar(CP_UTF8, 0, path, -1, wpath, MAX_PATH * 2);
-    if (GetFileAttributesW(wpath) == INVALID_FILE_ATTRIBUTES) {
+    /* les URL http(s) (épisodes de podcasts en streaming) sont acceptées :
+     * ffmpeg les lit directement — pas de contrôle de fichier local */
+    int is_url = _strnicmp(path, "http://", 7) == 0 ||
+                 _strnicmp(path, "https://", 8) == 0;
+    if (!is_url && GetFileAttributesW(wpath) == INVALID_FILE_ATTRIBUTES) {
         send_body(c, "{\"ok\":0,\"error\":\"File not found\"}",
                   "application/json");
         return;
@@ -748,6 +770,9 @@ static void handle_transcribe(SOCKET c, const char* body)
         snprintf(msg, sizeof(msg),
                  "{\"ok\":0,\"error\":\"%s\"}", err ? err : "extract failed");
         free(err);
+        err = NULL;   /* évite le DOUBLE FREE dans cleanup (corrompait
+                       * la réponse envoyée : memory garbage au lieu du
+                       * JSON d'erreur quand l'extraction échoue) */
         resp = _strdup(msg);
         rc = -1;
         goto cleanup;

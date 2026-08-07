@@ -53,6 +53,7 @@ typedef struct {
     char feed[512];
     char url[512];
     char title[256];
+    char desc[2048];
     char date[64];
     int  dur;          /* secondes, 0 = inconnue */
     int  played;
@@ -182,9 +183,9 @@ static void store_load(void)
     swprintf(path, MAX_PATH, L"%ls\\episodes.txt", dir);
     f = _wfopen(path, L"r");
     if (f) {
-        char line[2048];
+        char line[4096];
         while (g_ep_n < MAX_EP && fgets(line, sizeof(line), f)) {
-            /* feed|url|title|date|dur|played|pos */
+            /* feed|url|title|date|dur|played|pos[|desc] */
             char* p = line;
             char* f1 = strchr(p, '|');  if (!f1) continue;
             char* f2 = strchr(f1 + 1, '|'); if (!f2) continue;
@@ -192,6 +193,8 @@ static void store_load(void)
             char* f4 = strchr(f3 + 1, '|'); if (!f4) continue;
             char* f5 = strchr(f4 + 1, '|'); if (!f5) continue;
             char* f6 = strchr(f5 + 1, '|'); if (!f6) continue;
+            char* f7 = strchr(f6 + 1, '|');
+            if (f7) *f7 = 0;
             *f1 = *f2 = *f3 = *f4 = *f5 = *f6 = 0;
             episode_t* e = &g_eps[g_ep_n];
             strncpy(e->feed, p, sizeof(e->feed) - 1);
@@ -201,6 +204,10 @@ static void store_load(void)
             e->dur = atoi(f4 + 1);
             e->played = atoi(f5 + 1);
             e->pos = atof(f6 + 1);
+            if (f7) {
+                strncpy(e->desc, f7 + 1, sizeof(e->desc) - 1);
+                strip_pipe(e->desc);
+            }
             strip_pipe(e->title);
             g_ep_n++;
         }
@@ -223,9 +230,10 @@ static void store_save(void)
     f = _wfopen(path, L"w");
     if (f) {
         for (int i = 0; i < g_ep_n; i++)
-            fprintf(f, "%s|%s|%s|%s|%d|%d|%.1f\n", g_eps[i].feed,
+            fprintf(f, "%s|%s|%s|%s|%d|%d|%.1f|%s\n", g_eps[i].feed,
                     g_eps[i].url, g_eps[i].title, g_eps[i].date,
-                    g_eps[i].dur, g_eps[i].played, g_eps[i].pos);
+                    g_eps[i].dur, g_eps[i].played, g_eps[i].pos,
+                    g_eps[i].desc);
         fclose(f);
     }
 }
@@ -471,6 +479,15 @@ static void parse_feed(const char* xml, char* title, int title_sz,
         memset(e, 0, sizeof(*e));
         strncpy(e->feed, feed_url, sizeof(e->feed) - 1);
         tag_text(tmp, "title", e->title, sizeof(e->title));
+        /* <description> de l'item (souvent <![CDATA[ ... ]]>) */
+        tag_text(tmp, "description", e->desc, sizeof(e->desc));
+        if (strncmp(e->desc, "<![CDATA[", 9) == 0) {
+            char* inner = e->desc + 9;
+            char* cend = strstr(inner, "]]>");
+            if (cend) *cend = 0;
+            memmove(e->desc, inner, strlen(inner) + 1);
+        }
+        strip_pipe(e->desc);   /* le '|' sépare les champs du store */
         /* l'URL audio : on préfère un <enclosure> de type audio/* (le
          * premier enclosure est parfois une image), puis media:content,
          * puis le premier enclosure, puis <link> */
@@ -565,7 +582,10 @@ static int add_subscription(const char* url, char* title_out, int title_sz,
         log_line(m);
         return -1;
     }
-    episode_t eps[MAX_EP];
+    /* tableau sur le tas : episode_t avec desc fait ~3,4 Ko × 1024
+     * (3,4 Mo) — la pile déborde (stack overflow sous Wine) */
+    episode_t* eps = (episode_t*)calloc(MAX_EP, sizeof(episode_t));
+    if (!eps) return -1;
     int n = 0;
     char title[256];
     parse_feed(xml, title, sizeof(title), eps, &n, MAX_EP, url);
@@ -590,6 +610,7 @@ static int add_subscription(const char* url, char* title_out, int title_sz,
     free(xml);
     if (n == 0 && !title[0]) {
         log_line("Podcasts: invalid feed (no title, no episodes)");
+        free(eps);
         return -2;   /* pas un flux RSS valide */
     }
 
@@ -598,7 +619,7 @@ static int add_subscription(const char* url, char* title_out, int title_sz,
     for (int i = 0; i < g_pod_n; i++)
         if (!strcmp(g_pods[i].url, url)) { idx = i; break; }
     if (idx < 0) {
-        if (g_pod_n >= MAX_POD) return -2;
+        if (g_pod_n >= MAX_POD) { free(eps); return -2; }
         idx = g_pod_n;
         strncpy(g_pods[idx].url, url, sizeof(g_pods[idx].url) - 1);
         g_pod_n++;
@@ -606,16 +627,24 @@ static int add_subscription(const char* url, char* title_out, int title_sz,
     if (title[0])
         strncpy(g_pods[idx].title, title, sizeof(g_pods[idx].title) - 1);
 
-    /* épisodes : ajoute les inconnus (played=0) */
+    /* épisodes : ajoute les inconnus (played=0), ACTUALISE les connus
+     * (titre, description, date, durée — les flux évoluent) */
     int added = 0;
     for (int i = 0; i < n; i++) {
-        int known = 0;
+        int known = -1;
         for (int j = 0; j < g_ep_n; j++)
-            if (!strcmp(g_eps[j].url, eps[i].url)) { known = 1; break; }
-        if (!known) {
+            if (!strcmp(g_eps[j].url, eps[i].url)) { known = j; break; }
+        if (known < 0) {
             if (g_ep_n >= MAX_EP) break;
             g_eps[g_ep_n++] = eps[i];
             added++;
+        } else {
+            /* on préserve played/pos (état de lecture de l'utilisateur) */
+            int played = g_eps[known].played;
+            double pos = g_eps[known].pos;
+            g_eps[known] = eps[i];
+            g_eps[known].played = played;
+            g_eps[known].pos = pos;
         }
     }
     /* purge les épisodes de ce flux qui ne sont plus dans le flux
@@ -636,6 +665,7 @@ static int add_subscription(const char* url, char* title_out, int title_sz,
     if (title_out)
         strncpy(title_out, g_pods[idx].title, title_sz - 1);
     store_save();
+    free(eps);
     return 0;
 }
 
@@ -982,8 +1012,54 @@ static void handle_get(SOCKET c, const char* path, const char* query)
                           g_eps[i].dur, g_eps[i].played, g_eps[i].pos);
             if (n > (int)sizeof(body) - 256) break;
         }
-        snprintf(body + n, sizeof(body) - n, "]}");
+        snprintf(body + n, sizeof(body) - n, "]}\"");
         send_json(c, 200, body);
+    } else if (!strcmp(path, "/podcasts/episode")) {
+        /* infos d'un épisode (titre + description) par URL audio —
+         * utilisé par le panneau « Now playing » du client */
+        const char* q = query ? strstr(query, "url=") : NULL;
+        if (!q) { send_json(c, 400, "{\"error\":\"url required\"}"); return; }
+        q += 4;
+        char url[512];
+        int nq = 0;
+        while (q[nq] && q[nq] != '&' && nq < (int)sizeof(url) - 1) {
+            url[nq] = q[nq] == '+' ? ' ' : q[nq];
+            nq++;
+        }
+        url[nq] = 0;
+        {
+            char dec[512];
+            int d = 0;
+            for (int i = 0; url[i] && d < (int)sizeof(dec) - 1; i++) {
+                if (url[i] == '%' && url[i + 1] && url[i + 2]) {
+                    char h[3] = { url[i + 1], url[i + 2], 0 };
+                    dec[d++] = (char)strtol(h, NULL, 16);
+                    i += 2;
+                } else {
+                    dec[d++] = url[i];
+                }
+            }
+            dec[d] = 0;
+            strncpy(url, dec, sizeof(url) - 1);
+        }
+        int found = -1;
+        for (int i = 0; i < g_ep_n; i++) {
+            if (!strcmp(g_eps[i].url, url)) { found = i; break; }
+        }
+        if (found < 0) { send_json(c, 404, "{\"error\":\"not found\"}"); return; }
+        {
+            char eurl[1024], etitle[1024], edesc[8192];
+            json_escape_a(g_eps[found].url, eurl, sizeof(eurl));
+            json_escape_a(g_eps[found].title, etitle, sizeof(etitle));
+            json_escape_a(g_eps[found].desc, edesc, sizeof(edesc));
+            char body[12000];
+            snprintf(body, sizeof(body),
+                     "{\"ok\":1,\"url\":\"%s\",\"title\":\"%s\","
+                     "\"desc\":\"%s\",\"date\":\"%s\",\"dur\":%d}",
+                     eurl, etitle, edesc, g_eps[found].date,
+                     g_eps[found].dur);
+            send_json(c, 200, body);
+        }
     } else {
         send_json(c, 404, "{\"error\":\"not found\"}");
     }

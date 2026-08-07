@@ -2,6 +2,42 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.046-c4] — 2026-08-07
+
+### New — Podcast « Now playing » panel with offline transcription
+- The center panel now shows, for the current podcast episode, its **title** and
+  **description** (from the feed), replacing the plain « Now playing » text.
+- A **Transcribe** button starts an offline transcription of the current episode
+  (whisper, via the transcribe plugin): progress is polled (`extracting /
+  transcribing`), an existing transcript is loaded automatically when the
+  episode starts, the text scrolls with the mouse wheel, and errors are
+  displayed inline.
+- New plugin endpoint `GET /podcasts/episode?url=...` (title + description of
+  one episode); episode descriptions are stored and **refreshed** when the feed
+  updates (titles/descriptions/dates now update in place instead of keeping
+  stale data).
+- Transcription now accepts **http(s) URLs** (streamed podcast episodes), not
+  only local files.
+
+### Fixed — transcribe plugin
+- **Double free** in the extraction error path corrupted the HTTP response
+  (memory garbage instead of the JSON error) whenever audio extraction failed.
+- **`SHGetFolderPathW` test inverted** (`!result` instead of `== S_OK`):
+  `%APPDATA%\MusicPlayer\ffmpeg`, `\whisper` and `\whisper-models` were never
+  found — ffmpeg.exe / whisper-cli.exe / models could never be located, so the
+  plugin could not transcribe at all.
+- **RIFF check ran on the process output pipe** (ffmpeg's text logs) instead of
+  the produced WAV file — extraction always failed even with a working ffmpeg.
+
+### Fixed — client
+- `pod_json_unescape` re-encoded escaped bytes as code points, producing
+  mojibake (`Ã©`) for accented podcast titles/descriptions.
+- Playing an episode from the Podcasts dialog never updated the client playlist
+  index, so the track name (and the new panel) stayed empty after a podcast
+  play.
+- Podcasts plugin: the episodes array (3.4 MB with descriptions) moved from the
+  stack to the heap — the plugin crashed with a stack overflow on large feeds.
+
 ## [2026.08.046-c3] — 2026-08-07
 
 ### Fixed (update blocked by the running engine — « a program has files open »)

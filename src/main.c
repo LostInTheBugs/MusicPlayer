@@ -2444,6 +2444,478 @@ static char* podcast_http(const char* method, const char* path,
     return resp;
 }
 
+/* ================================================================== */
+/* Panneau « Now playing » podcasts : titre + description +            */
+/* transcription (plugins podcasts 8082 / transcribe 8083)             */
+/* ================================================================== */
+#define TRANSCRIBE_PORT 8083
+
+static char  g_now_url[512];        /* URL de la piste courante (cache) */
+static char  g_now_title[512];
+static char  g_now_desc[8192];
+static int   g_now_ok = 0;          /* 1 = le panneau podcasts s'affiche */
+
+static char  g_trans_file[512];     /* source de la transcription */
+static char  g_trans_text[65536];   /* texte complet affiché */
+static int   g_trans_state = 0;     /* 0 idle, 1 busy, 2 done, 3 error */
+static char  g_trans_err[512];
+static char  g_trans_stage[64];
+static int   g_trans_scroll = 0;    /* défilement vertical du texte */
+static RECT  g_trans_btn = { 0, 0, 0, 0 };   /* zone « Transcribe » */
+
+/* HTTP vers le plugin transcription (127.0.0.1:8083) — mêmes principes
+ * que podcast_http (sockets bruts). Timeout court : le POST /transcribe
+ * peut durer longtemps, le client ne bloque pas, il poll /progress. */
+static char* transcribe_http(const char* method, const char* path,
+                             const char* body, int* out_len)
+{
+    (void)method;
+    WSADATA wsa;
+    if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0) return NULL;
+    SOCKET s = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    if (s == INVALID_SOCKET) { WSACleanup(); return NULL; }
+    struct sockaddr_in a;
+    memset(&a, 0, sizeof(a));
+    a.sin_family = AF_INET;
+    a.sin_addr.s_addr = inet_addr("127.0.0.1");
+    a.sin_port = htons(TRANSCRIBE_PORT);
+    if (connect(s, (struct sockaddr*)&a, sizeof(a)) != 0) {
+        closesocket(s);
+        WSACleanup();
+        return NULL;
+    }
+    int to = 6000;
+    setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, (const char*)&to, sizeof(to));
+    setsockopt(s, SOL_SOCKET, SO_SNDTIMEO, (const char*)&to, sizeof(to));
+    char req[66000];
+    int rl;
+    if (body) {
+        rl = snprintf(req, sizeof(req),
+                      "POST %s HTTP/1.1\r\nHost: 127.0.0.1:%d\r\n"
+                      "Content-Type: application/json\r\n"
+                      "Content-Length: %d\r\nConnection: close\r\n\r\n%s",
+                      path, TRANSCRIBE_PORT, (int)strlen(body), body);
+    } else {
+        rl = snprintf(req, sizeof(req),
+                      "GET %s HTTP/1.1\r\nHost: 127.0.0.1:%d\r\n"
+                      "Connection: close\r\n\r\n",
+                      path, TRANSCRIBE_PORT);
+    }
+    if (send(s, req, rl, 0) == SOCKET_ERROR) {
+        closesocket(s);
+        WSACleanup();
+        return NULL;
+    }
+    char buf[8192];
+    int cap = 70000, len = 0;
+    char* resp = (char*)malloc(cap);
+    if (!resp) { closesocket(s); WSACleanup(); return NULL; }
+    for (;;) {
+        int got = recv(s, buf, sizeof(buf), 0);
+        if (got <= 0) break;
+        if (len + got + 1 > cap) {
+            cap = (len + got + 1) * 2;
+            char* nb = (char*)realloc(resp, cap);
+            if (!nb) break;
+            resp = nb;
+        }
+        memcpy(resp + len, buf, got);
+        len += got;
+    }
+    closesocket(s);
+    WSACleanup();
+    if (len <= 0) { free(resp); return NULL; }
+    resp[len] = 0;
+    char* hd = strstr(resp, "\r\n\r\n");
+    if (hd) {
+        hd += 4;
+        memmove(resp, hd, strlen(hd) + 1);
+    }
+    /* réponse tronquée (timeout en plein corps) : inutilisable */
+    if (resp[0] != '{') { free(resp); return NULL; }
+    if (out_len) *out_len = (int)strlen(resp);
+    return resp;
+}
+
+/* encodage %XX d'une valeur de query (URL des épisodes) */
+static void now_url_encode(const char* in, char* out, int outsz)
+{
+    static const char hexd[] = "0123456789ABCDEF";
+    int o = 0;
+    for (const char* p = in; *p && o < outsz - 4; p++) {
+        unsigned char c = (unsigned char)*p;
+        if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
+            (c >= '0' && c <= '9') || c == '-' || c == '_' ||
+            c == '.' || c == '~') {
+            out[o++] = (char)c;
+        } else {
+            out[o++] = '%';
+            out[o++] = hexd[c >> 4];
+            out[o++] = hexd[c & 15];
+        }
+    }
+    out[o] = 0;
+}
+
+/* le plugin échappe OCTET par octet (\u00XX) : on reconstruit l'octet
+ * brut (contrairement à pod_json_unescape qui ré-encode un code point
+ * et produit du mojibake pour les accents UTF-8) */
+static void now_json_unescape(char* s)
+{
+    char* r = s;
+    char* w = s;
+    while (*r) {
+        if (r[0] == '\\' && r[1] == 'u' && r[2] && r[3] && r[4] && r[5]) {
+            char h[5] = { r[2], r[3], r[4], r[5], 0 };
+            *w++ = (char)strtoul(h, NULL, 16);
+            r += 6;
+        } else {
+            *w++ = *r++;
+        }
+    }
+    *w = 0;
+}
+
+/* retire les balises HTML d'une description (affichage brut) */
+static void strip_html_tags(char* s)
+{
+    char* r = s;
+    char* w = s;
+    int in_tag = 0;
+    while (*r) {
+        if (*r == '<') { in_tag = 1; r++; continue; }
+        if (*r == '>') { in_tag = 0; r++; continue; }
+        if (!in_tag) *w++ = *r;
+        r++;
+    }
+    *w = 0;
+    /* compacte les espaces multiples */
+    r = s;
+    w = s;
+    int sp = 0;
+    while (*r) {
+        if (*r == ' ') { if (!sp) *w++ = ' '; sp = 1; }
+        else { *w++ = *r; sp = 0; }
+        r++;
+    }
+    *w = 0;
+}
+
+/* infos de l'épisode courant (titre + description) via le plugin
+ * podcasts ; remplit g_now_title/g_now_desc/g_now_ok */
+static void now_fetch_episode(const char* url)
+{
+    g_now_title[0] = 0;
+    g_now_desc[0] = 0;
+    g_now_ok = 0;
+    char enc[1100];
+    now_url_encode(url, enc, sizeof(enc));
+    char path[1300];
+    snprintf(path, sizeof(path), "/podcasts/episode?url=%s", enc);
+    int len = 0;
+    char* resp = podcast_http("GET", path, NULL, &len);
+    if (!resp) return;
+    if (strstr(resp, "\"ok\":1")) {
+        pod_json_str(resp, "title", g_now_title, sizeof(g_now_title));
+        pod_json_str(resp, "desc", g_now_desc, sizeof(g_now_desc));
+        now_json_unescape(g_now_title);
+        now_json_unescape(g_now_desc);
+        strip_html_tags(g_now_desc);
+        g_now_ok = 1;
+    }
+    free(resp);
+}
+
+/* charge la transcription sauvegardée d'une source ; 0 si trouvée */
+static int now_fetch_transcript(const char* url)
+{
+    char enc[1100];
+    now_url_encode(url, enc, sizeof(enc));
+    char path[1300];
+    snprintf(path, sizeof(path), "/transcript?file=%s", enc);
+    int len = 0;
+    char* resp = transcribe_http("GET", path, NULL, &len);
+    if (!resp) return -1;
+    int rc = -1;
+    if (strstr(resp, "\"full_text\"")) {
+        char txt[65536];
+        pod_json_str(resp, "full_text", txt, sizeof(txt));
+        if (txt[0]) {
+            now_json_unescape(txt);
+            snprintf(g_trans_text, sizeof(g_trans_text), "%s", txt);
+            g_trans_scroll = 0;
+            rc = 0;
+        }
+    }
+    free(resp);
+    return rc;
+}
+
+/* démarre la transcription de la piste courante (URL podcast) */
+static void now_transcribe_start(void)
+{
+    const char* name = cc_name();
+    if (!name || !name[0]) return;
+    char epath[600];
+    int o = 0;
+    for (const char* p = name; *p && o < (int)sizeof(epath) - 2; p++) {
+        if (*p == '\\' || *p == '"') epath[o++] = '\\';
+        epath[o++] = *p;
+    }
+    epath[o] = 0;
+    char body[700];
+    snprintf(body, sizeof(body), "{\"path\":\"%s\"}", epath);
+    strncpy(g_trans_file, name, sizeof(g_trans_file) - 1);
+    g_trans_scroll = 0;
+    g_trans_text[0] = 0;
+    g_trans_err[0] = 0;
+    int len = 0;
+    char* resp = transcribe_http("POST", "/transcribe", body, &len);
+    if (resp) {
+        /* réponse complète (transcription rapide) ou erreur directe */
+        if (strstr(resp, "\"ok\":1") && strstr(resp, "\"full_text\"")) {
+            char txt[65536];
+            pod_json_str(resp, "full_text", txt, sizeof(txt));
+            now_json_unescape(txt);
+            snprintf(g_trans_text, sizeof(g_trans_text), "%s", txt);
+            g_trans_state = 2;
+            free(resp);
+            InvalidateRect(g_hwnd, NULL, FALSE);
+            return;
+        }
+        if (strstr(resp, "\"ok\":0")) {
+            pod_json_str(resp, "error", g_trans_err, sizeof(g_trans_err));
+            if (!g_trans_err[0])
+                snprintf(g_trans_err, sizeof(g_trans_err), "%s",
+                         strstr(resp, "Model not found")
+                             ? "model not found (see Settings)"
+                             : "transcription failed");
+            g_trans_state = 3;
+            free(resp);
+            InvalidateRect(g_hwnd, NULL, FALSE);
+            return;
+        }
+        free(resp);
+    }
+    g_trans_state = 1;
+    g_trans_stage[0] = 0;
+    InvalidateRect(g_hwnd, NULL, FALSE);
+}
+
+/* appelé à chaque tick : détection de changement de piste + poll de la
+ * tâche de transcription */
+static void now_panel_update(void)
+{
+    const char* name = cc_name();
+    if (!name || !name[0]) return;
+    if (strcmp(name, g_now_url) != 0) {
+        strncpy(g_now_url, name, sizeof(g_now_url) - 1);
+        g_now_ok = 0;
+        g_trans_state = 0;
+        g_trans_text[0] = 0;
+        g_trans_err[0] = 0;
+        g_trans_scroll = 0;
+        int is_url = _strnicmp(name, "http://", 7) == 0 ||
+                     _strnicmp(name, "https://", 8) == 0;
+        if (is_url) {
+            now_fetch_episode(name);
+            if (g_now_ok && now_fetch_transcript(name) == 0)
+                g_trans_state = 2;   /* déjà transcrite : affichage direct */
+        }
+        InvalidateRect(g_hwnd, NULL, FALSE);
+        return;
+    }
+    if (g_trans_state == 1) {
+        int len = 0;
+        char* resp = transcribe_http("GET", "/progress", NULL, &len);
+        if (!resp) {
+            g_trans_state = 3;
+            snprintf(g_trans_err, sizeof(g_trans_err), "%s",
+                     "transcription plugin unreachable");
+            InvalidateRect(g_hwnd, NULL, FALSE);
+            return;
+        }
+        if (strstr(resp, "\"busy\":true")) {
+            pod_json_str(resp, "stage", g_trans_stage,
+                         sizeof(g_trans_stage));
+            now_json_unescape(g_trans_stage);
+        } else {
+            g_trans_state = now_fetch_transcript(g_now_url) == 0 ? 2 : 3;
+            if (g_trans_state == 3 && !g_trans_err[0])
+                snprintf(g_trans_err, sizeof(g_trans_err), "%s",
+                         "transcription failed");
+        }
+        free(resp);
+        InvalidateRect(g_hwnd, NULL, FALSE);
+    }
+}
+
+/* rendu du panneau (remplace le texte « Now playing » pour les podcasts) */
+static void now_panel_paint(HDC hdc, const RECT* rc)
+{
+    int x = rc->left + 14;
+    int w = rc->right - rc->left - 28;
+    int y = rc->top + 12;
+
+    HFONT ft_title = CreateFontW(17, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
+        DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+        CLEARTYPE_QUALITY, DEFAULT_PITCH, L"Segoe UI");
+    HFONT ft_desc = CreateFontW(12, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+        DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+        CLEARTYPE_QUALITY, DEFAULT_PITCH, L"Segoe UI");
+    HFONT ft_small = CreateFontW(11, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+        DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+        CLEARTYPE_QUALITY, DEFAULT_PITCH, L"Segoe UI");
+    SetBkMode(hdc, TRANSPARENT);
+
+    /* 1) titre de l'épisode */
+    if (g_now_title[0]) {
+        wchar_t wt[520];
+        utf8_to_wide(g_now_title, wt, 520);
+        HFONT old = (HFONT)SelectObject(hdc, ft_title);
+        SetTextColor(hdc, g_skin.text);
+        RECT r = { x, y, x + w, y + 90 };
+        DrawTextW(hdc, wt, -1, &r, DT_WORDBREAK | DT_LEFT | DT_TOP);
+        SelectObject(hdc, old);
+        y = r.bottom + 6;
+    }
+    /* 2) description de l'épisode (5 lignes max) */
+    if (g_now_desc[0]) {
+        wchar_t wd[9000];
+        utf8_to_wide(g_now_desc, wd, 9000);
+        HFONT old = (HFONT)SelectObject(hdc, ft_desc);
+        SetTextColor(hdc, g_skin.text);
+        RECT r = { x, y, x + w, y + 78 };
+        DrawTextW(hdc, wd, -1, &r, DT_WORDBREAK | DT_LEFT | DT_TOP);
+        SelectObject(hdc, old);
+        y = r.bottom + 8;
+    }
+    /* séparateur */
+    {
+        HPEN pen = CreatePen(PS_SOLID, 1, g_skin.text);
+        HPEN oldp = (HPEN)SelectObject(hdc, pen);
+        MoveToEx(hdc, x, y, NULL);
+        LineTo(hdc, x + w, y);
+        SelectObject(hdc, oldp);
+        DeleteObject(pen);
+        y += 12;
+    }
+    /* 3) transcription */
+    {
+        RECT tr = { x, y, x + w, rc->bottom - 16 };
+        if (g_trans_state == 0) {
+            /* bouton Transcribe + indication */
+            RECT b = { tr.left, tr.top, tr.left + 130, tr.top + 26 };
+            g_trans_btn = b;
+            HPEN pen = CreatePen(PS_SOLID, 1, g_skin.text);
+            HPEN oldp = (HPEN)SelectObject(hdc, pen);
+            HBRUSH oldb = (HBRUSH)SelectObject(hdc,
+                GetStockObject(NULL_BRUSH));
+            Rectangle(hdc, b.left, b.top, b.right, b.bottom);
+            SelectObject(hdc, oldp);
+            SelectObject(hdc, oldb);
+            DeleteObject(pen);
+            HFONT old = (HFONT)SelectObject(hdc, ft_small);
+            SetTextColor(hdc, g_skin.text);
+            wchar_t wb[64];
+            const wchar_t* lb = lang_get("now_transcribe");
+            wcscpy(wb, lb);
+            RECT br = b;
+            DrawTextW(hdc, wb, -1, &br, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+            SelectObject(hdc, old);
+            RECT hr = { b.right + 12, tr.top + 5, tr.right, tr.top + 20 };
+            const wchar_t* hint = lang_get("now_transcribe_hint");
+            DrawTextW(hdc, hint, -1, &hr, DT_LEFT | DT_TOP | DT_END_ELLIPSIS);
+        } else if (g_trans_state == 1) {
+            wchar_t wb[128];
+            if (g_trans_stage[0]) {
+                wchar_t wstage[64];
+                utf8_to_wide(g_trans_stage, wstage, 64);
+                _snwprintf(wb, 128, L"%ls %ls",
+                           lang_get("now_transcribing"), wstage);
+            } else {
+                _snwprintf(wb, 128, L"%ls", lang_get("now_transcribing"));
+            }
+            HFONT old = (HFONT)SelectObject(hdc, ft_desc);
+            SetTextColor(hdc, g_skin.text);
+            RECT r = tr;
+            DrawTextW(hdc, wb, -1, &r, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+            SelectObject(hdc, old);
+        } else if (g_trans_state == 2 && g_trans_text[0]) {
+            wchar_t wtx[70000];
+            utf8_to_wide(g_trans_text, wtx, 70000);
+            /* hauteur totale enroulée */
+            RECT cr = tr;
+            HFONT old = (HFONT)SelectObject(hdc, ft_desc);
+            DrawTextW(hdc, wtx, -1, &cr, DT_WORDBREAK | DT_CALCRECT);
+            int full_h = cr.bottom - cr.top;
+            int vis_h = tr.bottom - tr.top;
+            int max_sc = full_h > vis_h ? full_h - vis_h : 0;
+            if (g_trans_scroll > max_sc) g_trans_scroll = max_sc;
+            if (g_trans_scroll < 0) g_trans_scroll = 0;
+            /* texte défilé, clippé au panneau */
+            int saved = SaveDC(hdc);
+            IntersectClipRect(hdc, tr.left, tr.top, tr.right, tr.bottom);
+            RECT dr = tr;
+            dr.top -= g_trans_scroll;
+            dr.bottom += full_h - g_trans_scroll;
+            SetTextColor(hdc, g_skin.text);
+            DrawTextW(hdc, wtx, -1, &dr, DT_WORDBREAK | DT_LEFT | DT_TOP);
+            RestoreDC(hdc, saved);
+            SelectObject(hdc, old);
+            /* mini-scrollbar si débordement */
+            if (max_sc > 0) {
+                int sbx = tr.right - 7;
+                HPEN pen = CreatePen(PS_SOLID, 1, g_skin.text);
+                HPEN oldp = (HPEN)SelectObject(hdc, pen);
+                MoveToEx(hdc, sbx, tr.top, NULL);
+                LineTo(hdc, sbx, tr.bottom);
+                int th = vis_h * vis_h / full_h;
+                if (th < 12) th = 12;
+                int ty = tr.top + (vis_h - th) * g_trans_scroll / max_sc;
+                RECT thb = { sbx, ty, sbx + 4, ty + th };
+                HBRUSH bg = CreateSolidBrush(g_skin.text);
+                FillRect(hdc, &thb, bg);
+                DeleteObject(bg);
+                SelectObject(hdc, oldp);
+                DeleteObject(pen);
+            }
+        } else if (g_trans_state == 3) {
+            wchar_t we[600];
+            _snwprintf(we, 600, L"%ls: %hs",
+                       lang_get("now_trans_error"), g_trans_err);
+            HFONT old = (HFONT)SelectObject(hdc, ft_desc);
+            SetTextColor(hdc, g_skin.text);
+            RECT r = tr;
+            DrawTextW(hdc, we, -1, &r,
+                      DT_WORDBREAK | DT_LEFT | DT_TOP | DT_END_ELLIPSIS);
+            SelectObject(hdc, old);
+        }
+    }
+    DeleteObject(ft_title);
+    DeleteObject(ft_desc);
+    DeleteObject(ft_small);
+}
+
+/* clic : bouton Transcribe */
+static void now_panel_click(int x, int y)
+{
+    if (!g_now_ok) return;
+    if (g_trans_state == 0 || g_trans_state == 2) {
+        if (x >= g_trans_btn.left && x <= g_trans_btn.right &&
+            y >= g_trans_btn.top && y <= g_trans_btn.bottom)
+            now_transcribe_start();
+    }
+}
+
+/* molette : défilement de la transcription */
+static void now_panel_wheel(short delta)
+{
+    if (!g_now_ok || g_trans_state != 2) return;
+    g_trans_scroll -= (delta / 120) * 30;
+    InvalidateRect(g_hwnd, NULL, FALSE);
+}
+
 /* extrait les valeurs numériques du JSON (ex: "dur":600) */
 static void pod_json_num(const char* body, const char* key, char* out,
                          int outsz)
@@ -2485,23 +2957,15 @@ static void pod_json_str(const char* body, const char* key, char* out, int outsz
 
 static void pod_json_unescape(char* s)
 {
-    /* \u00e9 → é (les titres RSS passent en JSON) */
+    /* le plugin échappe OCTET par octet (\u00XX, voir json_escape_a) :
+     * on reconstruit l'octet brut — ré-encoder un code point produirait
+     * du mojibake pour les accents UTF-8 (Ã© au lieu de é) */
     char* r = s;
     char* w = s;
     while (*r) {
         if (r[0] == '\\' && r[1] == 'u' && r[2] && r[3] && r[4] && r[5]) {
             char h[5] = { r[2], r[3], r[4], r[5], 0 };
-            unsigned cp = (unsigned)strtoul(h, NULL, 16);
-            if (cp < 0x80) {
-                *w++ = (char)cp;
-            } else if (cp < 0x800) {
-                *w++ = (char)(0xC0 | (cp >> 6));
-                *w++ = (char)(0x80 | (cp & 0x3F));
-            } else {
-                *w++ = (char)(0xE0 | (cp >> 12));
-                *w++ = (char)(0x80 | ((cp >> 6) & 0x3F));
-                *w++ = (char)(0x80 | (cp & 0x3F));
-            }
+            *w++ = (char)strtoul(h, NULL, 16);
             r += 6;
         } else {
             *w++ = *r++;
@@ -2867,6 +3331,11 @@ static void pod_play_episode(HWND h)
                                 extern void cc_plist_refresh(void);
                                 cc_plist_refresh();
                                 start = found >= 0 ? found : 0;
+                                /* l'index local suit le moteur : sans ça,
+                                 * cc_name() reste vide après un play
+                                 * podcast (nom courant + panneau « Now
+                                 * playing » jamais affichés) */
+                                g_plist_idx = start;
                             }
                         }
                         free(items);
@@ -4391,6 +4860,9 @@ static void paint_center(HDC hdc, RECT* rc)
     /* un plugin visuel actif remplace le texte par son rendu */
     if (mp_plugins_has_visual()) {
         mp_plugins_visual_render(hdc, vis_rc.right - vis_rc.left, vis_rc.bottom - vis_rc.top);
+    } else if (g_now_ok) {
+        /* podcast : panneau titre + description + transcription */
+        now_panel_paint(hdc, &vis_rc);
     } else {
         SetBkMode(hdc, TRANSPARENT);
         const char* fn = cc_name();
@@ -5200,7 +5672,11 @@ static LRESULT CALLBACK wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         }
         if (g_vol_drag) mouse_move(GET_X_LPARAM(lp));
         return 0;
+    case WM_MOUSEWHEEL:
+        now_panel_wheel((short)HIWORD(wp));
+        return 0;
     case WM_LBUTTONUP:
+        now_panel_click((short)LOWORD(lp), (short)HIWORD(lp));
         g_dj_drag = -1;
         mouse_up();
         return 0;
@@ -5236,6 +5712,7 @@ static LRESULT CALLBACK wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
             /* état du moteur (client/serveur) ; l'enchaînement des
              * morceaux est géré par le CORE (son playlist_tick) */
             cc_poll();
+            now_panel_update();
         }
         status_update();
         return 0;

@@ -110,6 +110,10 @@ center_stopped=Stopped
 center_playing=Now playing
 center_paused=Paused
 center_finished=Finished
+now_transcribe=Transcribe
+now_transcribe_hint=Transcribes the current episode (whisper, offline)
+now_transcribing=Transcribing…
+now_trans_error=Transcription error
 
 # --- Open dialog ---
 open_title=Open audio file

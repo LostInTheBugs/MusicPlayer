@@ -108,6 +108,10 @@ center_stopped=Arrêté
 center_playing=Lecture en cours
 center_paused=En pause
 center_finished=Terminé
+now_transcribe=Transcrire
+now_transcribe_hint=Transcrit l'épisode en cours (whisper, hors ligne)
+now_transcribing=Transcription…
+now_trans_error=Erreur de transcription
 
 # --- Dialogue d'ouverture ---
 open_title=Ouvrir un fichier audio
