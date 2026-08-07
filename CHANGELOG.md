@@ -2,6 +2,19 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.046-c5] — 2026-08-07
+
+### Fixed — podcast URL no longer displayed
+- The center panel and the status bar no longer show the raw podcast URL.
+  When the episode info (title + description) cannot be fetched yet, the
+  **episode title** from the playlist is displayed instead — and nothing at
+  all if no title is known.
+- The episode lookup is now **retried every ~2 seconds** until the podcasts
+  plugin responds: previously a single failed fetch left the URL on screen
+  forever (e.g. when the engine/plugins were not up to date yet); now the
+  full panel (title, description, Transcribe) appears automatically as soon
+  as the endpoint answers, without changing tracks.
+
 ## [2026.08.046-c4] — 2026-08-07
 
 ### New — Podcast « Now playing » panel with offline transcription

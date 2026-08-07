@@ -892,14 +892,26 @@ static void status_update(void)
     wchar_t s1[280], s2[32], s3[32], s4[48];
     const char* fn = cc_name();
     if (fn) {
-        /* titre issu des métadonnées (plugin SERVICE) si disponible */
-        const char* title = mp_plugins_get_title(fn);
-        if (title && title[0]) {
-            utf8_to_wide(title, s1, 280);
+        int is_url = _strnicmp(fn, "http://", 7) == 0 ||
+                     _strnicmp(fn, "https://", 8) == 0;
+        if (is_url) {
+            /* une URL ne s'affiche pas : titre de l'épisode (playlist)
+             * si connu, sinon rien */
+            if (g_plist_idx >= 0 && g_plist_idx < g_plist_n &&
+                g_plist_title[g_plist_idx] && g_plist_title[g_plist_idx][0])
+                wcscpy(s1, g_plist_title[g_plist_idx]);
+            else
+                s1[0] = 0;
         } else {
-            const char* base = strrchr(fn, '\\');
-            base = base ? base + 1 : fn;
-            utf8_to_wide(base, s1, 280);
+            /* titre issu des métadonnées (plugin SERVICE) si disponible */
+            const char* title = mp_plugins_get_title(fn);
+            if (title && title[0]) {
+                utf8_to_wide(title, s1, 280);
+            } else {
+                const char* base = strrchr(fn, '\\');
+                base = base ? base + 1 : fn;
+                utf8_to_wide(base, s1, 280);
+            }
         }
     } else {
         wcscpy(s1, lang_get("no_file"));
@@ -2451,6 +2463,7 @@ static char* podcast_http(const char* method, const char* path,
 #define TRANSCRIBE_PORT 8083
 
 static char  g_now_url[512];        /* URL de la piste courante (cache) */
+static int   g_now_retry = 0;       /* re-tentatives du fetch épisode */
 static char  g_now_title[512];
 static char  g_now_desc[8192];
 static int   g_now_ok = 0;          /* 1 = le panneau podcasts s'affiche */
@@ -2715,6 +2728,7 @@ static void now_panel_update(void)
         g_trans_text[0] = 0;
         g_trans_err[0] = 0;
         g_trans_scroll = 0;
+        g_now_retry = 0;
         int is_url = _strnicmp(name, "http://", 7) == 0 ||
                      _strnicmp(name, "https://", 8) == 0;
         if (is_url) {
@@ -2724,6 +2738,17 @@ static void now_panel_update(void)
         }
         InvalidateRect(g_hwnd, NULL, FALSE);
         return;
+    }
+    /* URL non résolue (plugin podcasts pas prêt / pas à jour) :
+     * re-tente toutes les ~2 s — le panneau complet apparaît dès que
+     * le endpoint répond, sans changer de piste */
+    if (!g_now_ok && ++g_now_retry % 8 == 0 &&
+        (_strnicmp(g_now_url, "http://", 7) == 0 ||
+         _strnicmp(g_now_url, "https://", 8) == 0)) {
+        now_fetch_episode(g_now_url);
+        if (g_now_ok && now_fetch_transcript(g_now_url) == 0)
+            g_trans_state = 2;
+        InvalidateRect(g_hwnd, NULL, FALSE);
     }
     if (g_trans_state == 1) {
         int len = 0;
@@ -4877,15 +4902,39 @@ static void paint_center(HDC hdc, RECT* rc)
                                   CLEARTYPE_QUALITY, DEFAULT_PITCH, L"Segoe UI");
 
         if (fn) {
-            const char* base = strrchr(fn, '\\');
-            base = base ? base + 1 : fn;
-            wchar_t base_w[280];
-            utf8_to_wide(base, base_w, 280);
-            HFONT old = (HFONT)SelectObject(hdc, big);
-            SetTextColor(hdc, g_skin.text);
-            RECT r = vis_rc;
-            DrawTextW(hdc, base_w, -1, &r, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
-            SelectObject(hdc, old);
+            int is_url = _strnicmp(fn, "http://", 7) == 0 ||
+                         _strnicmp(fn, "https://", 8) == 0;
+            if (is_url) {
+                /* une URL n'a aucun intérêt à l'écran : on affiche le
+                 * titre de l'épisode (playlist) s'il est connu, sinon
+                 * rien — l'état (« Now playing ») reste affiché */
+                const wchar_t* title =
+                    (g_plist_idx >= 0 && g_plist_idx < g_plist_n &&
+                     g_plist_title[g_plist_idx] &&
+                     g_plist_title[g_plist_idx][0])
+                        ? g_plist_title[g_plist_idx] : NULL;
+                if (title) {
+                    HFONT old = (HFONT)SelectObject(hdc, big);
+                    SetTextColor(hdc, g_skin.text);
+                    RECT r = vis_rc;
+                    DrawTextW(hdc, title, -1, &r,
+                              DT_CENTER | DT_VCENTER | DT_SINGLELINE |
+                              DT_END_ELLIPSIS);
+                    SelectObject(hdc, old);
+                }
+            } else {
+                const char* base = strrchr(fn, '\\');
+                base = base ? base + 1 : fn;
+                wchar_t base_w[280];
+                utf8_to_wide(base, base_w, 280);
+                HFONT old = (HFONT)SelectObject(hdc, big);
+                SetTextColor(hdc, g_skin.text);
+                RECT r = vis_rc;
+                DrawTextW(hdc, base_w, -1, &r,
+                          DT_CENTER | DT_VCENTER | DT_SINGLELINE |
+                          DT_END_ELLIPSIS);
+                SelectObject(hdc, old);
+            }
         }
         {
             HFONT old = (HFONT)SelectObject(hdc, small);
