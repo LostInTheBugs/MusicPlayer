@@ -114,6 +114,7 @@ now_transcribe=Transcribe
 now_transcribe_hint=Transcribes the current episode (whisper, offline)
 now_transcribing=Transcribing…
 now_trans_error=Transcription error
+now_plugins_outdated=Engine plugins are outdated — extract the update zip over the install folder (engine stopped) and restart, or reinstall
 
 # --- Open dialog ---
 open_title=Open audio file

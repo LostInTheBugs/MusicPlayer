@@ -5022,6 +5022,19 @@ static void paint_center(HDC hdc, RECT* rc)
             DrawTextW(hdc, st, -1, &r, DT_CENTER | DT_TOP | DT_SINGLELINE);
             SelectObject(hdc, old);
         }
+        /* moteur redémarré mais toujours obsolète (dossier d'install
+         * jamais mis à jour) : message explicite au lieu d'un échec
+         * silencieux */
+        if (g_now_restarted && g_now_stale >= 10) {
+            HFONT old = (HFONT)SelectObject(hdc, small);
+            SetTextColor(hdc, g_skin.text);
+            const wchar_t* warn = lang_get("now_plugins_outdated");
+            RECT r = vis_rc;
+            r.top = vis_rc.top + 62;
+            DrawTextW(hdc, warn, -1, &r,
+                      DT_CENTER | DT_TOP | DT_SINGLELINE | DT_END_ELLIPSIS);
+            SelectObject(hdc, old);
+        }
 
         DeleteObject(big);
         DeleteObject(small);

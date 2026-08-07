@@ -2,6 +2,19 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.046-c8] — 2026-08-07
+
+### Fixed — update script aborts cleanly when the engine cannot be stopped
+- The updater script now **aborts with a clear FAIL** (and relaunches the app)
+  when the engine is still alive after the kill attempts — a partial
+  extraction previously left a **mixed install** (new executables + old
+  core plugins), which is exactly why the podcast episode description never
+  appeared even after updating.
+- The client now shows an explicit message in the center panel when the engine
+  was restarted but still runs outdated plugins: « Engine plugins are
+  outdated — extract the update zip over the install folder… ». No more silent
+  failure.
+
 ## [2026.08.046-c7] — 2026-08-07
 
 ### Fixed — episode description now appears even with an outdated engine

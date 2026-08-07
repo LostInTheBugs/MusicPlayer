@@ -457,6 +457,11 @@ int mp_update_apply_and_restart(void)
         L"  taskkill /IM musicplayer-core.exe /F >nul 2>&1\r\n"
         L"  ping -n 2 127.0.0.1 >nul\r\n"
         L")\r\n"
+        L"rem le moteur est encore vivant (service qui redemarre ?) : une\r\n"
+        L"rem extraction partielle laisserait un MELANGE de versions — on\r\n"
+        L"rem abandonne proprement et on relance l'appli\r\n"
+        L"echo FAIL: engine still running, update aborted > updater.log\r\n"
+        L"goto :relaunch\r\n"
         L":core_dead\r\n"
         L"ping -n 2 127.0.0.1 >nul\r\n"
         L"cd /d \"%~dp0\"\r\n"
@@ -474,7 +479,8 @@ int mp_update_apply_and_restart(void)
         L"  )\r\n"
         L")\r\n"
         L"del update.zip >nul 2>&1\r\n"
-        L"del updater.err >nul 2>&1\r\n");
+        L"del updater.err >nul 2>&1\r\n"
+        L":relaunch\r\n");
     /* relance : sans --update-plugins l'UI revient directement ; avec,
      * le client met à jour les plugins PUIS démarre l'UI (il ne sort
      * plus sans fenêtre — la relance doit TOUJOURS ramener l'appli) */
@@ -490,7 +496,7 @@ int mp_update_apply_and_restart(void)
      * le cwd est le dossier d'installation pour que le script trouve
      * update.zip */
     wchar_t cmdline[MAX_PATH + 32];
-    swprintf(cmdline, MAX_PATH + 32, L"cmd.exe /c \\\"%ls\\\"", bat);
+    swprintf(cmdline, MAX_PATH + 32, L"cmd.exe /c \"%ls\"", bat);
     STARTUPINFOW si;
     PROCESS_INFORMATION pi;
     memset(&si, 0, sizeof(si));

@@ -112,6 +112,7 @@ now_transcribe=Transcrire
 now_transcribe_hint=Transcrit l'épisode en cours (whisper, hors ligne)
 now_transcribing=Transcription…
 now_trans_error=Erreur de transcription
+now_plugins_outdated=Plugins du moteur obsolètes — extrayez le zip de mise à jour par-dessus le dossier d'installation (moteur arrêté) et relancez, ou réinstallez
 
 # --- Dialogue d'ouverture ---
 open_title=Ouvrir un fichier audio
