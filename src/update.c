@@ -327,10 +327,13 @@ static DWORD WINAPI upd_thread(LPVOID arg)
 
         wchar_t check_url[256];
         if (mp_update_get_channel() == 1) {
-            /* canal test : la DERNIÈRE release (pre-release comprise) */
+            /* canal test : les 10 dernières releases — on retient la
+             * MEILLEURE version (le tri de l'API peut être incohérent
+             * pendant la propagation du cache CDN : une release neuve
+             * peut ne pas apparaître en tête) */
             wcscpy(check_url,
                    L"https://api.github.com/repos/LostInTheBugs/"
-                   L"MusicPlayer/releases?per_page=1");
+                   L"MusicPlayer/releases?per_page=10");
         } else {
             /* canal stable : la dernière release non-pre-release */
             wcscpy(check_url, UPDATE_URL);
@@ -352,20 +355,34 @@ static DWORD WINAPI upd_thread(LPVOID arg)
 
             if (total > 0) {
                 buf[total] = 0;
-                const char* t = strstr(buf, "\"tag_name\":\"");
-                if (t) {
-                    t += 12;
-                    const char* e = strchr(t, '"');
-                    if (e && e - t < (int)sizeof(g_latest)) {
-                        memcpy(g_latest, t, (size_t)(e - t));
-                        g_latest[e - t] = 0;
-                        state = (cmp_ver(MP_VERSION, g_latest) &&
-                                 !is_skipped(g_latest) &&
-                                 update_allowed(g_latest)) ? 1 : 0;
-                        /* délai : ne pas signaler une release trop fraîche */
-                        if (state == 1 && update_in_lag(buf, mp_update_get_lag()))
-                            state = 0;
-                    }
+                /* scanne TOUTES les releases de la liste et retient la
+                 * meilleure version (le premier tag n'est pas forcément
+                 * le plus récent : le tri du CDN peut être incohérent) */
+                const char* p = buf;
+                g_latest[0] = 0;
+                while ((p = strstr(p, "\"tag_name\":\"")) != NULL) {
+                    p += 12;
+                    const char* e = strchr(p, '"');
+                    if (!e || e - p >= (int)sizeof(g_latest)) break;
+                    char tag[64];
+                    memcpy(tag, p, (size_t)(e - p));
+                    tag[e - p] = 0;
+                    p = e + 1;
+                    /* le premier tag est pris d'office (cmp_ver échoue
+                     * sur une chaîne vide), les suivants s'ils sont
+                     * meilleurs ; un tag plus long que g_latest est
+                     * invalide (les versions font ~14 caractères) */
+                    if ((!g_latest[0] || cmp_ver(g_latest, tag)) &&
+                        strlen(tag) < sizeof(g_latest))
+                        memcpy(g_latest, tag, strlen(tag) + 1);
+                }
+                if (g_latest[0]) {
+                    state = (cmp_ver(MP_VERSION, g_latest) &&
+                             !is_skipped(g_latest) &&
+                             update_allowed(g_latest)) ? 1 : 0;
+                    /* délai : ne pas signaler une release trop fraîche */
+                    if (state == 1 && update_in_lag(buf, mp_update_get_lag()))
+                        state = 0;
                 }
             }
         }

@@ -2,6 +2,18 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.046-c11] — 2026-08-07
+
+### Fixed — update check now works even when the GitHub API order is off
+- The pre-release channel read only `releases?per_page=1` (the first item of
+  the list). During CDN cache propagation, GitHub can return a freshly
+  created release **out of order** — the check then reported « no update »
+  while a newer release existed (e.g. c10 published but c9 still listed
+  first).
+- The client now reads the **10 most recent releases** and keeps the **best
+  version** (proper semantic comparison), so a mis-ordered list can no
+  longer hide an update.
+
 ## [2026.08.046-c10] — 2026-08-07
 
 ### Changed — Now playing panel layout (podcasts)
