@@ -2,6 +2,13 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.046-c2] — 2026-08-07 (pre-release branch)
+
+### Fixed (plugin repository follows the release channel)
+- The default plugin repository now follows the **release channel**: pre-release channel → `pre-release` branch repo (test plugins), release channel → `master` repo (production). Read directly from `upd.txt` (`channel=1`) so it works in the launcher, the client and the engine (auto plugin updates manifest too)
+- If the pre-release branch repo **does not exist** (deleted on purpose), the client falls back to the master repo with a log line — no crash, no fake success
+- The transcription plugin is now **embedded in the minimal zip** too (pre-release testing), not only in the full zip
+
 ## [2026.08.046-c1] — 2026-08-07
 
 ### Fixed (update cycle: app never relaunched, update never applied)
