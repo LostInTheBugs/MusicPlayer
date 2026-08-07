@@ -2,6 +2,22 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.046-c12] — 2026-08-08
+
+### Fixed — transcription: ffmpeg.exe was never shipped
+- The Transcribe button failed with « ffmpeg.exe not found »: the FFmpeg
+  runtime only contained the 4 decoding DLLs, but the transcription plugin
+  launches `ffmpeg.exe` to extract the audio. The runtime now ships the
+  **full LGPL shared build** (8 files: the 4 previous DLLs +
+  avdevice/avfilter/swscale + `ffmpeg.exe`, same BtbN build, verified
+  identical hashes).
+- The launcher now checks all 8 runtime files and re-downloads the full
+  runtime when any is missing — existing installs get `ffmpeg.exe`
+  automatically on next start.
+- Transcription panel labels now have **hard-coded fallbacks** (Transcribe,
+  Transcribing…, Transcription error, hint) when the local language file is
+  outdated — no more raw keys like `now_transcribe` shown on screen.
+
 ## [2026.08.046-c11] — 2026-08-07
 
 ### Fixed — update check now works even when the GitHub API order is off

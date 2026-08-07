@@ -22,11 +22,14 @@
 
 #include "repo.h"
 
-/* les DLL du runtime FFmpeg (décodage) */
+/* les fichiers du runtime FFmpeg (décodage + ffmpeg.exe pour la
+ * transcription) */
 static const char* FFMPEG_RUNTIME_DLLS[] = {
-    "avcodec-63.dll", "avformat-63.dll", "avutil-61.dll", "swresample-7.dll"
+    "avcodec-63.dll", "avformat-63.dll", "avutil-61.dll",
+    "swresample-7.dll", "avdevice-63.dll", "avfilter-12.dll",
+    "swscale-10.dll", "ffmpeg.exe"
 };
-#define FFMPEG_DLL_COUNT 4
+#define FFMPEG_DLL_COUNT 8
 
 static int ffmpeg_present(void)
 {

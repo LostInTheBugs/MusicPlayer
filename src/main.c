@@ -2909,6 +2909,10 @@ static void now_panel_update(void)
 }
 
 /* rendu du panneau (remplace le texte « Now playing » pour les podcasts) */
+/* lang_get avec repli codé en dur : si la clé est absente du fichier de
+ * langue chargé, lang_get retourne la clé elle-même → repli à l'écran */
+static const wchar_t* lang_get_or(const char* key, const wchar_t* fb);
+
 static void now_panel_paint(HDC hdc, const RECT* rc)
 {
     int x = rc->left + 14;
@@ -2978,13 +2982,14 @@ static void now_panel_paint(HDC hdc, const RECT* rc)
             HFONT old = (HFONT)SelectObject(hdc, ft_small);
             SetTextColor(hdc, g_skin.text);
             wchar_t wb[64];
-            const wchar_t* lb = lang_get("now_transcribe");
+            const wchar_t* lb = lang_get_or("now_transcribe", L"Transcribe");
             wcscpy(wb, lb);
             RECT br = b;
             DrawTextW(hdc, wb, -1, &br, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
             SelectObject(hdc, old);
             RECT hr = { b.right + 12, tr.top + 5, tr.right, tr.top + 20 };
-            const wchar_t* hint = lang_get("now_transcribe_hint");
+            const wchar_t* hint = lang_get_or("now_transcribe_hint",
+                L"Transcribes the current episode (whisper, offline)");
             DrawTextW(hdc, hint, -1, &hr, DT_LEFT | DT_TOP | DT_END_ELLIPSIS);
         } else if (g_trans_state == 1) {
             wchar_t wb[128];
@@ -2992,9 +2997,11 @@ static void now_panel_paint(HDC hdc, const RECT* rc)
                 wchar_t wstage[64];
                 utf8_to_wide(g_trans_stage, wstage, 64);
                 _snwprintf(wb, 128, L"%ls %ls",
-                           lang_get("now_transcribing"), wstage);
+                           lang_get_or("now_transcribing", L"Transcribing…"),
+                           wstage);
             } else {
-                _snwprintf(wb, 128, L"%ls", lang_get("now_transcribing"));
+                _snwprintf(wb, 128, L"%ls",
+                           lang_get_or("now_transcribing", L"Transcribing…"));
             }
             HFONT old = (HFONT)SelectObject(hdc, ft_desc);
             SetTextColor(hdc, g_skin.text);
@@ -3043,7 +3050,8 @@ static void now_panel_paint(HDC hdc, const RECT* rc)
         } else if (g_trans_state == 3) {
             wchar_t we[600];
             _snwprintf(we, 600, L"%ls: %hs",
-                       lang_get("now_trans_error"), g_trans_err);
+                       lang_get_or("now_trans_error", L"Transcription error"),
+                       g_trans_err);
             HFONT old = (HFONT)SelectObject(hdc, ft_desc);
             SetTextColor(hdc, g_skin.text);
             RECT r = tr;
@@ -3055,6 +3063,18 @@ static void now_panel_paint(HDC hdc, const RECT* rc)
     DeleteObject(ft_title);
     DeleteObject(ft_desc);
     DeleteObject(ft_small);
+}
+
+/* lang_get avec repli codé en dur : quand la clé est absente du fichier
+ * de langue chargé (fichier obsolète, extraction partielle), lang_get
+ * retourne la clé elle-même → on affiche le repli au lieu de la clé */
+static const wchar_t* lang_get_or(const char* key, const wchar_t* fb)
+{
+    const wchar_t* v = lang_get(key);
+    wchar_t wk[64];
+    utf8_to_wide(key, wk, 64);
+    if (wcscmp(v, wk) == 0) return fb;
+    return v;
 }
 
 /* clic : bouton Transcribe */
