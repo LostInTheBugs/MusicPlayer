@@ -5516,7 +5516,11 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR lpCmdLine, int nCmdSh
     }
 
     /* mode : mise à jour des plugins du repository (lancé par le script
-     * de mise à jour quand « Update plugins with the program » est coché) */
+     * de mise à jour quand « Update plugins with the program » est coché).
+     * Après la MAJ des plugins, on RETOMBE sur le démarrage normal :
+     * le script relance l'appli après une mise à jour et elle doit
+     * TOUJOURS revenir à l'écran (avant : ExitProcess(0) → l'appli
+     * restait fermée après chaque mise à jour) */
     if (lpCmdLine && strstr(lpCmdLine, "--update-plugins")) {
         wchar_t json_url[1024];
         swprintf(json_url, 1024, L"%ls/plugins.json", REPO_DEFAULT_BASE);
@@ -5530,7 +5534,8 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR lpCmdLine, int nCmdSh
             }
             repo_free(list, n);
         }
-        ExitProcess(0);
+        /* NB : pas de ExitProcess ici — on continue vers l'UI (l'argument
+         * --update-plugins n'a plus d'effet ensuite) */
     }
 
     INITCOMMONCONTROLSEX icc;

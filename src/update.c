@@ -435,13 +435,15 @@ int mp_update_apply_and_restart(void)
         L"taskkill /IM musicplayer-core.exe /F >nul 2>&1\r\n"
         L"rem nouveau : re-tue 3x (un process peut mettre du temps à\r\n"
         L"rem libérer son exe, sinon l'extraction échoue sur le fichier)\r\n"
+        L"rem (ping = sommeil fiable SANS console : timeout.exe exige une\r\n"
+        L"rem console et échoue instantanément ici, lancement CREATE_NO_WINDOW)\r\n"
         L"for /l %%i in (1,1,3) do (\r\n"
-        L"  timeout /t 1 /nobreak >nul\r\n"
+        L"  ping -n 2 127.0.0.1 >nul\r\n"
         L"  taskkill /IM MusicPlayer.exe /F >nul 2>&1\r\n"
         L"  taskkill /IM MusicPlayerApp.exe /F >nul 2>&1\r\n"
         L"  taskkill /IM musicplayer-core.exe /F >nul 2>&1\r\n"
         L")\r\n"
-        L"timeout /t 2 /nobreak >nul\r\n"
+        L"ping -n 3 127.0.0.1 >nul\r\n"
         L"cd /d \"%~dp0\"\r\n"
         L"tar -xf update.zip >updater.err 2>&1\r\n"
         L"if errorlevel 1 (\r\n"
@@ -457,9 +459,15 @@ int mp_update_apply_and_restart(void)
         L"  )\r\n"
         L")\r\n"
         L"del update.zip >nul 2>&1\r\n"
-        L"del updater.err >nul 2>&1\r\n"
-        L"start \"\" \"%~dp0MusicPlayer.exe\" --update-plugins\r\n"
-        L"del \"%~f0\"\r\n");
+        L"del updater.err >nul 2>&1\r\n");
+    /* relance : sans --update-plugins l'UI revient directement ; avec,
+     * le client met à jour les plugins PUIS démarre l'UI (il ne sort
+     * plus sans fenêtre — la relance doit TOUJOURS ramener l'appli) */
+    if (mp_update_get_plugins())
+        fwprintf(f, L"start \"\" \"%%~dp0MusicPlayer.exe\" --update-plugins\r\n");
+    else
+        fwprintf(f, L"start \"\" \"%%~dp0MusicPlayer.exe\"\r\n");
+    fwprintf(f, L"del \"%%~f0\"\r\n");
     fclose(f);
 
     /* lancement direct via cmd.exe : plus fiable que ShellExecute

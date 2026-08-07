@@ -2,6 +2,14 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.046-c1] — 2026-08-07
+
+### Fixed (update cycle: app never relaunched, update never applied)
+- The update script relaunched `MusicPlayer.exe --update-plugins`, and the client in that mode exited after updating plugins (`ExitProcess`) — the launcher then exited too, so **the app never came back** after an update. The plugin-update mode now falls through to the normal UI startup: after an update the app always returns to the screen
+- The script's sleeps used `timeout.exe`, which fails instantly when the process has no console (the script is launched with `CREATE_NO_WINDOW`) — the extraction raced with the dying processes and `tar` failed on the still-locked exes, leaving the old version in place. The sleeps now use `ping -n N 127.0.0.1` (works with or without a console)
+- The « Update plugins with the program » checkbox is now honored: `--update-plugins` is only passed to the relaunched launcher when it is checked (before, it was always passed)
+- Verified end-to-end under Wine: script kills the processes, extracts, logs `OK: <version>`, cleans up, self-deletes, and the new client window comes up
+
 ## [2026.08.046] — 2026-08-07 (pre-release branch)
 
 ### Added (offline transcription — transcribe_whisper plugin)
