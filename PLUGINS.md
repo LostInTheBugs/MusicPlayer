@@ -160,6 +160,12 @@ too — that is how a skin hosts its own visualizer inside the artwork
 
 ## 7. Versioning and the plugin repository
 
+Product versions follow the `YYYY.MM.NNN` scheme with an **even/odd
+convention**: even `NNN` numbers are stable releases (`2026.08.100`,
+hotfixes `-cX`), odd numbers are pre-releases (`2026.08.101-pre`,
+hotfixes `-cX-pre`). The update checker understands both suffixes
+(`< -pre < -cX < -cX-pre`).
+
 Plugins are versioned as `core.NNN` (see the `plugins.json` manifest);
 the update checker can fetch a newer DLL without a program update.
 

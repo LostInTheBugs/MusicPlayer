@@ -35,7 +35,7 @@ cross-compiled from Linux with MinGW-w64.
 
 ## Run on Windows 11
 
-1. Copy the `bin/` folder (or unzip `dist/MusicPlayer-2026.08.039-win64.zip`)
+1. Copy the `bin/` folder (or unzip `dist/MusicPlayer-2026.08.100-win64.zip`)
    to the Windows machine.
 2. Run `MusicPlayer.exe`. No installation required
    (the FFmpeg DLLs are in the same folder).
@@ -172,12 +172,12 @@ This project was built entirely through AI-assisted sessions (Hermes Agent). Usa
 
 | Metric | deepseek-v4-flash | deepseek-v4-pro | **Total** |
 |---|---|---|---|
-| Input tokens | 5 455 870 | 294 597 | **5 750 467** |
-| Output tokens | 3 133 250 | 42 005 | **3 175 255** |
-| **Subtotal (input + output)** | **8 589 120** | **336 602** | **8 925 722** |
-| Cache read (reused at reduced price) | 842 486 144 | 12 218 240 | **854 704 384** |
-| API calls | 2 734 | 104 | **2 838** |
-| **Estimated cost** | **≈ 4.00 USD** | **≈ 0.21 USD** | **≈ 4.21 USD** |
+| Input tokens | 8 416 361 | 51 072 | **8 467 433** |
+| Output tokens | 4 604 554 | 10 430 | **4 614 984** |
+| **Subtotal (input + output)** | **13 020 915** | **61 502** | **13 082 417** |
+| Cache read (reused at reduced price) | 1 178 442 624 | 601 472 | **1 179 044 096** |
+| API calls | 4 183 | 19 | **4 202** |
+| **Estimated cost** | **≈ 5.44 USD** | **≈ 0.03 USD** | **≈ 5.47 USD** |
 
 Full breakdown: [TOKENS.md](TOKENS.md).
 
