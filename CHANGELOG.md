@@ -2,6 +2,13 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.101-c5-pre] — 2026-08-08 — hotfix (panel shows for music)
+
+### Fixed
+- The Now playing panel (metadata + lyrics/transcript) now renders for
+  **music tracks too**: it was only drawn for podcasts, so music showed
+  only the central state message (« Finished » / « Now playing »).
+
 ## [2026.08.101-c4-pre] — 2026-08-08 — now playing panel split
 
 ### Changed — Now playing panel (two sections)

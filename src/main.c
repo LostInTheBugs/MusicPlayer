@@ -5692,8 +5692,9 @@ static void paint_center(HDC hdc, RECT* rc)
     /* un plugin visuel actif remplace le texte par son rendu */
     if (mp_plugins_has_visual()) {
         mp_plugins_visual_render(hdc, vis_rc.right - vis_rc.left, vis_rc.bottom - vis_rc.top);
-    } else if (g_now_ok) {
-        /* podcast : panneau titre + description + transcription */
+    } else if (g_now_ok || cc_state()->name[0]) {
+        /* panneau : podcast (titre + description + transcription) ou
+         * musique (métadonnées ID3 + paroles .lrc / transcription) */
         now_panel_paint(hdc, &vis_rc);
     } else {
         SetBkMode(hdc, TRANSPARENT);
