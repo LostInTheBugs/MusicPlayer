@@ -44,6 +44,9 @@ static char g_source[MAX_PATH * 2] = "";
  * false — le POST /transcribe peut avoir été interrompu par le timeout
  * du client) */
 static char g_last_full[70000] = "";
+/* dernier jeu de segments réussi (JSON) — pour la mise en page de la
+ * transcription par paragraphes */
+static char g_last_segs[120000] = "";
 /* progression de la transcription : durée totale (parse du stderr
  * ffmpeg) et % courant (parse des lignes [a --> b] de whisper-cli) */
 static double g_dur_sec = 0.0;
@@ -784,6 +787,7 @@ static void handle_transcribe(SOCKET c, const char* body)
         return;
     }
     g_last_full[0] = 0;
+    g_last_segs[0] = 0;
     g_dur_sec = 0.0;
     InterlockedExchange(&g_progress, 0);
 
@@ -916,6 +920,8 @@ static void handle_transcribe(SOCKET c, const char* body)
     }
     if (full)
         strncpy(g_last_full, full, sizeof(g_last_full) - 1);
+    if (segs)
+        strncpy(g_last_segs, segs, sizeof(g_last_segs) - 1);
     free(segs);
     free(full);
 
@@ -1109,7 +1115,9 @@ static void handle_progress(SOCKET c)
         char escf[65536];
         json_escape_a(g_last_full, escf, sizeof(escf));
         snprintf(body, sizeof(body),
-                 "{\"busy\":false,\"full_text\":\"%s\"}", escf);
+                 "{\"busy\":false,\"full_text\":\"%s\","
+                 "\"segments\":%s}",
+                 escf, g_last_segs[0] ? g_last_segs : "[]");
     }
     send_body(c, body, "application/json");
 }

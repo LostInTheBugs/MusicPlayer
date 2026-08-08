@@ -3306,13 +3306,54 @@ static void now_panel_update(void)
                 g_trans_progress = atoi(pb);
             }
         } else {
-            /* transcription finie : le plugin renvoie le full_text dans
-             * la réponse du /progress (le POST initial a pu être coupé
-             * par le timeout du client) ; sinon (ancien plugin), repli
-             * sur le transcript embarqué du feed */
+            /* transcription finie : le plugin renvoie le full_text (et
+             * les segments) dans la réponse du /progress ; sinon (ancien
+             * plugin), repli sur le transcript embarqué du feed */
             if (strstr(resp, "\"full_text\"")) {
                 char txt[65536];
-                pod_json_str(resp, "full_text", txt, sizeof(txt));
+                if (strstr(resp, "\"segments\"")) {
+                    /* mise en page : un paragraphe par segment */
+                    txt[0] = 0;
+                    int out = 0;
+                    const char* p = resp;
+                    while ((p = strstr(p, "\"text\":\"")) != NULL &&
+                           out < (int)sizeof(txt) - 2) {
+                        p += 7;
+                        char seg[8192];
+                        int o = 0;
+                        while (*p && *p != '"' && o < (int)sizeof(seg) - 1) {
+                            if (*p == '\\' && p[1]) {
+                                if (p[1] == 'n') {
+                                    seg[o++] = ' ';
+                                    p += 2;
+                                    continue;
+                                }
+                                if (p[1] == '"' || p[1] == '\\') {
+                                    seg[o++] = p[1];
+                                    p += 2;
+                                    continue;
+                                }
+                                p++;
+                            }
+                            seg[o++] = *p++;
+                        }
+                        seg[o] = 0;
+                        if (seg[0]) {
+                            int l = (int)strlen(seg);
+                            if (out + l + 2 < (int)sizeof(txt) - 1) {
+                                memcpy(txt + out, seg, l);
+                                out += l;
+                                txt[out++] = '\n';
+                                txt[out++] = '\n';
+                                txt[out] = 0;
+                            }
+                        }
+                    }
+                    if (!txt[0])
+                        pod_json_str(resp, "full_text", txt, sizeof(txt));
+                } else {
+                    pod_json_str(resp, "full_text", txt, sizeof(txt));
+                }
                 now_json_unescape(txt);
                 if (txt[0]) {
                     snprintf(g_trans_text, sizeof(g_trans_text), "%s", txt);
@@ -6889,7 +6930,7 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR lpCmdLine, int nCmdSh
 
     g_hwnd = CreateWindowExW(0, L"MusicPlayerWnd", APP_TITLE,
                              WS_OVERLAPPEDWINDOW,
-                             CW_USEDEFAULT, CW_USEDEFAULT, 640, 300,
+                             CW_USEDEFAULT, CW_USEDEFAULT, 640, 600,
                              NULL, NULL, hInst, NULL);
     if (!g_hwnd) {
         char dbg[256];

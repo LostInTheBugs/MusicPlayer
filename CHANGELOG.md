@@ -2,6 +2,16 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.046-c20] — 2026-08-08
+
+### Changed — transcription layout + window height
+- The transcript is now **paginated into paragraphs**: the whisper plugin
+  keeps the segment list and returns it in `/progress`
+  (`{"busy":false,"full_text":"…","segments":[…]}`); the client builds one
+  paragraph per segment (fallback to the raw text with older plugins).
+- The main window is created **twice as tall** (640×600 instead of 640×300)
+  so several transcript lines are visible by default.
+
 ## [2026.08.046-c19] — 2026-08-08
 
 ### Fixed — Podcasts ▸ Playlist button
