@@ -6,7 +6,7 @@ LLM token usage for this project, tallied session by session.
 
 | Metric | deepseek-v4-flash | deepseek-v4-pro | **Total** |
 |---|---|---|---|
-| Dev sessions (Hermes) | 2 | 1 | **3** |
+| Dev sessions (Hermes) | 2 | 2 | **4** |
 | Scripted agent sessions (API) | 0 | 0 | **0** |
 | Messages | 13 881 | — | **13 881** |
 | API calls | 4 183 | 19 | **4 202** |
@@ -38,4 +38,4 @@ After each dev session, copy the matching row into the table above.
   (audits, releases, background tasks) attached to this project.
 - `reasoning_tokens` is probably included in `output_tokens`
   (to be confirmed with the provider).
-- Tally updated on 2026-08-08 — 2026.08.100 (first stable release).
+- Tally updated on 2026-08-08 — 2026.08.100 (stable). Current session (deepseek-v4-pro, pre-release setup + SPEC-TRANSCRIBE-WHISPER.MD) not yet flushed to state.db — to be tallied on next update.
