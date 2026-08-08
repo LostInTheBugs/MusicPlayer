@@ -40,6 +40,10 @@ static HANDLE g_thread = NULL;
 static volatile LONG g_busy = 0;
 static char g_stage[64] = "";
 static char g_source[MAX_PATH * 2] = "";
+/* dernier full_text réussi (renvoyé par /progress quand busy passe à
+ * false — le POST /transcribe peut avoir été interrompu par le timeout
+ * du client) */
+static char g_last_full[70000] = "";
 
 /* ------------------------------------------------------------------ */
 static void log_line(const char* msg)
@@ -742,6 +746,7 @@ static void handle_transcribe(SOCKET c, const char* body)
                   "application/json");
         return;
     }
+    g_last_full[0] = 0;
 
     snprintf(g_source, sizeof(g_source), "%s", path);
     char* resp = NULL;
@@ -870,6 +875,8 @@ static void handle_transcribe(SOCKET c, const char* body)
         }
         rc = 0;
     }
+    if (full)
+        strncpy(g_last_full, full, sizeof(g_last_full) - 1);
     free(segs);
     free(full);
 
@@ -1051,7 +1058,7 @@ static void handle_transcript(SOCKET c, const char* path)
 /* ------------------------------------------------------------------ */
 static void handle_progress(SOCKET c)
 {
-    char body[2048];
+    char body[70000];
     if (g_busy) {
         char src[2048];
         json_escape_a(g_source, src, sizeof(src));
@@ -1059,7 +1066,10 @@ static void handle_progress(SOCKET c)
                  "{\"busy\":true,\"stage\":\"%s\",\"source\":\"%s\"}",
                  g_stage, src);
     } else {
-        snprintf(body, sizeof(body), "{\"busy\":false}");
+        char escf[65536];
+        json_escape_a(g_last_full, escf, sizeof(escf));
+        snprintf(body, sizeof(body),
+                 "{\"busy\":false,\"full_text\":\"%s\"}", escf);
     }
     send_body(c, body, "application/json");
 }

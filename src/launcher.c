@@ -109,7 +109,13 @@ static int http_download(const wchar_t* url, const wchar_t* dest)
     CloseHandle(f);
     InternetCloseHandle(uh);
     InternetCloseHandle(inet);
-    return total > 100000 ? 0 : -1;
+    if (total <= 100000) {
+        /* échec ou réponse d'erreur : ne laisse pas de fichier partiel
+         * (sinon ffmpeg_present le détecte mais un lancement échoue) */
+        DeleteFileW(dest);
+        return -1;
+    }
+    return 0;
 }
 
 /* extraction zip → dossier exe (tar.exe natif Windows) */

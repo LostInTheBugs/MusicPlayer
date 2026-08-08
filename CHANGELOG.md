@@ -2,6 +2,23 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.046-c17] — 2026-08-08
+
+### Fixed — transcription result never reached the panel
+- The client's `/progress` poll discarded the transcription result: when the
+  task finished it fetched the feed's embedded transcript instead of the
+  whisper full text, so the panel stayed on « Transcribing… » forever after
+  the 15 s POST timeout cut the initial request.
+- The plugin now keeps the last successful `full_text` and returns it in the
+  `/progress` response (`{"busy":false,"full_text":"…"}`); the client reads
+  it and displays the text (falls back to the feed transcript or an error
+  when it is empty/absent).
+
+### Fixed — launcher left partial files on failed downloads
+- `http_download` now deletes the destination file when the download fails
+  (a leftover error/partial file would be detected by the size check but
+  could not be executed, e.g. a 14-byte `ffmpeg.exe`).
+
 ## [2026.08.046-c16] — 2026-08-08
 
 ### Fixed — Now playing transcription panel labels

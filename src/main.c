@@ -3296,10 +3296,31 @@ static void now_panel_update(void)
                          sizeof(g_trans_stage));
             now_json_unescape(g_trans_stage);
         } else {
-            g_trans_state = now_fetch_transcript(g_now_url) == 0 ? 2 : 3;
-            if (g_trans_state == 3 && !g_trans_err[0])
-                snprintf(g_trans_err, sizeof(g_trans_err), "%s",
-                         "transcription failed");
+            /* transcription finie : le plugin renvoie le full_text dans
+             * la réponse du /progress (le POST initial a pu être coupé
+             * par le timeout du client) ; sinon (ancien plugin), repli
+             * sur le transcript embarqué du feed */
+            if (strstr(resp, "\"full_text\"")) {
+                char txt[65536];
+                pod_json_str(resp, "full_text", txt, sizeof(txt));
+                now_json_unescape(txt);
+                if (txt[0]) {
+                    snprintf(g_trans_text, sizeof(g_trans_text), "%s", txt);
+                    g_trans_state = 2;
+                    g_trans_scroll = 0;
+                } else {
+                    /* résultat vide (échec du process whisper) */
+                    g_trans_state = 3;
+                    if (!g_trans_err[0])
+                        snprintf(g_trans_err, sizeof(g_trans_err), "%s",
+                                 "transcription failed");
+                }
+            } else {
+                g_trans_state = now_fetch_transcript(g_now_url) == 0 ? 2 : 3;
+                if (g_trans_state == 3 && !g_trans_err[0])
+                    snprintf(g_trans_err, sizeof(g_trans_err), "%s",
+                             "transcription failed");
+            }
         }
         free(resp);
         InvalidateRect(g_hwnd, NULL, FALSE);
