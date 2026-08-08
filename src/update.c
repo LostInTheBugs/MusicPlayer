@@ -29,25 +29,54 @@ static int           g_plugins = -1; /* 0 seul, 1 plugins avec le programme */
 static int           g_channel = -1; /* 0 release (stable), 1 pre-release (test) */
 
 /* ------------------------------------------------------------------ */
-/* Comparaison de versions "AAAA.MM.NNN[-cX]"                          */
+/* Comparaison de versions "AAAA.MM.NNN[-cX][-pre]"                     */
+/*   pairs (NNN) : releases (2026.08.100) + hotfix (2026.08.100-c1)     */
+/*   impairs : tests (2026.08.101-pre) + hotfix (2026.08.101-c1-pre)    */
 /* ------------------------------------------------------------------ */
-static int parse_ver(const char* s, int* y, int* m, int* r, int* c)
+static int parse_ver(const char* s, int* y, int* m, int* r, int* c,
+                     int* pre)
 {
     *c = 0;
-    if (sscanf(s, "%d.%d.%d-c%d", y, m, r, c) == 4) return 1;
-    return sscanf(s, "%d.%d.%d", y, m, r) == 3;
+    *pre = 0;
+    if (sscanf(s, "%d.%d.%d-c%d", y, m, r, c) == 4) {
+        /* -cX ou -cX-pre */
+        const char* tail = strstr(s, "-c");
+        if (tail && strstr(tail, "-pre")) *pre = 1;
+        return 1;
+    }
+    if (sscanf(s, "%d.%d.%d", y, m, r) == 3) {
+        /* rien ou -pre */
+        const char* tail = strstr(s, "-");
+        if (tail && !strncmp(tail, "-pre", 4)) *pre = 1;
+        return 1;
+    }
+    return 0;
+}
+
+/* niveau du suffixe : rien < -pre < -cX < -cX-pre */
+static int suffix_level(int c, int pre)
+{
+    if (c > 0) return pre ? 3 : 2;
+    return pre ? 1 : 0;
 }
 
 /* retourne 1 si `lat` est plus récente que `cur`, sinon 0 */
 static int cmp_ver(const char* cur, const char* lat)
 {
     int cy, cm, cr, cc, ly, lm, lr, lc;
-    if (!parse_ver(cur, &cy, &cm, &cr, &cc) || !parse_ver(lat, &ly, &lm, &lr, &lc))
+    int cpre = 0, lpre = 0;
+    if (!parse_ver(cur, &cy, &cm, &cr, &cc, &cpre) ||
+        !parse_ver(lat, &ly, &lm, &lr, &lc, &lpre))
         return 0;
     if (ly != cy) return ly > cy ? 1 : 0;
     if (lm != cm) return lm > cm ? 1 : 0;
     if (lr != cr) return lr > cr ? 1 : 0;
-    return lc > cc ? 1 : 0;
+    {
+        int cl = suffix_level(cc, cpre);
+        int ll = suffix_level(lc, lpre);
+        if (ll != cl) return ll > cl ? 1 : 0;
+        return lc > cc ? 1 : 0;
+    }
 }
 
 /* ------------------------------------------------------------------ */
@@ -281,8 +310,8 @@ static int update_allowed(const char* ver)
 {
     /* correctives seulement : la release doit porter un -cX */
     if (mp_update_get_type() == 1) {
-        int y, m, r, c;
-        if (!parse_ver(ver, &y, &m, &r, &c) || c == 0) return 0;
+        int y, m, r, c, pre;
+        if (!parse_ver(ver, &y, &m, &r, &c, &pre) || c == 0) return 0;
     }
     return 1;
 }

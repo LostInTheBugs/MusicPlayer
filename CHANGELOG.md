@@ -2,6 +2,29 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.100] — 2026-08-08 — first stable release
+
+### Versioning convention (new)
+- **Even** numbers are stable releases (`2026.08.100`, hotfixes `-cX`),
+  **odd** numbers are pre-releases (`2026.08.101-pre`, hotfixes `-cX-pre`).
+  The update checker understands both suffixes.
+
+### Highlights (this release includes the podcast transcription feature set)
+- **Offline transcription** of podcast episodes (whisper.cpp, local): Now
+  playing panel with title, description and transcript; the engine ships a
+  complete FFmpeg + whisper runtime (auto-downloaded by the launcher, with
+  corrupt-file detection and individual-file fallback).
+- **Whisper models manager** (Plugins ▸ Whisper models…): official model
+  list with size/state, direct download from Hugging Face with progress
+  (`.part` then rename), add a local model, pick the **default** model.
+- **Dialogue-script transcript layout**: one line per segment with its
+  timestamp `[HH:MM:SS]`, progress bar + % while transcribing.
+- **Podcasts**: Playlist button (loads the episodes without playing),
+  download with a save dialog (any folder).
+- Robust update pipeline: engine restart when plugins are outdated,
+  self-repair of plugins/language files, pre-release channel scanning the
+  last 10 releases and picking the best version.
+
 ## [2026.08.046-c21] — 2026-08-08
 
 ### Changed — transcript layout (dialogue script format)
