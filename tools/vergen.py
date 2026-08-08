@@ -28,7 +28,7 @@ def main():
     meta = META.get(sys.argv[3])
     if not meta:
         sys.exit("unknown target: " + sys.argv[3])
-    m = re.match(r"(\d+)\.(\d+)\.(\d+)(?:-c(\d+))?$", version)
+    m = re.match(r"(\d+)\.(\d+)\.(\d+)(?:-c(\d+))?(?:-pre)?$", version)
     if not m:
         sys.exit("bad version: " + version)
     num = "%d,%d,%d,%d" % (int(m.group(1)), int(m.group(2)), int(m.group(3)), int(m.group(4) or "0"))

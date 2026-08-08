@@ -2,6 +2,13 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.101-pre] — 2026-08-08 — testing channel
+
+Testing release: same content as [2026.08.100] (first stable release
+under the even/odd convention). This opens the odd-numbered
+pre-release channel — install this build to test upcoming changes
+before they reach the stable channel.
+
 ## [2026.08.100] — 2026-08-08 — first stable release
 
 ### Versioning convention (new)
