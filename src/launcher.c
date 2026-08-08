@@ -24,16 +24,34 @@
 
 /* les fichiers du runtime (FFmpeg : décodage + ffmpeg.exe pour la
  * transcription ; whisper.cpp : whisper-cli.exe + ggml pour la
- * transcription) */
-static const char* FFMPEG_RUNTIME_DLLS[] = {
-    "avcodec-63.dll", "avformat-63.dll", "avutil-61.dll",
-    "swresample-7.dll", "avdevice-63.dll", "avfilter-12.dll",
-    "swscale-10.dll", "ffmpeg.exe",
-    "whisper-cli.exe", "ggml.dll", "ggml-base.dll", "whisper.dll",
-    "ggml-cpu-alderlake.dll", "ggml-cpu-cannonlake.dll",
-    "ggml-cpu-cascadelake.dll", "ggml-cpu-haswell.dll",
-    "ggml-cpu-icelake.dll", "ggml-cpu-sandybridge.dll",
-    "ggml-cpu-skylakex.dll", "ggml-cpu-sse42.dll", "ggml-cpu-x64.dll"
+ * transcription). min_size = taille minimale attendue (moitié de la
+ * taille réelle) : un fichier plus petit est un reste de téléchargement
+ * interrompu et sera re-téléchargé. */
+static const struct {
+    const char* file;
+    DWORD min_size;
+} FFMPEG_RUNTIME_FILES[] = {
+    { "avcodec-63.dll",          30000000 },
+    { "avformat-63.dll",          9000000 },
+    { "avutil-61.dll",            1000000 },
+    { "swresample-7.dll",          300000 },
+    { "avdevice-63.dll",          1500000 },
+    { "avfilter-12.dll",         12000000 },
+    { "swscale-10.dll",           1000000 },
+    { "ffmpeg.exe",                200000 },
+    { "whisper-cli.exe",           200000 },
+    { "ggml.dll",                   30000 },
+    { "ggml-base.dll",             250000 },
+    { "whisper.dll",               500000 },
+    { "ggml-cpu-alderlake.dll",    300000 },
+    { "ggml-cpu-cannonlake.dll",   300000 },
+    { "ggml-cpu-cascadelake.dll",  300000 },
+    { "ggml-cpu-haswell.dll",      300000 },
+    { "ggml-cpu-icelake.dll",      300000 },
+    { "ggml-cpu-sandybridge.dll",  300000 },
+    { "ggml-cpu-skylakex.dll",     300000 },
+    { "ggml-cpu-sse42.dll",        300000 },
+    { "ggml-cpu-x64.dll",          300000 },
 };
 #define FFMPEG_DLL_COUNT 21
 
@@ -45,9 +63,16 @@ static int ffmpeg_present(void)
     if (!slash) return 0;
     for (int i = 0; i < FFMPEG_DLL_COUNT; i++) {
         wchar_t dll[64];
-        MultiByteToWideChar(CP_UTF8, 0, FFMPEG_RUNTIME_DLLS[i], -1, dll, 64);
+        MultiByteToWideChar(CP_UTF8, 0, FFMPEG_RUNTIME_FILES[i].file, -1,
+                            dll, 64);
         wcscpy(slash + 1, dll);
         if (GetFileAttributesW(exe) == INVALID_FILE_ATTRIBUTES) return 0;
+        HANDLE h = CreateFileW(exe, GENERIC_READ, FILE_SHARE_READ, NULL,
+                               OPEN_EXISTING, 0, NULL);
+        if (h == INVALID_HANDLE_VALUE) return 0;
+        DWORD sz = GetFileSize(h, NULL);
+        CloseHandle(h);
+        if (sz < FFMPEG_RUNTIME_FILES[i].min_size) return 0;
     }
     return 1;
 }
@@ -129,19 +154,24 @@ static int ffmpeg_download(void)
         if (ffmpeg_present()) return 0;
     }
 
-    /* 2) les 4 DLL individuellement (2 tentatives chacune) */
+    /* 2) les fichiers individuellement (2 tentatives chacun) : on tente
+     * TOUS les fichiers avant de conclure — un échec transitoire sur un
+     * fichier ne doit pas empêcher le téléchargement des autres */
+    int missing = 0;
     for (int i = 0; i < FFMPEG_DLL_COUNT; i++) {
         wchar_t durl[1024], dpath[MAX_PATH];
-        swprintf(durl, 1024, L"%ls/ffmpeg/%hs", base, FFMPEG_RUNTIME_DLLS[i]);
-        swprintf(dpath, MAX_PATH, L"%ls\\%hs", exe, FFMPEG_RUNTIME_DLLS[i]);
+        swprintf(durl, 1024, L"%ls/ffmpeg/%hs", base,
+                 FFMPEG_RUNTIME_FILES[i].file);
+        swprintf(dpath, MAX_PATH, L"%ls\\%hs", exe,
+                 FFMPEG_RUNTIME_FILES[i].file);
         int done = 0;
         for (int j = 0; j < 2 && !done; j++) {
             done = http_download(durl, dpath) == 0;
             if (!done) Sleep(1000);
         }
-        if (!done) return -1;
+        if (!done) missing++;
     }
-    return ffmpeg_present() ? 0 : -1;
+    return missing ? -1 : 0;
 }
 
 int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR lpCmdLine, int nShow)
@@ -161,8 +191,8 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR lpCmdLine, int nShow)
             L"FFmpeg runtime (decoding engine) is missing and the "
             L"automatic download failed.\n\n"
             L"Expected folder: %ls\n\n"
-            L"Manual fix: download the full zip from\n"
-            L"https://github.com/LostInTheBugs/MusicPlayer/releases/latest\n"
+            L"Manual fix: download the FULL zip of your version from\n"
+            L"https://github.com/LostInTheBugs/MusicPlayer/releases\n"
             L"and extract its content into this folder, then restart "
             L"MusicPlayer.", exe);
         MessageBoxW(NULL, msg, L"MusicPlayer", MB_ICONERROR);

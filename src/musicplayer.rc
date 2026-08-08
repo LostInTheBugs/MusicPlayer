@@ -24,6 +24,7 @@ BEGIN
     LTEXT "", 1008, 14, 190, 402, 14
     PUSHBUTTON "Download", 2008, 14, 212, 96, 16
     PUSHBUTTON "Add...", 2009, 118, 212, 96, 16
+    PUSHBUTTON "Default", 2010, 222, 212, 80, 16
     DEFPUSHBUTTON "Close", 1, 356, 212, 60, 16
 END
 

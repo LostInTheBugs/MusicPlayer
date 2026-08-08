@@ -49,6 +49,7 @@ wm_col_size=Taille
 wm_col_state=État
 wm_installed=installé
 wm_not_installed=à télécharger
+wm_default=par défaut
 wm_hint=Sélectionnez un modèle à télécharger, ou ajoutez un fichier local.
 wm_downloading=Téléchargement… %d %%
 wm_download_ok=Modèle téléchargé.

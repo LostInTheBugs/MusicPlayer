@@ -2,6 +2,26 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.046-c15] — 2026-08-08
+
+### Added — default whisper model selection (Plugins ▸ Whisper models…)
+- New **Default** button: mark the selected model as the default for
+  transcription (stored in `%APPDATA%\MusicPlayer\whisper.cfg`); the
+  transcription request now sends the chosen model, the list shows it as
+  « default ».
+- The Plugins menu label has a hard-coded fallback (no raw key with an
+  outdated language file).
+
+### Fixed — FFmpeg runtime download resilience (launcher)
+- Runtime files are checked for a **minimum size** (a truncated file from an
+  interrupted download is now detected and re-downloaded automatically —
+  fixes the « avdevice-63.dll 0xc000012f » corrupt-file error).
+- The manual-fix error message points to the **releases page** (FULL zip of
+  the current channel) instead of `releases/latest`, which led pre-release
+  users to the stable version.
+- The fallback individual download tries **all** runtime files before giving
+  up (a transient failure on one file no longer aborts the rest).
+
 ## [2026.08.046-c14] — 2026-08-08
 
 ### Added — Whisper models manager (menu Plugins ▸ Whisper models…)

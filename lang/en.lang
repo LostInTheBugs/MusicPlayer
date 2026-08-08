@@ -51,6 +51,7 @@ wm_col_size=Size
 wm_col_state=State
 wm_installed=installed
 wm_not_installed=not installed
+wm_default=default
 wm_hint=Select a model to download, or add a local file.
 wm_downloading=Downloading… %d %%
 wm_download_ok=Model downloaded.

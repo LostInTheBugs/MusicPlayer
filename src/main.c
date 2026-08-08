@@ -302,6 +302,9 @@ void playlist_set_shuffle(int on)
     g_shuffle = on ? 1 : 0;
 }
 
+/* lang_get avec repli codé en dur (défini plus bas) */
+static const wchar_t* lang_get_or(const char* key, const wchar_t* fb);
+
 int playlist_get_shuffle(void)
 {
     return g_shuffle;
@@ -1013,7 +1016,7 @@ static void rebuild_plugins_menu(HMENU parent)
     HMENU m = CreatePopupMenu();
     AppendMenuW(m, MF_STRING, IDM_PLUGIN_RELOAD, lang_get("plugins_reload"));
     AppendMenuW(m, MF_STRING, IDM_WHISPER_MODELS,
-                lang_get("menu_plugins_whisper"));
+                lang_get_or("menu_plugins_whisper", L"Whisper models…"));
     AppendMenuW(m, MF_SEPARATOR, 0, NULL);
     if (n == 0) {
         AppendMenuW(m, MF_GRAYED | MF_STRING, 0, lang_get("plugins_none"));
@@ -1700,9 +1703,6 @@ static void do_plugins_dialog(void)
 /* ------------------------------------------------------------------ */
 #define IDD_WHISPER 110
 
-/* lang_get avec repli codé en dur (défini plus bas) */
-static const wchar_t* lang_get_or(const char* key, const wchar_t* fb);
-
 /* modèles whisper.cpp officiels (nom, taille Mo) */
 static const struct { const char* name; int mb; } WHISPER_CATALOG[] = {
     { "tiny",            75 },
@@ -1725,6 +1725,59 @@ static void whisper_models_dir(wchar_t* out, size_t cap)
     else
         _snwprintf(out, cap, L"whisper-models");
     CreateDirectoryW(out, NULL);
+}
+
+/* configuration : %APPDATA%\MusicPlayer\whisper.cfg (« model=<nom> ») —
+ * le modèle par défaut utilisé par la transcription */
+static void whisper_cfg_path(wchar_t* out, size_t cap)
+{
+    wchar_t ap[MAX_PATH];
+    if (SHGetFolderPathW(NULL, CSIDL_APPDATA, NULL, 0, ap) == S_OK)
+        _snwprintf(out, cap, L"%ls\\MusicPlayer\\whisper.cfg", ap);
+    else
+        _snwprintf(out, cap, L"whisper.cfg");
+}
+
+static void whisper_default_model(char* out, int cap)
+{
+    out[0] = 0;
+    wchar_t cfg[MAX_PATH];
+    whisper_cfg_path(cfg, MAX_PATH);
+    HANDLE h = CreateFileW(cfg, GENERIC_READ, FILE_SHARE_READ, NULL,
+                           OPEN_EXISTING, 0, NULL);
+    if (h == INVALID_HANDLE_VALUE) return;
+    char buf[512];
+    DWORD rd = 0;
+    if (ReadFile(h, buf, sizeof(buf) - 1, &rd, NULL) && rd > 0) {
+        buf[rd] = 0;
+        const char* m = strstr(buf, "model=");
+        if (m) {
+            m += 6;
+            int i = 0;
+            while (m[i] && m[i] != '\r' && m[i] != '\n' &&
+                   i < cap - 1) {
+                out[i] = m[i];
+                i++;
+            }
+            out[i] = 0;
+        }
+    }
+    CloseHandle(h);
+}
+
+static void whisper_set_default(const char* name)
+{
+    wchar_t cfg[MAX_PATH];
+    whisper_cfg_path(cfg, MAX_PATH);
+    char buf[256];
+    snprintf(buf, sizeof(buf), "model=%s\n", name);
+    HANDLE h = CreateFileW(cfg, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS,
+                           FILE_ATTRIBUTE_NORMAL, NULL);
+    if (h != INVALID_HANDLE_VALUE) {
+        DWORD wr = 0;
+        WriteFile(h, buf, (DWORD)strlen(buf), &wr, NULL);
+        CloseHandle(h);
+    }
 }
 
 /* thread de téléchargement : Hugging Face → dossier des modèles */
@@ -1799,6 +1852,8 @@ static void w2a(const wchar_t* src, char* dst, int cap)
 
 static void whisper_refresh(HWND hlv, const wchar_t* dir)
 {
+    char dmodel[64];
+    whisper_default_model(dmodel, sizeof(dmodel));
     ListView_DeleteAllItems(hlv);
     wchar_t pat[MAX_PATH];
     _snwprintf(pat, MAX_PATH, L"%ls\\ggml-*.bin", dir);
@@ -1825,9 +1880,11 @@ static void whisper_refresh(HWND hlv, const wchar_t* dir)
         li.pszText = p;
         SendMessageA(hlv, LVM_INSERTITEMA, 0, (LPARAM)&li);
         {
+            int is_def = dmodel[0] && !strcmp(p, dmodel);
             char ainst[64];
-            w2a(lang_get_or("wm_installed", L"installed"), ainst,
-                sizeof(ainst));
+            w2a(lang_get_or(is_def ? "wm_default" : "wm_installed",
+                            is_def ? L"default" : L"installed"),
+                ainst, sizeof(ainst));
             LVITEMA si;
             memset(&si, 0, sizeof(si));
             si.iSubItem = 1;
@@ -1984,6 +2041,26 @@ static INT_PTR CALLBACK whisper_dlg_proc(HWND h, UINT msg, WPARAM w,
                 _snwprintf(dst, MAX_PATH, L"%ls\\%ls", dir, base);
                 if (CopyFileW(file, dst, FALSE))
                     whisper_refresh(GetDlgItem(h, 2007), dir);
+            }
+            return TRUE;
+        }
+        case 2010: {   /* Définir le modèle sélectionné comme défaut */
+            HWND hlv = GetDlgItem(h, 2007);
+            int sel = ListView_GetNextItem(hlv, -1, LVNI_SELECTED);
+            if (sel < 0) return TRUE;
+            char name[64];
+            LVITEMA gi;
+            memset(&gi, 0, sizeof(gi));
+            gi.mask = LVIF_TEXT;
+            gi.iSubItem = 0;
+            gi.pszText = name;
+            gi.cchTextMax = 64;
+            SendMessageA(hlv, LVM_GETITEMTEXTA, sel, (LPARAM)&gi);
+            if (name[0]) {
+                whisper_set_default(name);
+                wchar_t dir[MAX_PATH];
+                whisper_models_dir(dir, MAX_PATH);
+                whisper_refresh(hlv, dir);
             }
             return TRUE;
         }
@@ -3004,7 +3081,13 @@ static void now_transcribe_start(void)
     }
     epath[o] = 0;
     char body[700];
-    snprintf(body, sizeof(body), "{\"path\":\"%s\"}", epath);
+    char dmodel[64];
+    whisper_default_model(dmodel, sizeof(dmodel));
+    if (dmodel[0])
+        snprintf(body, sizeof(body),
+                 "{\"path\":\"%s\",\"model\":\"%s\"}", epath, dmodel);
+    else
+        snprintf(body, sizeof(body), "{\"path\":\"%s\"}", epath);
     strncpy(g_trans_file, name, sizeof(g_trans_file) - 1);
     g_trans_scroll = 0;
     g_trans_text[0] = 0;
