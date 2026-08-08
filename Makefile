@@ -13,7 +13,7 @@
 #   make clean
 # ======================================================================
 
-VERSION := 2026.08.046-c12
+VERSION := 2026.08.046-c13
 
 CROSS    := x86_64-w64-mingw32-
 CC       := $(CROSS)gcc
@@ -50,7 +50,7 @@ CORE_OBJ := build/core_main.o build/core_http.o build/core_playlist.o \
 CORE_BIN := bin/musicplayer-core.exe
 
 # DLLs FFmpeg nécessaires au runtime (à livrer à côté de l'exe)
-FFMPEG_DLLS := avcodec-63.dll avformat-63.dll avutil-61.dll swresample-7.dll avdevice-63.dll avfilter-12.dll swscale-10.dll ffmpeg.exe
+FFMPEG_DLLS := avcodec-63.dll avformat-63.dll avutil-61.dll swresample-7.dll avdevice-63.dll avfilter-12.dll swscale-10.dll ffmpeg.exe whisper-cli.exe ggml.dll ggml-base.dll whisper.dll ggml-cpu-alderlake.dll ggml-cpu-cannonlake.dll ggml-cpu-cascadelake.dll ggml-cpu-haswell.dll ggml-cpu-icelake.dll ggml-cpu-sandybridge.dll ggml-cpu-skylakex.dll ggml-cpu-sse42.dll ggml-cpu-x64.dll
 
 all: dirs $(BIN)
 
@@ -232,7 +232,7 @@ repo: plugins-examples
 	cp -f bin/plugins/*.dll repo/bin/plugins/ 2>/dev/null || true
 	cp -f bin/skins/*.dll bin/skins/*.png repo/bin/skins/ 2>/dev/null || true
 	cp -f bin/core_plugins/*.dll repo/bin/core_plugins/ 2>/dev/null || true
-	cd vendor/ffmpeg/bin && cp -f ../LICENSE.txt . && zip -q ffmpeg-win64-lgpl-shared.zip avcodec-63.dll avformat-63.dll avutil-61.dll swresample-7.dll avdevice-63.dll avfilter-12.dll swscale-10.dll ffmpeg.exe LICENSE.txt && rm -f LICENSE.txt && mv ffmpeg-win64-lgpl-shared.zip "$(CURDIR)/repo/ffmpeg/" && cp -f avcodec-63.dll avformat-63.dll avutil-61.dll swresample-7.dll avdevice-63.dll avfilter-12.dll swscale-10.dll ffmpeg.exe "$(CURDIR)/repo/ffmpeg/"
+	cd vendor/ffmpeg/bin && cp -f ../LICENSE.txt . && zip -q ffmpeg-win64-lgpl-shared.zip $(FFMPEG_DLLS) LICENSE.txt && rm -f LICENSE.txt && mv ffmpeg-win64-lgpl-shared.zip "$(CURDIR)/repo/ffmpeg/" && cp -f $(FFMPEG_DLLS) "$(CURDIR)/repo/ffmpeg/"
 	@echo "repo/bin prêt — committez-le pour publier le repository"
 
 clean:

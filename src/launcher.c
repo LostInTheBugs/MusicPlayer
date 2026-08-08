@@ -22,14 +22,20 @@
 
 #include "repo.h"
 
-/* les fichiers du runtime FFmpeg (décodage + ffmpeg.exe pour la
+/* les fichiers du runtime (FFmpeg : décodage + ffmpeg.exe pour la
+ * transcription ; whisper.cpp : whisper-cli.exe + ggml pour la
  * transcription) */
 static const char* FFMPEG_RUNTIME_DLLS[] = {
     "avcodec-63.dll", "avformat-63.dll", "avutil-61.dll",
     "swresample-7.dll", "avdevice-63.dll", "avfilter-12.dll",
-    "swscale-10.dll", "ffmpeg.exe"
+    "swscale-10.dll", "ffmpeg.exe",
+    "whisper-cli.exe", "ggml.dll", "ggml-base.dll", "whisper.dll",
+    "ggml-cpu-alderlake.dll", "ggml-cpu-cannonlake.dll",
+    "ggml-cpu-cascadelake.dll", "ggml-cpu-haswell.dll",
+    "ggml-cpu-icelake.dll", "ggml-cpu-sandybridge.dll",
+    "ggml-cpu-skylakex.dll", "ggml-cpu-sse42.dll", "ggml-cpu-x64.dll"
 };
-#define FFMPEG_DLL_COUNT 8
+#define FFMPEG_DLL_COUNT 21
 
 static int ffmpeg_present(void)
 {

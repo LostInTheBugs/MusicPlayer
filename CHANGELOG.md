@@ -2,6 +2,17 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.046-c13] — 2026-08-08
+
+### Changed — whisper model handling (transcription)
+- If the requested model (`ggml-medium.bin` by default) is missing, the
+  plugin now **falls back to any model present** in
+  `%APPDATA%\MusicPlayer\whisper-models\` (e.g. `ggml-small.bin` works
+  without any configuration).
+- If **no model at all** is installed, the error message now gives the full
+  instructions: « Model not found - download a whisper.cpp model (e.g.
+  ggml-medium.bin) into %APPDATA%\MusicPlayer\whisper-models\ ».
+
 ## [2026.08.046-c12] — 2026-08-08
 
 ### Fixed — transcription: ffmpeg.exe was never shipped

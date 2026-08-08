@@ -785,13 +785,27 @@ static void handle_transcribe(SOCKET c, const char* body)
     wchar_t mpath[MAX_PATH];
     _snwprintf(mpath, MAX_PATH, L"%ls\\ggml-%hs.bin", mdir, model);
     if (GetFileAttributesW(mpath) == INVALID_FILE_ATTRIBUTES) {
-        char msg[1024];
-        snprintf(msg, sizeof(msg),
-                 "{\"ok\":0,\"error\":\"Model not found\","
-                 "\"model\":\"ggml-%s.bin\"}", model);
-        resp = _strdup(msg);
-        rc = -1;
-        goto cleanup;
+        /* le modèle demandé est absent : on prend le premier modèle
+         * disponible du dossier (n'importe quelle taille) */
+        wchar_t pat[MAX_PATH];
+        _snwprintf(pat, MAX_PATH, L"%ls\\ggml-*.bin", mdir);
+        WIN32_FIND_DATAW fd;
+        HANDLE hf = FindFirstFileW(pat, &fd);
+        if (hf != INVALID_HANDLE_VALUE) {
+            FindClose(hf);
+            _snwprintf(mpath, MAX_PATH, L"%ls\\%ls", mdir, fd.cFileName);
+            log_line("Transcribe: requested model missing, using first "
+                     "available model from the models folder");
+        } else {
+            char msg[1024];
+            snprintf(msg, sizeof(msg),
+                     "{\"ok\":0,\"error\":\"Model not found - download a "
+                     "whisper.cpp model (e.g. ggml-medium.bin) into "
+                     "%%APPDATA%%\\\\MusicPlayer\\\\whisper-models\\\\\"}");
+            resp = _strdup(msg);
+            rc = -1;
+            goto cleanup;
+        }
     }
 
     /* 3) whisper */
