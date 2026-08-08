@@ -2,6 +2,12 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.101-c2-pre] — 2026-08-08 — diagnostic build
+
+- `repo_download` now logs each failure step to `logs/musicplayer.log`
+  (URL, body size, PE magic check, locked file, `.pending` fallback) to
+  pinpoint why a plugin download fails on a specific machine.
+
 ## [2026.08.101-c1-pre] — 2026-08-08 — hotfix (plugin downloads)
 
 ### Fixed — plugin downloads when the file is locked
