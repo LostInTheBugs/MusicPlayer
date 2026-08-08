@@ -681,21 +681,26 @@ static int refresh_all(int* new_total)
     return 0;
 }
 
-static int download_episode(const char* url)
+static int download_episode_to(const char* url, const char* dest)
 {
     char* data = NULL;
     int len = 0;
     if (fetch_url(url, &data, &len) != 0) return -1;
     if (len < 1000) { free(data); return -1; }   /* pas un MP3 */
-    wchar_t dir[MAX_PATH], path[MAX_PATH];
-    store_dir(dir, MAX_PATH);
-    /* nom : dernier segment de l'URL */
-    const char* name = strrchr(url, '/');
-    name = name ? name + 1 : url;
-    if (!*name) { free(data); return -1; }
-    wchar_t wname[128];
-    MultiByteToWideChar(CP_UTF8, 0, name, -1, wname, 128);
-    swprintf(path, MAX_PATH, L"%ls\\%ls", dir, wname);
+    wchar_t path[MAX_PATH];
+    if (dest && dest[0]) {
+        MultiByteToWideChar(CP_UTF8, 0, dest, -1, path, MAX_PATH);
+    } else {
+        /* nom : dernier segment de l'URL, dans le dossier de stockage */
+        wchar_t dir[MAX_PATH];
+        store_dir(dir, MAX_PATH);
+        const char* name = strrchr(url, '/');
+        name = name ? name + 1 : url;
+        if (!*name) { free(data); return -1; }
+        wchar_t wname[128];
+        MultiByteToWideChar(CP_UTF8, 0, name, -1, wname, 128);
+        swprintf(path, MAX_PATH, L"%ls\\%ls", dir, wname);
+    }
     HANDLE f = CreateFileW(path, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS,
                            FILE_ATTRIBUTE_NORMAL, NULL);
     if (f == INVALID_HANDLE_VALUE) { free(data); return -1; }
@@ -1178,10 +1183,11 @@ static void handle_post(SOCKET c, const char* path, const char* body)
         snprintf(resp, sizeof(resp), "{\"ok\":1,\"new\":%d}", total);
         send_json(c, 200, resp);
     } else if (!strcmp(path, "/download")) {
-        char url[512];
+        char url[512], dest[MAX_PATH * 2];
         json_str_val(body, "url", url, sizeof(url));
+        json_str_val(body, "dest", dest, sizeof(dest));
         if (!url[0]) { send_json(c, 400, "{\"error\":\"url required\"}"); return; }
-        if (download_episode(url) == 0)
+        if (download_episode_to(url, dest) == 0)
             send_json(c, 200, "{\"ok\":1}");
         else
             send_json(c, 400, "{\"error\":\"download failed\"}");

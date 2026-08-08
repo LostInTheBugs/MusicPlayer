@@ -40,6 +40,8 @@ static char* podcast_http(const char* method, const char* path,
 static void pod_json_str(const char* body, const char* key, char* out, int outsz);
 static void pod_json_unescape(char* s);
 static INT_PTR CALLBACK podcast_search_dlg_proc(HWND h, UINT m, WPARAM w, LPARAM l);
+static HWND g_plist_win;                       /* fenêtre Playlist */
+static void toggle_playlist_win(void);         /* ouvre/ferme la fenêtre */
 
 /* 1 si le plugin podcasts du moteur est présent ET actif (le service
  * répond sur le port 8082). Résultat mis en cache. */
@@ -2869,6 +2871,7 @@ static char  g_trans_text[65536];   /* texte complet affiché */
 static int   g_trans_state = 0;     /* 0 idle, 1 busy, 2 done, 3 error */
 static char  g_trans_err[512];
 static char  g_trans_stage[64];
+static int   g_trans_progress;   /* 0..100 pendant la transcription */
 static int   g_trans_scroll = 0;    /* défilement vertical du texte */
 static RECT  g_trans_btn = { 0, 0, 0, 0 };   /* zone « Transcribe » */
 
@@ -3090,6 +3093,7 @@ static void now_transcribe_start(void)
         snprintf(body, sizeof(body), "{\"path\":\"%s\"}", epath);
     strncpy(g_trans_file, name, sizeof(g_trans_file) - 1);
     g_trans_scroll = 0;
+    g_trans_progress = 0;
     g_trans_text[0] = 0;
     g_trans_err[0] = 0;
     int len = 0;
@@ -3295,6 +3299,11 @@ static void now_panel_update(void)
             pod_json_str(resp, "stage", g_trans_stage,
                          sizeof(g_trans_stage));
             now_json_unescape(g_trans_stage);
+            {
+                char pb[16] = "";
+                pod_json_str(resp, "progress", pb, sizeof(pb));
+                g_trans_progress = atoi(pb);
+            }
         } else {
             /* transcription finie : le plugin renvoie le full_text dans
              * la réponse du /progress (le POST initial a pu être coupé
@@ -3435,6 +3444,26 @@ static void now_panel_paint(HDC hdc, const RECT* rc)
             SetTextColor(hdc, g_skin.text);
             RECT r = tr;
             DrawTextW(hdc, wb, -1, &r, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+            /* barre de progression + % sous le libellé */
+            if (g_trans_progress > 0 && g_trans_progress < 100) {
+                int cy = (tr.top + tr.bottom) / 2;
+                RECT br = { tr.left + 60, cy + 14, tr.right - 60, cy + 22 };
+                HBRUSH bg = (HBRUSH)SelectObject(hdc,
+                    GetStockObject(GRAY_BRUSH));
+                Rectangle(hdc, br.left, br.top, br.right, br.bottom);
+                int w = (br.right - br.left) * g_trans_progress / 100;
+                if (w > 0) {
+                    HBRUSH acc = CreateSolidBrush(g_skin.accent);
+                    SelectObject(hdc, acc);
+                    Rectangle(hdc, br.left, br.top, br.left + w, br.bottom);
+                    DeleteObject(acc);
+                }
+                SelectObject(hdc, bg);
+                wchar_t pct[32];
+                _snwprintf(pct, 32, L"%d %%", g_trans_progress);
+                RECT pr = { tr.left + 60, cy + 26, tr.right - 60, cy + 40 };
+                DrawTextW(hdc, pct, -1, &pr, DT_CENTER | DT_TOP);
+            }
             SelectObject(hdc, old);
         } else if (g_trans_state == 2 && g_trans_text[0]) {
             wchar_t wtx[70000];
@@ -3842,7 +3871,7 @@ static void pod_selected_episode(HWND h, char* url_out, int url_sz,
 
 /* Joue un épisode : la playlist du player devient la liste des
  * épisodes du podcast (enchaînement), puis lance l'épisode choisi */
-static void pod_play_episode(HWND h)
+static void pod_play_episode(HWND h, int play)
 {
     char url[512], played[8];
     pod_selected_episode(h, url, sizeof(url), played, sizeof(played));
@@ -3929,8 +3958,9 @@ static void pod_play_episode(HWND h)
                             if (body) {
                                 snprintf(body, cap + 256,
                                          "{\"cmd\":\"playlist\","
-                                         "\"items\":%s,\"start\":%d}",
-                                         items, found >= 0 ? found : 0);
+                                         "\"items\":%s,\"start\":%d,"
+                                         "\"play\":%d}",
+                                         items, found >= 0 ? found : 0, play);
                                 extern void cc_cmd_raw(const char* b);
                                 cc_cmd_raw(body);
                                 free(body);
@@ -4052,7 +4082,7 @@ static INT_PTR CALLBACK podcast_dlg_proc(HWND h, UINT m, WPARAM w, LPARAM l)
             pod_fill_eps(h);
         if (nm->idFrom == IDC_POD_EPS && nm->code == NM_DBLCLK) {
             /* double-clic : jouer l'épisode (playlist du podcast) */
-            pod_play_episode(h);
+            pod_play_episode(h, 1);
         }
         break;
     }
@@ -4117,8 +4147,12 @@ static INT_PTR CALLBACK podcast_dlg_proc(HWND h, UINT m, WPARAM w, LPARAM l)
             podcast_http("POST", "/refresh", NULL, NULL);
             pod_refresh(h);
         } else if (LOWORD(w) == IDC_POD_PLAY) {
-            /* Play : playlist du podcast + lecture de l'épisode choisi */
-            pod_play_episode(h);
+            /* Playlist : remplit la playlist du podcast, ferme le
+             * dialogue et ouvre la fenêtre Playlist — la lecture se
+             * lance ensuite par l'utilisateur */
+            pod_play_episode(h, 0);
+            EndDialog(h, 0);
+            if (!g_plist_win) toggle_playlist_win();
         } else if (LOWORD(w) == IDC_POD_MARK) {
             char url[512], played[8];
             pod_selected_episode(h, url, sizeof(url), played, sizeof(played));
@@ -4134,16 +4168,56 @@ static INT_PTR CALLBACK podcast_dlg_proc(HWND h, UINT m, WPARAM w, LPARAM l)
             char url[512], played[8];
             pod_selected_episode(h, url, sizeof(url), played, sizeof(played));
             if (url[0]) {
-                char body[600];
-                snprintf(body, sizeof(body), "{\"url\":\"%s\"}", url);
-                char* resp = podcast_http("POST", "/download", body, NULL);
-                if (resp && strstr(resp, "\"ok\":1"))
-                    MessageBoxW(h, L"Episode downloaded (AppData\\MusicPlayer\\podcasts).",
-                                L"Podcasts", MB_OK);
-                else
-                    MessageBoxW(h, L"Download failed.", L"Podcasts",
-                                MB_ICONERROR);
-                if (resp) free(resp);
+                /* demande où sauvegarder l'épisode (au lieu de toujours
+                 * l'écrire dans AppData) */
+                wchar_t file[MAX_PATH] = L"";
+                const char* base = strrchr(url, '/');
+                base = base ? base + 1 : url;
+                if (*base) {
+                    MultiByteToWideChar(CP_UTF8, 0, base, -1, file,
+                                        MAX_PATH);
+                    /* nettoie les éventuels %xx du nom d'URL */
+                    for (wchar_t* p = file; *p; p++)
+                        if (*p == '%') *p = L'_';
+                }
+                OPENFILENAMEW ofn;
+                memset(&ofn, 0, sizeof(ofn));
+                ofn.lStructSize = sizeof(ofn);
+                ofn.hwndOwner = h;
+                ofn.lpstrFilter =
+                    L"Audio (*.mp3;*.m4a;*.ogg)\0*.mp3;*.m4a;*.ogg\0"
+                    L"All files\0*.*\0";
+                ofn.lpstrFile = file;
+                ofn.nMaxFile = MAX_PATH;
+                ofn.lpstrDefExt = L"mp3";
+                ofn.Flags = OFN_OVERWRITEPROMPT | OFN_PATHMUSTEXIST;
+                if (GetSaveFileNameW(&ofn)) {
+                    char dest[MAX_PATH * 2];
+                    WideCharToMultiByte(CP_UTF8, 0, file, -1, dest,
+                                        sizeof(dest), NULL, NULL);
+                    /* échappe les backslashes pour le JSON */
+                    char edest[MAX_PATH * 4];
+                    int o = 0;
+                    for (int i = 0; dest[i] && o < (int)sizeof(edest) - 2;
+                         i++) {
+                        if (dest[i] == '\\') edest[o++] = '\\';
+                        edest[o++] = dest[i];
+                    }
+                    edest[o] = 0;
+                    char body[1400];
+                    snprintf(body, sizeof(body),
+                             "{\"url\":\"%s\",\"dest\":\"%s\"}",
+                             url, edest);
+                    char* resp = podcast_http("POST", "/download", body,
+                                              NULL);
+                    if (resp && strstr(resp, "\"ok\":1"))
+                        MessageBoxW(h, L"Episode downloaded.",
+                                    L"Podcasts", MB_OK);
+                    else
+                        MessageBoxW(h, L"Download failed.", L"Podcasts",
+                                    MB_ICONERROR);
+                    if (resp) free(resp);
+                }
             }
         } else if (LOWORD(w) == IDCANCEL) {
             EndDialog(h, 0);

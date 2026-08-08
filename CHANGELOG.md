@@ -2,6 +2,23 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.046-c18] — 2026-08-08
+
+### Changed — Podcasts dialog
+- The **Play** button is now **Playlist**: it loads the podcast episodes into
+  the playlist, closes the Podcasts window and opens the Playlist window —
+  playback starts when the user presses play (engine command `playlist` gains
+  an optional `play:0`).
+- The **Download** button now asks **where to save** the episode
+  (`GetSaveFileNameW`); the plugin accepts a `dest` field in
+  `POST /download` (falls back to AppData without it).
+
+### Added — transcription progress bar
+- The whisper plugin reports a `progress` percentage in `/progress` (total
+  duration parsed from the ffmpeg extraction output, current position parsed
+  from whisper-cli's `[a --> b]` lines); the Now playing panel draws a
+  progress bar with the percentage under the status label.
+
 ## [2026.08.046-c17] — 2026-08-08
 
 ### Fixed — transcription result never reached the panel

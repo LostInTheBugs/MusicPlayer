@@ -281,8 +281,14 @@ static void handle_cmd(SOCKET c, const char* body)
                     char st[16] = "";
                     json_str(body, "start", st, sizeof(st));
                     if (st[0]) start = atoi(st);
+                    /* "play":0 → remplit la playlist sans lancer la
+                     * lecture (bouton « Playlist » du dialogue Podcasts) */
+                    int play = 1;
+                    char pl[8] = "";
+                    json_str(body, "play", pl, sizeof(pl));
+                    if (pl[0]) play = atoi(pl);
                     core_plist_unlock();
-                    if (n > 0) core_plist_play_index(start);
+                    if (n > 0 && play) core_plist_play_index(start);
                 }
             }
         }

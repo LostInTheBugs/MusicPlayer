@@ -44,6 +44,19 @@ static char g_source[MAX_PATH * 2] = "";
  * false — le POST /transcribe peut avoir été interrompu par le timeout
  * du client) */
 static char g_last_full[70000] = "";
+/* progression de la transcription : durée totale (parse du stderr
+ * ffmpeg) et % courant (parse des lignes [a --> b] de whisper-cli) */
+static double g_dur_sec = 0.0;
+static volatile LONG g_progress = 0;
+
+/* parse "HH:MM:SS.mmm" → secondes ; -1 si invalide */
+static double parse_ts(const char* s)
+{
+    int h = 0, m = 0, sec = 0, ms = 0;
+    if (sscanf(s, "%d:%d:%d.%d", &h, &m, &sec, &ms) >= 3)
+        return h * 3600.0 + m * 60.0 + sec + ms / 1000.0;
+    return -1.0;
+}
 
 /* ------------------------------------------------------------------ */
 static void log_line(const char* msg)
@@ -275,6 +288,21 @@ static DWORD WINAPI pipe_reader(LPVOID arg)
             break;
         r->len += (int)rd;
         r->buf[r->len] = 0;
+        /* progression whisper : "--> HH:MM:SS.mmm" dans la sortie */
+        if (rd >= 8 && g_dur_sec > 0.0) {
+            const char* q = r->buf + r->len - (int)rd;
+            const char* arrow = strstr(q, "-->");
+            if (arrow) {
+                const char* t = arrow + 3;
+                while (*t == ' ') t++;
+                double sec = parse_ts(t);
+                if (sec > 0.0) {
+                    int pct = (int)(sec / g_dur_sec * 100.0);
+                    if (pct > 100) pct = 100;
+                    InterlockedExchange(&g_progress, pct);
+                }
+            }
+        }
     }
     return 0;
 }
@@ -360,6 +388,15 @@ static int extract_audio(const wchar_t* input, const wchar_t* wav,
     char* out = NULL;
     int len = 0;
     int rc = run_proc(cmd, EXTRACT_TIMEOUT, &out, &len);
+    /* durée totale de l'audio (pour la progression) : "Duration:
+     * HH:MM:SS.mm" dans la sortie ffmpeg */
+    if (out) {
+        const char* d = strstr(out, "Duration: ");
+        if (d) {
+            double sec = parse_ts(d + 10);
+            if (sec > 0.0) g_dur_sec = sec;
+        }
+    }
     if (rc == 0) {
         /* vérifie le header RIFF du FICHIER WAV produit — la sortie du
          * process est textuelle (logs ffmpeg), le check sur le pipe ne
@@ -747,6 +784,8 @@ static void handle_transcribe(SOCKET c, const char* body)
         return;
     }
     g_last_full[0] = 0;
+    g_dur_sec = 0.0;
+    InterlockedExchange(&g_progress, 0);
 
     snprintf(g_source, sizeof(g_source), "%s", path);
     char* resp = NULL;
@@ -1063,8 +1102,9 @@ static void handle_progress(SOCKET c)
         char src[2048];
         json_escape_a(g_source, src, sizeof(src));
         snprintf(body, sizeof(body),
-                 "{\"busy\":true,\"stage\":\"%s\",\"source\":\"%s\"}",
-                 g_stage, src);
+                 "{\"busy\":true,\"stage\":\"%s\",\"progress\":%d,"
+                 "\"source\":\"%s\"}",
+                 g_stage, (int)g_progress, src);
     } else {
         char escf[65536];
         json_escape_a(g_last_full, escf, sizeof(escf));
