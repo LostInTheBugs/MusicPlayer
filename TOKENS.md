@@ -6,15 +6,15 @@ LLM token usage for this project, tallied session by session.
 
 | Metric | deepseek-v4-flash | deepseek-v4-pro | **Total** |
 |---|---|---|---|
-| Dev sessions (Hermes) | 2 | 2 | **4** |
+| Dev sessions (Hermes) | 2 | 1 | **3** |
 | Scripted agent sessions (API) | 0 | 0 | **0** |
-| Messages | 13 881 | — | **13 881** |
-| API calls | 4 183 | 19 | **4 202** |
-| Input tokens | 8 416 361 | 51 072 | **8 467 433** |
-| Output tokens | 4 604 554 | 10 430 | **4 614 984** |
-| **Subtotal (input + output)** | **13 020 915** | **61 502** | **13 082 417** |
-| Cache read (reused at reduced price) | 1 178 442 624 | 601 472 | **1 179 044 096** |
-| **Estimated cost** | **≈ 5.44 USD** | **≈ 0.03 USD** | **≈ 5.47 USD** |
+| Messages | 14 144 | 112 | **14 256** |
+| API calls | 5 848 | 48 | **5 896** |
+| Input tokens | 8 648 169 | 120 201 | **8 768 370** |
+| Output tokens | 4 631 505 | 23 118 | **4 654 623** |
+| **Subtotal (input + output)** | **13 279 674** | **143 319** | **13 422 993** |
+| Cache read (reused at reduced price) | 1 183 647 488 | 2 564 864 | **1 186 212 352** |
+| **Estimated cost** | **≈ 5.48 USD** | **≈ 0.08 USD** | **≈ 5.56 USD** |
 
 ## How to re-read the counter
 
@@ -32,10 +32,12 @@ After each dev session, copy the matching row into the table above.
 
 ## Notes
 
-- Tally taken from `~/.hermes/state.db` (table `sessions`) — these are the
-  real runtime counters, not an estimate.
+- Tally taken from `~/.hermes/state.db` (table `sessions` + `session_model_usage`) — these
+  are the real runtime counters, not an estimate.
 - « Scripted agent sessions (API) » = `api-*` sessions driven by scripts
   (audits, releases, background tasks) attached to this project.
 - `reasoning_tokens` is probably included in `output_tokens`
   (to be confirmed with the provider).
-- Tally updated on 2026-08-08 — 2026.08.100 (stable). Current session (deepseek-v4-pro, pre-release setup + SPEC-TRANSCRIBE-WHISPER.MD) not yet flushed to state.db — to be tallied on next update.
+- Tally updated on 2026-08-08 — 2026.08.100 (stable). Current session
+  (deepseek-v4-pro, pre-release setup + SPEC-TRANSCRIBE-WHISPER.MD) has not
+  yet been flushed to state.db — to be added at the next tally.
