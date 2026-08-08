@@ -170,6 +170,7 @@ enum {
     IDM_VOL_UP = 401, IDM_VOL_DOWN = 402, IDM_VOL_SHOW = 403,
     IDM_PLUGIN_RELOAD = 501,
     IDM_PLUGIN_CFG = 502,   /* Settings ▸ Plugins… */
+    IDM_WHISPER_MODELS = 503, /* Plugins ▸ Whisper models… */
     IDM_PLUGIN_BASE = 600,  /* items plugins dynamiques */
     IDM_LANG_BASE = 700,    /* borne supérieure des items plugins */
     IDM_FULLSCREEN = 801,
@@ -1011,6 +1012,8 @@ static void rebuild_plugins_menu(HMENU parent)
     /* reconstruit le menu Plugins (position 2) */
     HMENU m = CreatePopupMenu();
     AppendMenuW(m, MF_STRING, IDM_PLUGIN_RELOAD, lang_get("plugins_reload"));
+    AppendMenuW(m, MF_STRING, IDM_WHISPER_MODELS,
+                lang_get("menu_plugins_whisper"));
     AppendMenuW(m, MF_SEPARATOR, 0, NULL);
     if (n == 0) {
         AppendMenuW(m, MF_GRAYED | MF_STRING, 0, lang_get("plugins_none"));
@@ -1689,6 +1692,318 @@ static void do_plugins_dialog(void)
 {
     DialogBoxParamW(GetModuleHandleW(NULL), MAKEINTRESOURCEW(IDD_PLUGINS),
                     g_hwnd, plugins_dlg_proc, 0);
+}
+
+/* ------------------------------------------------------------------ */
+/* Dialogue « Whisper models » (menu Plugins) : téléchargement des     */
+/* modèles de transcription (Hugging Face) ou ajout d'un fichier local */
+/* ------------------------------------------------------------------ */
+#define IDD_WHISPER 110
+
+/* lang_get avec repli codé en dur (défini plus bas) */
+static const wchar_t* lang_get_or(const char* key, const wchar_t* fb);
+
+/* modèles whisper.cpp officiels (nom, taille Mo) */
+static const struct { const char* name; int mb; } WHISPER_CATALOG[] = {
+    { "tiny",            75 },
+    { "base",           142 },
+    { "small",          466 },
+    { "medium",        1517 },
+    { "large-v3",      2909 },
+    { "large-v3-turbo", 1619 },
+};
+
+/* état partagé du téléchargement en cours (-1 inactif, -2 erreur,
+ * 0..100 progression) */
+static volatile LONG g_wm_progress = -1;
+
+static void whisper_models_dir(wchar_t* out, size_t cap)
+{
+    wchar_t ap[MAX_PATH];
+    if (SHGetFolderPathW(NULL, CSIDL_APPDATA, NULL, 0, ap) == S_OK)
+        _snwprintf(out, cap, L"%ls\\MusicPlayer\\whisper-models", ap);
+    else
+        _snwprintf(out, cap, L"whisper-models");
+    CreateDirectoryW(out, NULL);
+}
+
+/* thread de téléchargement : Hugging Face → dossier des modèles */
+static DWORD WINAPI whisper_dl_thread(LPVOID arg)
+{
+    char* name = (char*)arg;
+    wchar_t dir[MAX_PATH], tmp[MAX_PATH], fin[MAX_PATH];
+    whisper_models_dir(dir, MAX_PATH);
+    _snwprintf(tmp, MAX_PATH, L"%ls\\ggml-%hs.bin.part", dir, name);
+    _snwprintf(fin, MAX_PATH, L"%ls\\ggml-%hs.bin", dir, name);
+
+    wchar_t url[512];
+    swprintf(url, 512,
+        L"https://huggingface.co/ggerganov/whisper.cpp/resolve/main/"
+        L"ggml-%hs.bin", name);
+
+    LONG rc = -2;
+    HINTERNET inet = InternetOpenW(L"MusicPlayer-Models/1.0",
+                                   INTERNET_OPEN_TYPE_PRECONFIG, NULL, NULL, 0);
+    if (inet) {
+        DWORD to = 30000;
+        InternetSetOptionW(inet, INTERNET_OPTION_CONNECT_TIMEOUT, &to,
+                           sizeof(to));
+        InternetSetOptionW(inet, INTERNET_OPTION_RECEIVE_TIMEOUT, &to,
+                           sizeof(to));
+        HINTERNET url_h = InternetOpenUrlW(inet, url, NULL, 0,
+                                           INTERNET_FLAG_RELOAD |
+                                           INTERNET_FLAG_NO_CACHE_WRITE, 0);
+        if (url_h) {
+            DWORD avail = 0, total = 0;
+            if (InternetQueryDataAvailable(url_h, &avail, 0, 0))
+                total = avail;
+            HANDLE f = CreateFileW(tmp, GENERIC_WRITE, 0, NULL,
+                                   CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+            if (f != INVALID_HANDLE_VALUE) {
+                char buf[65536];
+                DWORD rd = 0, written = 0;
+                while (InternetReadFile(url_h, buf, sizeof(buf), &rd) &&
+                       rd > 0) {
+                    DWORD wr = 0;
+                    WriteFile(f, buf, rd, &wr, NULL);
+                    written += rd;
+                    if (total > 0)
+                        InterlockedExchange(&g_wm_progress,
+                            (LONG)(written * 100 / total));
+                }
+                CloseHandle(f);
+                if (written > (1u << 20)) {   /* au moins 1 Mo : plausible */
+                    MoveFileW(tmp, fin);
+                    rc = 0;
+                } else {
+                    DeleteFileW(tmp);
+                }
+            }
+            InternetCloseHandle(url_h);
+        }
+        InternetCloseHandle(inet);
+    }
+    if (rc != 0) DeleteFileW(tmp);
+    InterlockedExchange(&g_wm_progress, rc == 0 ? 100 : -2);
+    free(name);
+    return 0;
+}
+
+/* rafraîchit la liste : modèles installés (scan du dossier) puis le
+ * catalogue (modèles officiels non encore installés). Les messages
+ * ANSI (LVM_*A) sont utilisés comme dans les autres dialogues. */
+static void w2a(const wchar_t* src, char* dst, int cap)
+{
+    WideCharToMultiByte(CP_ACP, 0, src, -1, dst, cap, NULL, NULL);
+}
+
+static void whisper_refresh(HWND hlv, const wchar_t* dir)
+{
+    ListView_DeleteAllItems(hlv);
+    wchar_t pat[MAX_PATH];
+    _snwprintf(pat, MAX_PATH, L"%ls\\ggml-*.bin", dir);
+    WIN32_FIND_DATAW fd;
+    HANDLE hf = FindFirstFileW(pat, &fd);
+    while (hf != INVALID_HANDLE_VALUE) {
+        /* "ggml-<nom>.bin" → <nom> */
+        char name[64];
+        WideCharToMultiByte(CP_UTF8, 0, fd.cFileName, -1, name,
+                            sizeof(name), NULL, NULL);
+        char* p = name + 4;
+        if (*p == '-') p++;
+        char* dot = strrchr(p, '.');
+        if (dot) *dot = 0;
+        char wsize[64];
+        _snprintf(wsize, sizeof(wsize), "%llu Mo",
+                  (unsigned long long)(fd.nFileSizeHigh
+                      ? 0xffffffffULL : fd.nFileSizeLow / 1000000ULL));
+        int idx = ListView_GetItemCount(hlv);
+        LVITEMA li;
+        memset(&li, 0, sizeof(li));
+        li.mask = LVIF_TEXT;
+        li.iItem = idx;
+        li.pszText = p;
+        SendMessageA(hlv, LVM_INSERTITEMA, 0, (LPARAM)&li);
+        {
+            char ainst[64];
+            w2a(lang_get_or("wm_installed", L"installed"), ainst,
+                sizeof(ainst));
+            LVITEMA si;
+            memset(&si, 0, sizeof(si));
+            si.iSubItem = 1;
+            si.pszText = wsize;
+            SendMessageA(hlv, LVM_SETITEMTEXTA, idx, (LPARAM)&si);
+            si.iSubItem = 2;
+            si.pszText = ainst;
+            SendMessageA(hlv, LVM_SETITEMTEXTA, idx, (LPARAM)&si);
+        }
+        if (!FindNextFileW(hf, &fd)) {
+            FindClose(hf);
+            hf = INVALID_HANDLE_VALUE;
+        }
+    }
+    if (hf != INVALID_HANDLE_VALUE) FindClose(hf);
+    /* catalogue : les modèles officiels pas encore installés */
+    for (int i = 0; i < (int)(sizeof(WHISPER_CATALOG) /
+                              sizeof(WHISPER_CATALOG[0])); i++) {
+        wchar_t mp[MAX_PATH];
+        _snwprintf(mp, MAX_PATH, L"%ls\\ggml-%hs.bin", dir,
+                   WHISPER_CATALOG[i].name);
+        if (GetFileAttributesW(mp) != INVALID_FILE_ATTRIBUTES) continue;
+        char wsize[64];
+        _snprintf(wsize, sizeof(wsize), "%d Mo", WHISPER_CATALOG[i].mb);
+        int idx = ListView_GetItemCount(hlv);
+        LVITEMA li;
+        memset(&li, 0, sizeof(li));
+        li.mask = LVIF_TEXT;
+        li.iItem = idx;
+        li.pszText = (char*)WHISPER_CATALOG[i].name;
+        SendMessageA(hlv, LVM_INSERTITEMA, 0, (LPARAM)&li);
+        {
+            char anot[64];
+            w2a(lang_get_or("wm_not_installed", L"not installed"), anot,
+                sizeof(anot));
+            LVITEMA si;
+            memset(&si, 0, sizeof(si));
+            si.iSubItem = 1;
+            si.pszText = wsize;
+            SendMessageA(hlv, LVM_SETITEMTEXTA, idx, (LPARAM)&si);
+            si.iSubItem = 2;
+            si.pszText = anot;
+            SendMessageA(hlv, LVM_SETITEMTEXTA, idx, (LPARAM)&si);
+        }
+    }
+}
+
+static INT_PTR CALLBACK whisper_dlg_proc(HWND h, UINT msg, WPARAM w,
+                                         LPARAM l)
+{
+    (void)l;
+    switch (msg) {
+    case WM_INITDIALOG: {
+        HWND hlv = GetDlgItem(h, 2007);
+        LVCOLUMNA col;
+        memset(&col, 0, sizeof(col));
+        col.mask = LVCF_TEXT | LVCF_WIDTH;
+        char a1[64], a2[64], a3[64];
+        w2a(lang_get_or("wm_col_model", L"Model"), a1, sizeof(a1));
+        w2a(lang_get_or("wm_col_size", L"Size"), a2, sizeof(a2));
+        w2a(lang_get_or("wm_col_state", L"State"), a3, sizeof(a3));
+        col.cx = 140;
+        col.pszText = a1;
+        SendMessageA(hlv, LVM_INSERTCOLUMNA, 0, (LPARAM)&col);
+        col.cx = 90;
+        col.pszText = a2;
+        SendMessageA(hlv, LVM_INSERTCOLUMNA, 1, (LPARAM)&col);
+        col.cx = 150;
+        col.pszText = a3;
+        SendMessageA(hlv, LVM_INSERTCOLUMNA, 2, (LPARAM)&col);
+        wchar_t dir[MAX_PATH];
+        whisper_models_dir(dir, MAX_PATH);
+        whisper_refresh(hlv, dir);
+        SetDlgItemTextW(h, 1008,
+            lang_get_or("wm_hint",
+                L"Select a model to download, or add a local file."));
+        SetTimer(h, 1, 250, NULL);
+        return TRUE;
+    }
+    case WM_TIMER:
+        if (w == 1) {
+            LONG pr = g_wm_progress;
+            if (pr >= 0 && pr < 100) {
+                wchar_t st[160];
+                _snwprintf(st, 160, L"%ls %d %%",
+                           lang_get_or("wm_downloading", L"Downloading…"),
+                           (int)pr);
+                SetDlgItemTextW(h, 1008, st);
+            } else if (pr == 100) {
+                SetDlgItemTextW(h, 1008,
+                    lang_get_or("wm_download_ok", L"Model downloaded."));
+                EnableWindow(GetDlgItem(h, 2008), TRUE);
+                EnableWindow(GetDlgItem(h, 2009), TRUE);
+                wchar_t dir[MAX_PATH];
+                whisper_models_dir(dir, MAX_PATH);
+                whisper_refresh(GetDlgItem(h, 2007), dir);
+                InterlockedExchange(&g_wm_progress, -1);
+            } else if (pr == -2) {
+                SetDlgItemTextW(h, 1008,
+                    lang_get_or("wm_download_err",
+                                L"Download failed - check your connection."));
+                EnableWindow(GetDlgItem(h, 2008), TRUE);
+                EnableWindow(GetDlgItem(h, 2009), TRUE);
+                InterlockedExchange(&g_wm_progress, -1);
+            }
+        }
+        return TRUE;
+    case WM_COMMAND:
+        switch (LOWORD(w)) {
+        case 2008: {   /* Télécharger le modèle sélectionné */
+            HWND hlv = GetDlgItem(h, 2007);
+            int sel = ListView_GetNextItem(hlv, -1, LVNI_SELECTED);
+            if (sel < 0) return TRUE;
+            char name[64];
+            LVITEMA gi;
+            memset(&gi, 0, sizeof(gi));
+            gi.mask = LVIF_TEXT;
+            gi.iSubItem = 0;
+            gi.pszText = name;
+            gi.cchTextMax = 64;
+            SendMessageA(hlv, LVM_GETITEMTEXTA, sel, (LPARAM)&gi);
+            wchar_t dir[MAX_PATH], mp[MAX_PATH];
+            whisper_models_dir(dir, MAX_PATH);
+            _snwprintf(mp, MAX_PATH, L"%ls\\ggml-%hs.bin", dir, name);
+            if (GetFileAttributesW(mp) != INVALID_FILE_ATTRIBUTES)
+                return TRUE;   /* déjà installé */
+            InterlockedExchange(&g_wm_progress, 0);
+            EnableWindow(GetDlgItem(h, 2008), FALSE);
+            EnableWindow(GetDlgItem(h, 2009), FALSE);
+            SetDlgItemTextW(h, 1008, L"");
+            HANDLE th = CreateThread(NULL, 0, whisper_dl_thread,
+                                     _strdup(name), 0, NULL);
+            if (th) CloseHandle(th);
+            return TRUE;
+        }
+        case 2009: {   /* Ajouter un modèle local */
+            wchar_t file[MAX_PATH] = L"";
+            OPENFILENAMEW ofn;
+            memset(&ofn, 0, sizeof(ofn));
+            ofn.lStructSize = sizeof(ofn);
+            ofn.hwndOwner = h;
+            ofn.lpstrFilter =
+                L"Whisper models (*.bin)\0*.bin\0All files\0*.*\0";
+            ofn.lpstrFile = file;
+            ofn.nMaxFile = MAX_PATH;
+            ofn.Flags = OFN_FILEMUSTEXIST | OFN_HIDEREADONLY;
+            if (GetOpenFileNameW(&ofn)) {
+                wchar_t dir[MAX_PATH];
+                whisper_models_dir(dir, MAX_PATH);
+                wchar_t* base = wcsrchr(file, L'\\');
+                if (base) base++;
+                else base = file;
+                wchar_t dst[MAX_PATH];
+                _snwprintf(dst, MAX_PATH, L"%ls\\%ls", dir, base);
+                if (CopyFileW(file, dst, FALSE))
+                    whisper_refresh(GetDlgItem(h, 2007), dir);
+            }
+            return TRUE;
+        }
+        case IDOK:
+        case IDCANCEL:
+            EndDialog(h, 0);
+            return TRUE;
+        }
+        return TRUE;
+    case WM_DESTROY:
+        KillTimer(h, 1);
+        return TRUE;
+    }
+    return FALSE;
+}
+
+static void whisper_models_dlg(HWND parent)
+{
+    DialogBoxParamW(GetModuleHandleW(NULL), MAKEINTRESOURCEW(IDD_WHISPER),
+                    parent, whisper_dlg_proc, 0);
 }
 
 /* ------------------------------------------------------------------ */
@@ -5775,6 +6090,10 @@ static void on_command(int id, HMENU bar)
         mp_plugins_scan(g_plugins_dir, g_skins_dir, &g_host, 0);
         mp_plugins_apply_skins(g_hwnd);
         rebuild_plugins_menu(menu_bar());
+        break;
+
+    case IDM_WHISPER_MODELS:
+        whisper_models_dlg(g_hwnd);
         break;
 
     default:

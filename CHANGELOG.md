@@ -2,6 +2,19 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.046-c14] — 2026-08-08
+
+### Added — Whisper models manager (menu Plugins ▸ Whisper models…)
+- Lists the official whisper.cpp models (tiny / base / small / medium /
+  large-v3 / large-v3-turbo) with size and install state, plus any model
+  already present in `%APPDATA%\MusicPlayer\whisper-models\`.
+- **Download** a selected model directly from Hugging Face (with progress,
+  downloaded to a `.part` file and renamed on success — no partial model is
+  ever used).
+- **Add…** a local model file (copied into the models folder).
+- All labels have hard-coded fallbacks (no raw keys with an outdated
+  language file).
+
 ## [2026.08.046-c13] — 2026-08-08
 
 ### Changed — whisper model handling (transcription)

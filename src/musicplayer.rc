@@ -14,6 +14,19 @@ BEGIN
     PUSHBUTTON "Cancel", 2, 270, 218, 60, 16
 END
 
+/* Dialog "Whisper models" (menu Plugins) — ID numérique 110 */
+110 DIALOG 0, 0, 430, 258
+STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Whisper models"
+FONT 8, "MS Shell Dlg"
+BEGIN
+    CONTROL "", 2007, "SysListView32", LVS_REPORT | LVS_SINGLESEL | WS_BORDER | WS_TABSTOP, 14, 12, 402, 172
+    LTEXT "", 1008, 14, 190, 402, 14
+    PUSHBUTTON "Download", 2008, 14, 212, 96, 16
+    PUSHBUTTON "Add...", 2009, 118, 212, 96, 16
+    DEFPUSHBUTTON "Close", 1, 356, 212, 60, 16
+END
+
 /* Dialog "Mise à jour disponible" — ID numérique 106 */
 106 DIALOG 0, 0, 330, 132
 STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
