@@ -31,7 +31,7 @@ cross-compiled from Linux with MinGW-w64.
 
 ## Version
 
-`2026.08.101-c2-pre` — see [CHANGELOG.md](CHANGELOG.md)
+`2026.08.101-c3-pre` — see [CHANGELOG.md](CHANGELOG.md)
 
 ## Run on Windows 11
 

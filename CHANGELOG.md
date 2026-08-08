@@ -2,6 +2,15 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.101-c3-pre] — 2026-08-08 — hotfix (plugin download dirs)
+
+### Fixed — missing subdirectories on plugin downloads
+- `repo_download` now creates **all** subdirectories of the target path
+  (`skins/`, `plugins/`, `core_plugins/`, `ffmpeg/` — the manifest uses
+  `/` separators, which the previous single-directory creation missed).
+  Downloads previously failed with `ERROR_PATH_NOT_FOUND` (err=3) when
+  the folder did not exist yet (e.g. a fresh install without `plugins/`).
+
 ## [2026.08.101-c2-pre] — 2026-08-08 — diagnostic build
 
 - `repo_download` now logs each failure step to `logs/musicplayer.log`

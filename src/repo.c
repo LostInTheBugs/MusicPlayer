@@ -236,6 +236,22 @@ void repo_free(repo_plugin* list, int n)
     free(list);
 }
 
+/* crée tous les sous-dossiers d'un chemin (slashes / et \) */
+static void create_dirs(const wchar_t* path)
+{
+    wchar_t tmp[MAX_PATH * 2];
+    wcsncpy(tmp, path, MAX_PATH * 2 - 1);
+    tmp[MAX_PATH * 2 - 1] = 0;
+    for (wchar_t* p = tmp + 2; *p; p++) {
+        if (*p == L'/' || *p == L'\\') {
+            wchar_t c = *p;
+            *p = 0;
+            CreateDirectoryW(tmp, NULL);
+            *p = c;
+        }
+    }
+}
+
 int repo_download(const wchar_t* base, const repo_plugin* p)
 {
     /* URL : base + "/" + file (ex: .../repo/bin/skins/x.dll) */
@@ -279,13 +295,9 @@ int repo_download(const wchar_t* base, const repo_plugin* p)
 
     wchar_t dest[MAX_PATH * 2];
     swprintf(dest, MAX_PATH * 2, L"%ls\\%ls", exe, rel);
-    /* sous-dossier éventuel (skins/…) */
-    wchar_t* last = wcsrchr(dest, L'\\');
-    if (last) {
-        *last = 0;
-        CreateDirectoryW(dest, NULL);
-        *last = L'\\';
-    }
+    /* crée les sous-dossiers éventuels (skins/, plugins/,
+     * core_plugins/, ffmpeg/ — le manifeste utilise des slashes /) */
+    create_dirs(dest);
 
     HANDLE f = CreateFileW(dest, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS,
                            FILE_ATTRIBUTE_NORMAL, NULL);
