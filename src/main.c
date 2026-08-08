@@ -2869,6 +2869,8 @@ static int   g_now_ok = 0;          /* 1 = le panneau podcasts s'affiche */
 
 static char  g_trans_file[512];     /* source de la transcription */
 static char  g_trans_text[65536];   /* texte complet affiché */
+static char  g_lyric_text[65536];   /* paroles (.lrc à côté du morceau) */
+static void now_load_lyrics(void);  /* charge le .lrc de la piste */
 static int   g_trans_state = 0;     /* 0 idle, 1 busy, 2 done, 3 error */
 static char  g_trans_err[512];
 static char  g_trans_stage[64];
@@ -3024,6 +3026,7 @@ static int now_fetch_episode(const char* url)
     g_now_title[0] = 0;
     g_now_desc[0] = 0;
     g_now_ok = 0;
+    now_load_lyrics();
     char enc[1100];
     now_url_encode(url, enc, sizeof(enc));
     char path[1300];
@@ -3090,7 +3093,36 @@ static int trans_build_script(const char* json, char* out, int outsz)
     return o > 0;
 }
 
-/* charge la transcription sauvegardée d'une source ; 0 si trouvée */
+/* Charge les paroles (.lrc à côté du fichier local) de la piste
+ * courante ; vide le buffer si aucun fichier .lrc. */
+static void now_load_lyrics(void)
+{
+    g_lyric_text[0] = 0;
+    const wchar_t* full = cc_current_path();
+    if (!full) return;
+    wchar_t wpath[MAX_PATH * 2];
+    wcsncpy(wpath, full, MAX_PATH * 2 - 8);
+    wpath[MAX_PATH * 2 - 8] = 0;
+    wchar_t* dot = wcsrchr(wpath, L'.');
+    if (dot && (wcslen(dot) < 8)) wcscpy(dot, L".lrc");
+    else wcscat(wpath, L".lrc");
+    HANDLE f = CreateFileW(wpath, GENERIC_READ, FILE_SHARE_READ, NULL,
+                           OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (f == INVALID_HANDLE_VALUE) return;
+    DWORD sz = GetFileSize(f, NULL);
+    if (sz > 0 && sz < 60000) {
+        char* buf = (char*)malloc((size_t)sz + 1);
+        DWORD rd = 0;
+        if (buf && ReadFile(f, buf, sz, &rd, NULL) && rd > 0) {
+            buf[rd] = 0;
+            snprintf(g_lyric_text, sizeof(g_lyric_text), "%s", buf);
+        }
+        free(buf);
+    }
+    CloseHandle(f);
+}
+
+/* Charge la transcription sauvegardée d'une source ; 0 si trouvée */
 static int now_fetch_transcript(const char* url)
 {
     char enc[1100];
@@ -3286,6 +3318,7 @@ static void now_panel_update(void)
     if (strcmp(name, g_now_url) != 0) {
         strncpy(g_now_url, name, sizeof(g_now_url) - 1);
         g_now_ok = 0;
+        now_load_lyrics();
         g_trans_state = 0;
         g_trans_text[0] = 0;
         g_trans_err[0] = 0;
@@ -3407,12 +3440,14 @@ static void now_panel_paint(HDC hdc, const RECT* rc)
         CLEARTYPE_QUALITY, DEFAULT_PITCH, L"Segoe UI");
     SetBkMode(hdc, TRANSPARENT);
 
-    /* 1) titre de l'épisode — la description suit IMMÉDIATEMENT :
-     * la hauteur utilisée est celle retournée par DrawText (le rect
-     * n'est qu'une limite, pas un espace réservé) */
-    if (g_now_title[0]) {
+    /* 1) titre — épisode du podcast ou tags ID3 de la musique (repli
+     * sur le nom du fichier) */
+    const cc_state_t* st = cc_state();
+    const char* cur_title = g_now_ok ? g_now_title
+                            : (st->title[0] ? st->title : st->name);
+    if (cur_title[0]) {
         wchar_t wt[520];
-        utf8_to_wide(g_now_title, wt, 520);
+        utf8_to_wide(cur_title, wt, 520);
         HFONT old = (HFONT)SelectObject(hdc, ft_title);
         SetTextColor(hdc, g_skin.text);
         RECT r = { x, y, x + w, y + 90 };
@@ -3420,7 +3455,34 @@ static void now_panel_paint(HDC hdc, const RECT* rc)
         SelectObject(hdc, old);
         y += h + 6;
     }
-    /* 2) description de l'épisode (5 lignes max) — juste sous le titre */
+    /* 2) musique : artiste (tags ID3) — sous le titre */
+    if (!g_now_ok && st->artist[0]) {
+        wchar_t wa[520];
+        utf8_to_wide(st->artist, wa, 520);
+        HFONT old = (HFONT)SelectObject(hdc, ft_desc);
+        SetTextColor(hdc, g_skin.text);
+        RECT r = { x, y, x + w, y + 60 };
+        int h = DrawTextW(hdc, wa, -1, &r, DT_WORDBREAK | DT_LEFT | DT_TOP);
+        SelectObject(hdc, old);
+        y += h + 4;
+    }
+    /* 3) musique : album (année) — ligne discrète */
+    if (!g_now_ok && (st->album[0] || st->year[0])) {
+        char line[560];
+        if (st->album[0] && st->year[0])
+            snprintf(line, sizeof(line), "%s (%s)", st->album, st->year);
+        else
+            snprintf(line, sizeof(line), "%s%s", st->album, st->year);
+        wchar_t wab[520];
+        utf8_to_wide(line, wab, 520);
+        HFONT old = (HFONT)SelectObject(hdc, ft_small);
+        SetTextColor(hdc, g_skin.text);
+        RECT r = { x, y, x + w, y + 30 };
+        int h = DrawTextW(hdc, wab, -1, &r, DT_WORDBREAK | DT_LEFT | DT_TOP);
+        SelectObject(hdc, old);
+        y += h + 4;
+    }
+    /* 4) description de l'épisode (podcasts, 5 lignes max) */
     if (g_now_desc[0]) {
         wchar_t wd[9000];
         utf8_to_wide(g_now_desc, wd, 9000);
@@ -3537,6 +3599,44 @@ static void now_panel_paint(HDC hdc, const RECT* rc)
             RestoreDC(hdc, saved);
             SelectObject(hdc, old);
             /* mini-scrollbar si débordement */
+            if (max_sc > 0) {
+                int sbx = tr.right - 7;
+                HPEN pen = CreatePen(PS_SOLID, 1, g_skin.text);
+                HPEN oldp = (HPEN)SelectObject(hdc, pen);
+                MoveToEx(hdc, sbx, tr.top, NULL);
+                LineTo(hdc, sbx, tr.bottom);
+                int th = vis_h * vis_h / full_h;
+                if (th < 12) th = 12;
+                int ty = tr.top + (vis_h - th) * g_trans_scroll / max_sc;
+                RECT thb = { sbx, ty, sbx + 4, ty + th };
+                HBRUSH bg = CreateSolidBrush(g_skin.text);
+                FillRect(hdc, &thb, bg);
+                DeleteObject(bg);
+                SelectObject(hdc, oldp);
+                DeleteObject(pen);
+            }
+        } else if (g_lyric_text[0]) {
+            /* paroles (.lrc à côté du morceau) : même mécanisme de
+             * défilement que la transcription */
+            wchar_t wlx[65536];
+            utf8_to_wide(g_lyric_text, wlx, 65536);
+            RECT cr = tr;
+            HFONT old = (HFONT)SelectObject(hdc, ft_desc);
+            DrawTextW(hdc, wlx, -1, &cr, DT_WORDBREAK | DT_CALCRECT);
+            int full_h = cr.bottom - cr.top;
+            int vis_h = tr.bottom - tr.top;
+            int max_sc = full_h > vis_h ? full_h - vis_h : 0;
+            if (g_trans_scroll > max_sc) g_trans_scroll = max_sc;
+            if (g_trans_scroll < 0) g_trans_scroll = 0;
+            int saved = SaveDC(hdc);
+            IntersectClipRect(hdc, tr.left, tr.top, tr.right, tr.bottom);
+            RECT dr = tr;
+            dr.top -= g_trans_scroll;
+            dr.bottom += full_h - g_trans_scroll;
+            SetTextColor(hdc, g_skin.text);
+            DrawTextW(hdc, wlx, -1, &dr, DT_WORDBREAK | DT_LEFT | DT_TOP);
+            RestoreDC(hdc, saved);
+            SelectObject(hdc, old);
             if (max_sc > 0) {
                 int sbx = tr.right - 7;
                 HPEN pen = CreatePen(PS_SOLID, 1, g_skin.text);

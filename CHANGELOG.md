@@ -2,6 +2,17 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.101-c4-pre] — 2026-08-08 — now playing panel split
+
+### Changed — Now playing panel (two sections)
+- **Metadata section** (top): track title, artist and album (year) from
+  the ID3 tags, read by the engine's metadata plugin and exposed in
+  `/api/state` (fallback to the file name when untagged). Podcast
+  episodes keep title + description.
+- **Lyrics / transcript section** (bottom): the song lyrics are shown
+  from a `.lrc` file placed next to the track (same scrolling as the
+  transcript); podcast transcripts still take priority when present.
+
 ## [2026.08.101-c3-pre] — 2026-08-08 — hotfix (plugin download dirs)
 
 ### Fixed — missing subdirectories on plugin downloads
