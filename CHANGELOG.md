@@ -2,6 +2,16 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.046-c19] — 2026-08-08
+
+### Fixed — Podcasts ▸ Playlist button
+- The Playlist button is narrowed (60 px) so it no longer overlaps
+  Read/Unread.
+- The Playlist window is rebuilt systematically after loading the podcast
+  episodes (also when it was already open).
+- The podcasts plugin now emits valid JSON for `GET /podcasts/episodes`
+  (a stray trailing quote broke the payload).
+
 ## [2026.08.046-c18] — 2026-08-08
 
 ### Changed — Podcasts dialog

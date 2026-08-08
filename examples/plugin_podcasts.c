@@ -1017,7 +1017,7 @@ static void handle_get(SOCKET c, const char* path, const char* query)
                           g_eps[i].dur, g_eps[i].played, g_eps[i].pos);
             if (n > (int)sizeof(body) - 256) break;
         }
-        snprintf(body + n, sizeof(body) - n, "]}\"");
+        snprintf(body + n, sizeof(body) - n, "]}" );
         send_json(c, 200, body);
     } else if (!strcmp(path, "/podcasts/episode")) {
         /* infos d'un épisode (titre + description) par URL audio —

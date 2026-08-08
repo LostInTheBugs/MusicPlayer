@@ -42,6 +42,7 @@ static void pod_json_unescape(char* s);
 static INT_PTR CALLBACK podcast_search_dlg_proc(HWND h, UINT m, WPARAM w, LPARAM l);
 static HWND g_plist_win;                       /* fenêtre Playlist */
 static void toggle_playlist_win(void);         /* ouvre/ferme la fenêtre */
+static void playlist_win_rebuild(void);        /* reconstruit la liste */
 
 /* 1 si le plugin podcasts du moteur est présent ET actif (le service
  * répond sur le port 8082). Résultat mis en cache. */
@@ -4152,7 +4153,8 @@ static INT_PTR CALLBACK podcast_dlg_proc(HWND h, UINT m, WPARAM w, LPARAM l)
              * lance ensuite par l'utilisateur */
             pod_play_episode(h, 0);
             EndDialog(h, 0);
-            if (!g_plist_win) toggle_playlist_win();
+            if (g_plist_win) playlist_win_rebuild();
+            else toggle_playlist_win();
         } else if (LOWORD(w) == IDC_POD_MARK) {
             char url[512], played[8];
             pod_selected_episode(h, url, sizeof(url), played, sizeof(played));
