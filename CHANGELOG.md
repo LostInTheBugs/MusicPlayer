@@ -2,6 +2,15 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.101-c6-pre] — 2026-08-08 — hotfix (playlist sync)
+
+### Fixed — empty playlist after « Open folder »
+- The client now resynchronizes its playlist whenever the engine's
+  track count differs from the local list (poll): the engine scans
+  folders asynchronously, so the previous one-shot sync ran too early
+  and the Playlist window stayed empty. The window is rebuilt
+  automatically after the sync.
+
 ## [2026.08.101-c5-pre] — 2026-08-08 — hotfix (panel shows for music)
 
 ### Fixed

@@ -42,7 +42,7 @@ static void pod_json_unescape(char* s);
 static INT_PTR CALLBACK podcast_search_dlg_proc(HWND h, UINT m, WPARAM w, LPARAM l);
 static HWND g_plist_win;                       /* fenêtre Playlist */
 static void toggle_playlist_win(void);         /* ouvre/ferme la fenêtre */
-static void playlist_win_rebuild(void);        /* reconstruit la liste */
+void playlist_win_rebuild(void);               /* reconstruit la liste */
 
 /* 1 si le plugin podcasts du moteur est présent ET actif (le service
  * répond sur le port 8082). Résultat mis en cache. */
@@ -231,7 +231,6 @@ static void playlist_add(const wchar_t* path, int owned); /* idem */
 static INT_PTR dlg_skin_color(HWND h, WPARAM w, LPARAM l); /* idem */
 static void wide_to_utf8(const wchar_t* in, char* out, int out_chars); /* idem */
 static void log_line(const char* s);    /* idem */
-static void playlist_win_rebuild(void); /* fenêtre playlist */
 static void playlist_win_highlight(void);
 
 /* ------------------------------------------------------------------ */
@@ -6116,7 +6115,7 @@ static LRESULT CALLBACK plist_wnd_proc(HWND hw, UINT m, WPARAM wp, LPARAM lp)
     return DefWindowProcW(hw, m, wp, lp);
 }
 
-static void playlist_win_rebuild(void)
+void playlist_win_rebuild(void)
 {
     if (!g_plist_win || !g_plist_lv) return;
     ListView_DeleteAllItems(g_plist_lv);

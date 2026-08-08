@@ -21,6 +21,7 @@ extern wchar_t* g_plist[PLAYLIST_MAX];
 extern wchar_t* g_plist_title[PLAYLIST_MAX];   /* titres d'épisodes */
 extern int g_plist_n;
 extern int g_plist_idx;
+extern void playlist_win_rebuild(void);   /* fenêtre playlist (main.c) */
 
 static cc_state_t g_cc;
 static volatile LONG g_started = 0;
@@ -312,6 +313,13 @@ void cc_poll(void)
         json_str(r.body, "artist", g_cc.artist, sizeof(g_cc.artist));
         json_str(r.body, "album",  g_cc.album,  sizeof(g_cc.album));
         json_str(r.body, "year",   g_cc.year,   sizeof(g_cc.year));
+        /* le moteur a plus de pistes que la liste locale (scan de
+         * dossier « Open folder », playlist d'un podcast…) :
+         * synchronise la liste et reconstruit la fenêtre */
+        if (g_cc.count != g_plist_n) {
+            cc_plist_refresh();
+            playlist_win_rebuild();
+        }
     }
     free(r.body);
 }
