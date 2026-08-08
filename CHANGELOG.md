@@ -2,6 +2,15 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.046-c21] — 2026-08-08
+
+### Changed — transcript layout (dialogue script format)
+- The transcript is now laid out as a **dialogue script**: one line per
+  whisper segment with its timestamp — `[00:00:05] text` — so multi-speaker
+  conversations read as back-and-forth lines (whisper provides no speaker
+  diarization; the timestamps mark each turn). Applied to all three paths:
+  the direct POST response, the `/progress` poll and the saved transcript.
+
 ## [2026.08.046-c20] — 2026-08-08
 
 ### Changed — transcription layout + window height

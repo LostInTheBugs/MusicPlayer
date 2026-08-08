@@ -3047,6 +3047,49 @@ static int now_fetch_episode(const char* url)
     return rc;
 }
 
+/* Construit le texte mis en page (format script de dialogue : une ligne
+ * par segment avec le timestamp [HH:MM:SS]) à partir d'un JSON contenant
+ * "segments". Retourne 1 si des lignes ont été produites. */
+static int trans_build_script(const char* json, char* out, int outsz)
+{
+    out[0] = 0;
+    int o = 0;
+    const char* p = json;
+    while ((p = strstr(p, "{\"start\":")) != NULL && o < outsz - 2) {
+        p += 9;   /* après "start": */
+        double st = strtod(p, NULL);
+        const char* tq = strstr(p, "\"text\":\"");
+        if (!tq) break;
+        tq += 8;
+        char seg[4096];
+        int sl = 0;
+        while (*tq && *tq != '"' && sl < (int)sizeof(seg) - 1) {
+            if (*tq == '\\' && tq[1]) {
+                if (tq[1] == 'n') { seg[sl++] = ' '; tq += 2; continue; }
+                if (tq[1] == '"' || tq[1] == '\\') {
+                    seg[sl++] = tq[1];
+                    tq += 2;
+                    continue;
+                }
+                tq++;
+            }
+            seg[sl++] = *tq++;
+        }
+        seg[sl] = 0;
+        if (seg[0]) {
+            int h = (int)(st / 3600);
+            int m = (int)((st - h * 3600) / 60);
+            int s = (int)st % 60;
+            int l = snprintf(out + o, outsz - o, "[%02d:%02d:%02d] %s\n",
+                             h, m, s, seg);
+            if (l < 0 || o + l >= outsz - 1) break;
+            o += l;
+        }
+        p = tq;
+    }
+    return o > 0;
+}
+
 /* charge la transcription sauvegardée d'une source ; 0 si trouvée */
 static int now_fetch_transcript(const char* url)
 {
@@ -3060,7 +3103,8 @@ static int now_fetch_transcript(const char* url)
     int rc = -1;
     if (strstr(resp, "\"full_text\"")) {
         char txt[65536];
-        pod_json_str(resp, "full_text", txt, sizeof(txt));
+        if (!trans_build_script(resp, txt, sizeof(txt)))
+            pod_json_str(resp, "full_text", txt, sizeof(txt));
         if (txt[0]) {
             now_json_unescape(txt);
             snprintf(g_trans_text, sizeof(g_trans_text), "%s", txt);
@@ -3103,7 +3147,8 @@ static void now_transcribe_start(void)
         /* réponse complète (transcription rapide) ou erreur directe */
         if (strstr(resp, "\"ok\":1") && strstr(resp, "\"full_text\"")) {
             char txt[65536];
-            pod_json_str(resp, "full_text", txt, sizeof(txt));
+            if (!trans_build_script(resp, txt, sizeof(txt)))
+                pod_json_str(resp, "full_text", txt, sizeof(txt));
             now_json_unescape(txt);
             snprintf(g_trans_text, sizeof(g_trans_text), "%s", txt);
             g_trans_state = 2;
@@ -3311,49 +3356,11 @@ static void now_panel_update(void)
              * plugin), repli sur le transcript embarqué du feed */
             if (strstr(resp, "\"full_text\"")) {
                 char txt[65536];
-                if (strstr(resp, "\"segments\"")) {
-                    /* mise en page : un paragraphe par segment */
-                    txt[0] = 0;
-                    int out = 0;
-                    const char* p = resp;
-                    while ((p = strstr(p, "\"text\":\"")) != NULL &&
-                           out < (int)sizeof(txt) - 2) {
-                        p += 7;
-                        char seg[8192];
-                        int o = 0;
-                        while (*p && *p != '"' && o < (int)sizeof(seg) - 1) {
-                            if (*p == '\\' && p[1]) {
-                                if (p[1] == 'n') {
-                                    seg[o++] = ' ';
-                                    p += 2;
-                                    continue;
-                                }
-                                if (p[1] == '"' || p[1] == '\\') {
-                                    seg[o++] = p[1];
-                                    p += 2;
-                                    continue;
-                                }
-                                p++;
-                            }
-                            seg[o++] = *p++;
-                        }
-                        seg[o] = 0;
-                        if (seg[0]) {
-                            int l = (int)strlen(seg);
-                            if (out + l + 2 < (int)sizeof(txt) - 1) {
-                                memcpy(txt + out, seg, l);
-                                out += l;
-                                txt[out++] = '\n';
-                                txt[out++] = '\n';
-                                txt[out] = 0;
-                            }
-                        }
-                    }
-                    if (!txt[0])
-                        pod_json_str(resp, "full_text", txt, sizeof(txt));
-                } else {
+                /* mise en page : une ligne par segment avec le
+                 * timestamp (format script de dialogue) ; repli sur
+                 * le texte brut si pas de segments */
+                if (!trans_build_script(resp, txt, sizeof(txt)))
                     pod_json_str(resp, "full_text", txt, sizeof(txt));
-                }
                 now_json_unescape(txt);
                 if (txt[0]) {
                     snprintf(g_trans_text, sizeof(g_trans_text), "%s", txt);
