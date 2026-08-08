@@ -2,6 +2,14 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.046-c16] — 2026-08-08
+
+### Fixed — Now playing transcription panel labels
+- During extraction the panel now shows « Extracting audio… » (new key
+  `now_extracting`), and during the whisper run it shows « Transcribing… »
+  alone — the redundant « Transcribing… transcribing » stage text is gone
+  (the plugin stage value is only appended for unknown stages).
+
 ## [2026.08.046-c15] — 2026-08-08
 
 ### Added — default whisper model selection (Plugins ▸ Whisper models…)

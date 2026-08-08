@@ -3391,15 +3391,24 @@ static void now_panel_paint(HDC hdc, const RECT* rc)
             DrawTextW(hdc, hint, -1, &hr, DT_LEFT | DT_TOP | DT_END_ELLIPSIS);
         } else if (g_trans_state == 1) {
             wchar_t wb[128];
-            if (g_trans_stage[0]) {
-                wchar_t wstage[64];
-                utf8_to_wide(g_trans_stage, wstage, 64);
-                _snwprintf(wb, 128, L"%ls %ls",
-                           lang_get_or("now_transcribing", L"Transcribing…"),
-                           wstage);
+            if (g_trans_stage[0] &&
+                strcmp(g_trans_stage, "transcribing")) {
+                if (!strcmp(g_trans_stage, "extracting"))
+                    _snwprintf(wb, 128, L"%ls",
+                               lang_get_or("now_extracting",
+                                           L"Extracting audio…"));
+                else {
+                    wchar_t wstage[64];
+                    utf8_to_wide(g_trans_stage, wstage, 64);
+                    _snwprintf(wb, 128, L"%ls %ls",
+                               lang_get_or("now_transcribing",
+                                           L"Transcribing…"),
+                               wstage);
+                }
             } else {
                 _snwprintf(wb, 128, L"%ls",
-                           lang_get_or("now_transcribing", L"Transcribing…"));
+                           lang_get_or("now_transcribing",
+                                       L"Transcribing…"));
             }
             HFONT old = (HFONT)SelectObject(hdc, ft_desc);
             SetTextColor(hdc, g_skin.text);
