@@ -10,8 +10,28 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdarg.h>
 
 #include "repo.h"
+
+/* mini-journal de diagnostic : <exedir>\logs\musicplayer.log */
+static void repo_log(const char* fmt, ...)
+{
+    wchar_t exe[MAX_PATH];
+    GetModuleFileNameW(NULL, exe, MAX_PATH);
+    wchar_t* slash = wcsrchr(exe, L'\\');
+    if (slash) wcscpy(slash + 1, L"logs");
+    CreateDirectoryW(exe, NULL);
+    if (slash) wcscpy(slash + 1, L"logs\\musicplayer.log");
+    FILE* f = _wfopen(exe, L"a");
+    if (!f) return;
+    va_list ap;
+    va_start(ap, fmt);
+    vfprintf(f, fmt, ap);
+    va_end(ap);
+    fputs("\n", f);
+    fclose(f);
+}
 
 /* ------------------------------------------------------------------ */
 /* Liste des repositories (persistance)                               */
@@ -226,14 +246,23 @@ int repo_download(const wchar_t* base, const repo_plugin* p)
 
     char* body = NULL;
     int len = 0;
-    if (repo_http_get(url, &body, &len) != 0) return -1;
-    if (len == 0) { free(body); return -1; }
+    if (repo_http_get(url, &body, &len) != 0) {
+        repo_log("repo_download: HTTP get failed: %ls", url);
+        return -1;
+    }
+    if (len == 0) {
+        repo_log("repo_download: empty body: %ls", url);
+        free(body);
+        return -1;
+    }
 
     /* les DLL/EXE doivent être de vraies images (magic MZ) : un 404
      * (ou une page d'erreur) ne doit JAMAIS remplacer un fichier */
     const char* dot = strrchr(p->file, '.');
     int is_pe = dot && (!strcmp(dot, ".dll") || !strcmp(dot, ".exe"));
     if (is_pe && (len < 1024 || body[0] != 'M' || body[1] != 'Z')) {
+        repo_log("repo_download: not a PE image (len=%d first=%c%c): %ls",
+               len, len > 0 ? body[0] : '?', len > 1 ? body[1] : '?', url);
         free(body);
         return -1;
     }
@@ -268,6 +297,7 @@ int repo_download(const wchar_t* base, const repo_plugin* p)
                         FILE_ATTRIBUTE_NORMAL, NULL);
     }
     if (f == INVALID_HANDLE_VALUE) {
+        repo_log("repo_download: dest locked, trying pending: %ls", dest);
         /* toujours verrouillé (plugin visuel chargé par le client
          * lui-même) : télécharge vers <fichier>.pending, appliqué au
          * prochain démarrage (plugins_apply_pending) */
@@ -282,6 +312,8 @@ int repo_download(const wchar_t* base, const repo_plugin* p)
             free(body);
             return (ok2 && (int)w2 == len) ? 0 : -1;
         }
+        repo_log("repo_download: pending create failed (err=%lu)",
+               GetLastError());
         free(body);
         return -1;
     }
