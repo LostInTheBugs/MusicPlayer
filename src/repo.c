@@ -268,6 +268,20 @@ int repo_download(const wchar_t* base, const repo_plugin* p)
                         FILE_ATTRIBUTE_NORMAL, NULL);
     }
     if (f == INVALID_HANDLE_VALUE) {
+        /* toujours verrouillé (plugin visuel chargé par le client
+         * lui-même) : télécharge vers <fichier>.pending, appliqué au
+         * prochain démarrage (plugins_apply_pending) */
+        wchar_t pend[MAX_PATH * 2];
+        swprintf(pend, MAX_PATH * 2, L"%ls.pending", dest);
+        f = CreateFileW(pend, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS,
+                        FILE_ATTRIBUTE_NORMAL, NULL);
+        if (f != INVALID_HANDLE_VALUE) {
+            DWORD w2 = 0;
+            BOOL ok2 = WriteFile(f, body, (DWORD)len, &w2, NULL);
+            CloseHandle(f);
+            free(body);
+            return (ok2 && (int)w2 == len) ? 0 : -1;
+        }
         free(body);
         return -1;
     }

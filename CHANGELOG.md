@@ -2,6 +2,15 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.101-c1-pre] — 2026-08-08 — hotfix (plugin downloads)
+
+### Fixed — plugin downloads when the file is locked
+- Downloading a plugin whose file is loaded by the player (e.g. a
+  visual effect such as 3D Spectrum) no longer fails with
+  « Download failed again »: the file is downloaded as `<name>.pending`
+  and applied automatically at the next startup (before visuals load).
+- Fixed the `.pending` rename (wide-char precision specifier `%.*ls`).
+
 ## [2026.08.101-pre] — 2026-08-08 — testing channel
 
 Testing release: same content as [2026.08.100] (first stable release

@@ -6767,6 +6767,35 @@ static void resolve_plugins_dir(void)
     swprintf(g_lang_dir, MAX_PATH, L"%ls\\lang", exe);
 }
 
+/* Applique les téléchargements en attente (*.pending du dossier
+ * plugins) : remplace le fichier cible au démarrage, avant le
+ * chargement des visuels. */
+static void plugins_apply_pending(void)
+{
+    wchar_t exe[MAX_PATH];
+    GetModuleFileNameW(NULL, exe, MAX_PATH);
+    wchar_t* slash = wcsrchr(exe, L'\\');
+    if (slash) *slash = 0;
+    wchar_t pat[MAX_PATH * 2];
+    swprintf(pat, MAX_PATH * 2, L"%ls\\plugins\\*.pending", exe);
+    WIN32_FIND_DATAW fd;
+    HANDLE h = FindFirstFileW(pat, &fd);
+    if (h == INVALID_HANDLE_VALUE) return;
+    do {
+        wchar_t pend[MAX_PATH * 2], dest[MAX_PATH * 2];
+        swprintf(pend, MAX_PATH * 2, L"%ls\\plugins\\%ls", exe,
+                 fd.cFileName);
+        size_t nl = wcslen(fd.cFileName);
+        if (nl > 8) {
+            swprintf(dest, MAX_PATH * 2, L"%ls\\plugins\\%.*ls", exe,
+                     (int)(nl - 8), fd.cFileName);
+            DeleteFileW(dest);
+            MoveFileW(pend, dest);
+        }
+    } while (FindNextFileW(h, &fd));
+    FindClose(h);
+}
+
 int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR lpCmdLine, int nCmdShow)
 {
     (void)hPrev; (void)nCmdShow;
@@ -6876,6 +6905,9 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR lpCmdLine, int nCmdSh
             }
         }
     }
+
+    /* téléchargements de plugins en attente (fichiers verrouillés) */
+    plugins_apply_pending();
 
     cc_start();
     sp_start();   /* le client joue le flux du moteur (/stream) */
