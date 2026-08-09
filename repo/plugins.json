@@ -1,5 +1,5 @@
 {
- "core": "2026.08.046-c2",
+ "core": "2026.08.100-c2",
  "repo": "MusicPlayer official plugins & skins",
  "plugins": [
   {
@@ -12,7 +12,7 @@
   {
    "name": "Vintage radio",
    "type": "skin",
-   "version": "2026.08.042",
+   "version": "2026.08.046-c13",
    "file": "bin/skins/skin_radio.dll",
    "desc": "1950s valve radio, full-window skin",
    "url": "https://raw.githubusercontent.com/LostInTheBugs/MusicPlayer/master/repo/bin/skins/skin_radio.dll"
@@ -20,7 +20,7 @@
   {
    "name": "Winamp",
    "type": "skin",
-   "version": "2026.08.042",
+   "version": "2026.08.046-c13",
    "file": "bin/skins/skin_winamp.dll",
    "desc": "Classic Winamp-style skin",
    "url": "https://raw.githubusercontent.com/LostInTheBugs/MusicPlayer/master/repo/bin/skins/skin_winamp.dll"
@@ -28,7 +28,7 @@
   {
    "name": "Clean",
    "type": "skin",
-   "version": "2026.08.042",
+   "version": "2026.08.046-c13",
    "file": "bin/skins/skin_clean.dll",
    "desc": "Minimal light skin",
    "url": "https://raw.githubusercontent.com/LostInTheBugs/MusicPlayer/master/repo/bin/skins/skin_clean.dll"
@@ -36,7 +36,7 @@
   {
    "name": "Retro 60s",
    "type": "skin",
-   "version": "2026.08.042",
+   "version": "2026.08.046-c13",
    "file": "bin/skins/skin_retro60.dll",
    "desc": "Sixties palette",
    "url": "https://raw.githubusercontent.com/LostInTheBugs/MusicPlayer/master/repo/bin/skins/skin_retro60.dll"
@@ -44,7 +44,7 @@
   {
    "name": "Retro 70s",
    "type": "skin",
-   "version": "2026.08.042",
+   "version": "2026.08.046-c13",
    "file": "bin/skins/skin_retro70.dll",
    "desc": "Seventies palette",
    "url": "https://raw.githubusercontent.com/LostInTheBugs/MusicPlayer/master/repo/bin/skins/skin_retro70.dll"
@@ -52,7 +52,7 @@
   {
    "name": "Retro 80s",
    "type": "skin",
-   "version": "2026.08.042",
+   "version": "2026.08.046-c13",
    "file": "bin/skins/skin_retro80.dll",
    "desc": "Eighties neon palette",
    "url": "https://raw.githubusercontent.com/LostInTheBugs/MusicPlayer/master/repo/bin/skins/skin_retro80.dll"
@@ -60,7 +60,7 @@
   {
    "name": "Retro 90s",
    "type": "skin",
-   "version": "2026.08.042",
+   "version": "2026.08.046-c13",
    "file": "bin/skins/skin_retro90.dll",
    "desc": "Nineties palette",
    "url": "https://raw.githubusercontent.com/LostInTheBugs/MusicPlayer/master/repo/bin/skins/skin_retro90.dll"
@@ -68,7 +68,7 @@
   {
    "name": "2000s",
    "type": "skin",
-   "version": "2026.08.042",
+   "version": "2026.08.046-c13",
    "file": "bin/skins/skin_2000s.dll",
    "desc": "2000s palette",
    "url": "https://raw.githubusercontent.com/LostInTheBugs/MusicPlayer/master/repo/bin/skins/skin_2000s.dll"
@@ -76,7 +76,7 @@
   {
    "name": "Kitsch",
    "type": "skin",
-   "version": "2026.08.042",
+   "version": "2026.08.046-c13",
    "file": "bin/skins/skin_kitsch.dll",
    "desc": "Colorful kitsch palette",
    "url": "https://raw.githubusercontent.com/LostInTheBugs/MusicPlayer/master/repo/bin/skins/skin_kitsch.dll"
@@ -84,7 +84,7 @@
   {
    "name": "Cartoon",
    "type": "skin",
-   "version": "2026.08.042",
+   "version": "2026.08.046-c13",
    "file": "bin/skins/skin_cartoon.dll",
    "desc": "Cartoon palette",
    "url": "https://raw.githubusercontent.com/LostInTheBugs/MusicPlayer/master/repo/bin/skins/skin_cartoon.dll"
@@ -92,7 +92,7 @@
   {
    "name": "Black & white",
    "type": "skin",
-   "version": "2026.08.042",
+   "version": "2026.08.046-c13",
    "file": "bin/skins/skin_bnw.dll",
    "desc": "Monochrome palette",
    "url": "https://raw.githubusercontent.com/LostInTheBugs/MusicPlayer/master/repo/bin/skins/skin_bnw.dll"
@@ -100,7 +100,7 @@
   {
    "name": "Radio texture",
    "type": "asset",
-   "version": "2026.08.042",
+   "version": "2026.08.046-c13",
    "file": "bin/skins/radio_bg.png",
    "desc": "Background texture of the Vintage radio skin",
    "url": "https://raw.githubusercontent.com/LostInTheBugs/MusicPlayer/master/repo/bin/skins/radio_bg.png"
@@ -108,7 +108,7 @@
   {
    "name": "Winamp texture",
    "type": "asset",
-   "version": "2026.08.042",
+   "version": "2026.08.046-c13",
    "file": "bin/skins/winamp_bg.png",
    "desc": "Background texture of the Winamp skin",
    "url": "https://raw.githubusercontent.com/LostInTheBugs/MusicPlayer/master/repo/bin/skins/winamp_bg.png"
@@ -116,7 +116,7 @@
   {
    "name": "Spectrum",
    "type": "visual",
-   "version": "2026.08.042",
+   "version": "2026.08.046-c13",
    "file": "bin/plugins/spectrum.dll",
    "desc": "FFT spectrum bars visualizer",
    "url": "https://raw.githubusercontent.com/LostInTheBugs/MusicPlayer/master/repo/bin/plugins/spectrum.dll"
@@ -124,7 +124,7 @@
   {
    "name": "3D Spectrum",
    "type": "visual",
-   "version": "2026.08.042",
+   "version": "2026.08.046-c13",
    "file": "bin/plugins/3dspectrum.dll",
    "desc": "Rotating 3D bar cylinder",
    "url": "https://raw.githubusercontent.com/LostInTheBugs/MusicPlayer/master/repo/bin/plugins/3dspectrum.dll"
@@ -132,7 +132,7 @@
   {
    "name": "3D Isometric",
    "type": "visual",
-   "version": "2026.08.042",
+   "version": "2026.08.046-c13",
    "file": "bin/plugins/3diso.dll",
    "desc": "Isometric bar landscape",
    "url": "https://raw.githubusercontent.com/LostInTheBugs/MusicPlayer/master/repo/bin/plugins/3diso.dll"
@@ -140,7 +140,7 @@
   {
    "name": "VU Meter",
    "type": "visual",
-   "version": "2026.08.042",
+   "version": "2026.08.046-c13",
    "file": "bin/plugins/vumeter.dll",
    "desc": "Stereo LED VU meter",
    "url": "https://raw.githubusercontent.com/LostInTheBugs/MusicPlayer/master/repo/bin/plugins/vumeter.dll"
@@ -148,7 +148,7 @@
   {
    "name": "Fireworks",
    "type": "visual",
-   "version": "2026.08.042",
+   "version": "2026.08.046-c13",
    "file": "bin/plugins/fireworks.dll",
    "desc": "Music-synced fireworks",
    "url": "https://raw.githubusercontent.com/LostInTheBugs/MusicPlayer/master/repo/bin/plugins/fireworks.dll"
@@ -156,7 +156,7 @@
   {
    "name": "Fractal",
    "type": "visual",
-   "version": "2026.08.042",
+   "version": "2026.08.046-c13",
    "file": "bin/plugins/fractal.dll",
    "desc": "Zooming Mandelbrot/Julia fractal",
    "url": "https://raw.githubusercontent.com/LostInTheBugs/MusicPlayer/master/repo/bin/plugins/fractal.dll"
@@ -164,7 +164,7 @@
   {
    "name": "Hypnotic",
    "type": "visual",
-   "version": "2026.08.042",
+   "version": "2026.08.046-c13",
    "file": "bin/plugins/hypnotic.dll",
    "desc": "Rotating ring tunnel",
    "url": "https://raw.githubusercontent.com/LostInTheBugs/MusicPlayer/master/repo/bin/plugins/hypnotic.dll"
@@ -172,7 +172,7 @@
   {
    "name": "Equalizer",
    "type": "effect",
-   "version": "2026.08.042",
+   "version": "2026.08.046-c13",
    "file": "bin/plugins/equalizer.dll",
    "desc": "10-band Winamp-style equalizer",
    "url": "https://raw.githubusercontent.com/LostInTheBugs/MusicPlayer/master/repo/bin/plugins/equalizer.dll"
@@ -180,7 +180,7 @@
   {
    "name": "Sound Quality",
    "type": "effect",
-   "version": "2026.08.042",
+   "version": "2026.08.046-c13",
    "file": "bin/plugins/soundquality.dll",
    "desc": "Sub-bass, bass boost, presence, limiter",
    "url": "https://raw.githubusercontent.com/LostInTheBugs/MusicPlayer/master/repo/bin/plugins/soundquality.dll"
@@ -188,7 +188,7 @@
   {
    "name": "Gain demo",
    "type": "effect",
-   "version": "2026.08.042",
+   "version": "2026.08.046-c13",
    "file": "bin/plugins/gaindemo.dll",
    "desc": "Example audio effect (tutorial)",
    "url": "https://raw.githubusercontent.com/LostInTheBugs/MusicPlayer/master/repo/bin/plugins/gaindemo.dll"
@@ -196,7 +196,7 @@
   {
    "name": "Lyrics",
    "type": "service",
-   "version": "2026.08.042",
+   "version": "2026.08.046-c13",
    "file": "bin/plugins/lyrics.dll",
    "desc": "Shows .lrc lyrics of the current track",
    "url": "https://raw.githubusercontent.com/LostInTheBugs/MusicPlayer/master/repo/bin/plugins/lyrics.dll"
@@ -204,7 +204,7 @@
   {
    "name": "Cover art",
    "type": "service",
-   "version": "2026.08.042",
+   "version": "2026.08.046-c13",
    "file": "bin/plugins/cover.dll",
    "desc": "Shows the current track's cover",
    "url": "https://raw.githubusercontent.com/LostInTheBugs/MusicPlayer/master/repo/bin/plugins/cover.dll"
@@ -212,7 +212,7 @@
   {
    "name": "TeamSpeak Broadcast",
    "type": "service",
-   "version": "2026.08.042",
+   "version": "2026.08.046-c13",
    "file": "bin/plugins/ts.dll",
    "desc": "Broadcasts the music to TeamSpeak 3",
    "url": "https://raw.githubusercontent.com/LostInTheBugs/MusicPlayer/master/repo/bin/plugins/ts.dll"
@@ -220,7 +220,7 @@
   {
    "name": "Web Server (engine)",
    "type": "service",
-   "version": "2026.08.042",
+   "version": "2026.08.046-c13",
    "file": "bin/core_plugins/webserver.dll",
    "desc": "Phone remote control page (port 8000)",
    "url": "https://raw.githubusercontent.com/LostInTheBugs/MusicPlayer/master/repo/bin/core_plugins/webserver.dll"
@@ -228,7 +228,7 @@
   {
    "name": "DLNA/UPnP (engine)",
    "type": "service",
-   "version": "2026.08.042",
+   "version": "2026.08.046-c13",
    "file": "bin/core_plugins/upnp.dll",
    "desc": "UPnP AV media server",
    "url": "https://raw.githubusercontent.com/LostInTheBugs/MusicPlayer/master/repo/bin/core_plugins/upnp.dll"
@@ -236,7 +236,7 @@
   {
    "name": "RTP/AES67 (engine)",
    "type": "service",
-   "version": "2026.08.042",
+   "version": "2026.08.046-c13",
    "file": "bin/core_plugins/rtp.dll",
    "desc": "RTP L16 multicast output",
    "url": "https://raw.githubusercontent.com/LostInTheBugs/MusicPlayer/master/repo/bin/core_plugins/rtp.dll"
@@ -244,7 +244,7 @@
   {
    "name": "Multiroom (engine)",
    "type": "service",
-   "version": "2026.08.042",
+   "version": "2026.08.046-c13",
    "file": "bin/core_plugins/multiroom.dll",
    "desc": "Multi-room RTP broadcast",
    "url": "https://raw.githubusercontent.com/LostInTheBugs/MusicPlayer/master/repo/bin/core_plugins/multiroom.dll"
@@ -252,7 +252,7 @@
   {
    "name": "Cover (engine)",
    "type": "service",
-   "version": "2026.08.042",
+   "version": "2026.08.046-c13",
    "file": "bin/core_plugins/cover.dll",
    "desc": "Cover art endpoint of the engine",
    "url": "https://raw.githubusercontent.com/LostInTheBugs/MusicPlayer/master/repo/bin/core_plugins/cover.dll"
@@ -260,7 +260,7 @@
   {
    "name": "Metadata (engine)",
    "type": "service",
-   "version": "2026.08.042",
+   "version": "2026.08.046-c13",
    "file": "bin/core_plugins/metadata.dll",
    "desc": "ID3 tags of the engine",
    "url": "https://raw.githubusercontent.com/LostInTheBugs/MusicPlayer/master/repo/bin/core_plugins/metadata.dll"
@@ -268,7 +268,7 @@
   {
    "name": "Podcasts (engine)",
    "type": "service",
-   "version": "2026.08.045",
+   "version": "2026.08.046-c18",
    "file": "bin/core_plugins/podcasts.dll",
    "desc": "RSS podcast subscriptions: episodes, read/unread, resume, download (port 8082)",
    "url": "https://raw.githubusercontent.com/LostInTheBugs/MusicPlayer/master/repo/bin/core_plugins/podcasts.dll"
@@ -276,7 +276,7 @@
   {
    "name": "Transcribe (Whisper) (engine)",
    "type": "service",
-   "version": "2026.08.046-c2",
+   "version": "2026.08.046-c20",
    "file": "bin/core_plugins/transcribe_whisper.dll",
    "desc": "Offline speech-to-text transcription via whisper.cpp (port 8083)",
    "url": "https://raw.githubusercontent.com/LostInTheBugs/MusicPlayer/master/repo/bin/core_plugins/transcribe_whisper.dll"
