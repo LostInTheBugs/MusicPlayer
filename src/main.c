@@ -2569,6 +2569,19 @@ static INT_PTR CALLBACK repo_dlg_proc(HWND h, UINT m, WPARAM w, LPARAM l)
         SendMessageW(cb, CB_SETCURSEL, 0, 0);
         /* liste des repositories (persistée) + fetch du premier */
         g_repo_count = repo_list_load(g_repos, REPO_MAX_URLS);
+        /* la première URL doit correspondre au canal de mise à jour
+         * (master pour stable, pre-release pour test) : on remplace
+         * l'URL du projet de l'autre canal ; les URL personnalisées
+         * sont conservées */
+        {
+            const wchar_t* want = repo_default_base();
+            if (g_repo_count > 0 && wcscmp(g_repos[0], want) != 0 &&
+                (wcsstr(g_repos[0], L"/pre-release/repo") ||
+                 wcsstr(g_repos[0], L"/master/repo"))) {
+                wcscpy(g_repos[0], want);
+                repo_list_save(g_repos, g_repo_count);
+            }
+        }
         repo_refresh_listbox(h);
         repo_fetch_current(h);
         return TRUE;

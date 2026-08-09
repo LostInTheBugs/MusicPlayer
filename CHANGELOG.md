@@ -2,6 +2,15 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.100-c2] — 2026-08-09 — hotfix (plugin repo branch follows channel)
+
+### Fixed — plugin repository stuck on pre-release branch
+- The plugin repository dialog kept the URL of the previous channel in
+  `repos.txt` (e.g. `…/pre-release/repo` after switching to stable).
+  On opening, the project's URL is now aligned with the current update
+  channel (`master/repo` for stable, `pre-release/repo` for testing);
+  custom URLs are kept as-is.
+
 ## [2026.08.100-c1] — 2026-08-09 — hotfix (episode list truncated)
 
 ### Fixed — podcast episode list truncated
