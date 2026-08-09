@@ -2,6 +2,17 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.100-c5] — 2026-08-09 — hotfix (playlist truncated for big podcasts)
+
+### Fixed — « Playlist » only kept 8 episodes of a large podcast
+- Three stacked limits cut the playlist command for feeds with many
+  episodes: the REST server read requests into a fixed 16 KB buffer
+  (a ~100 KB playlist JSON was truncated → 0 items), the playlist
+  handler capped items at 65 KB / 512 entries, and the engine playlist
+  was sized at 512. All three are now large/dynamic (256 KB request
+  buffer, dynamic item buffer, 4096-entry playlist) — the full 562
+  episodes are kept.
+
 ## [2026.08.100-c4] — 2026-08-09 — hotfix (CDATA stripped client-side too)
 
 ### Fixed — episode titles still showing raw CDATA

@@ -6,7 +6,7 @@
 /* Playlist du moteur (core). Extraite de main.c — le client (UI) et le
  * core (moteur) partagent le même comportement de playlist. */
 
-#define PLAYLIST_MAX 512
+#define PLAYLIST_MAX 4096
 
 extern wchar_t* g_plist[PLAYLIST_MAX];
 extern wchar_t* g_plist_title[PLAYLIST_MAX];

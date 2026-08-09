@@ -219,17 +219,20 @@ static void handle_cmd(SOCKET c, const char* body)
             if (br) {
                 const char* cb = strchr(br + 1, ']');
                 if (cb) {
-                    char items[65536];
                     int il = (int)(cb - (br + 1));
-                    if (il > (int)sizeof(items) - 1)
-                        il = (int)sizeof(items) - 1;
+                    char* items = (char*)malloc((size_t)il + 1);
+                    if (!items) {
+                        http_response(c, 500, "application/json",
+                                      "{\"error\":\"oom\"}");
+                        return;
+                    }
                     memcpy(items, br + 1, il);
                     items[il] = 0;
                     core_plist_lock();
                     core_plist_clear();
                     const char* p = items;
                     int n = 0;
-                    while (n < 512 && (p = strchr(p, '{')) != NULL) {
+                    while (n < 4096 && (p = strchr(p, '{')) != NULL) {
                         /* objet {"url":"...","title":"..."} */
                         const char* end = strchr(p, '}');
                         if (!end) break;
@@ -288,6 +291,7 @@ static void handle_cmd(SOCKET c, const char* body)
                     json_str(body, "play", pl, sizeof(pl));
                     if (pl[0]) play = atoi(pl);
                     core_plist_unlock();
+                    free(items);
                     if (n > 0 && play) core_plist_play_index(start);
                 }
             }
@@ -352,9 +356,12 @@ static void stream_loop(SOCKET c)
 static DWORD WINAPI client_thread(LPVOID arg)
 {
     SOCKET c = (SOCKET)(INT_PTR)arg;
-    char req[16384];
-    int rn = http_read_request(c, req, sizeof(req));
-    if (rn <= 0) { closesocket(c); return 0; }
+    /* les commandes de playlist peuvent transporter des centaines
+     * d'épisodes (~100 Ko de JSON) : buffer large */
+    char* req = (char*)malloc(262144);
+    if (!req) { closesocket(c); return 0; }
+    int rn = http_read_request(c, req, 262144);
+    if (rn <= 0) { free(req); closesocket(c); return 0; }
 
     char method[16] = "", path[512] = "";
     sscanf(req, "%15s %511s", method, path);
@@ -564,6 +571,7 @@ static DWORD WINAPI client_thread(LPVOID arg)
     } else {
         http_response(c, 404, "text/plain", "not found");
     }
+    free(req);
     closesocket(c);
     return 0;
 }
