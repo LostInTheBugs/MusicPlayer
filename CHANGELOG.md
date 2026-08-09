@@ -2,6 +2,14 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.100-c3] — 2026-08-09 — hotfix (CDATA in episode titles)
+
+### Fixed — episode titles showing raw CDATA
+- Some feeds (e.g. Podcast Science) wrap episode **titles** in
+  `<![CDATA[…]]>`; the parser stripped it from descriptions only, so
+  ~110 titles displayed raw CDATA in the episode list. Titles are now
+  unwrapped the same way.
+
 ## [2026.08.100-c2] — 2026-08-09 — hotfix (plugin repo branch follows channel)
 
 ### Fixed — plugin repository stuck on pre-release branch

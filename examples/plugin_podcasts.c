@@ -480,6 +480,13 @@ static void parse_feed(const char* xml, char* title, int title_sz,
         memset(e, 0, sizeof(*e));
         strncpy(e->feed, feed_url, sizeof(e->feed) - 1);
         tag_text(tmp, "title", e->title, sizeof(e->title));
+        /* certains flux enveloppent aussi le titre dans <![CDATA[...]]> */
+        if (strncmp(e->title, "<![CDATA[", 9) == 0) {
+            char* inner = e->title + 9;
+            char* cend = strstr(inner, "]]>");
+            if (cend) *cend = 0;
+            memmove(e->title, inner, strlen(inner) + 1);
+        }
         /* <description> de l'item (souvent <![CDATA[ ... ]]>) */
         tag_text(tmp, "description", e->desc, sizeof(e->desc));
         if (strncmp(e->desc, "<![CDATA[", 9) == 0) {
