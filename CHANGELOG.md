@@ -2,6 +2,14 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.100-c6] — 2026-08-09 — hotfix (client playlist cap 512)
+
+### Fixed — playlist window still showed 512 episodes
+- The client kept its own `PLAYLIST_MAX` at 512 (the engine was raised
+  to 4096 in c5): the local playlist cache truncated at 512, so the
+  playlist window never showed episodes 513+. Raised to 4096 — the
+  full 562 episodes now appear.
+
 ## [2026.08.100-c5] — 2026-08-09 — hotfix (playlist truncated for big podcasts)
 
 ### Fixed — « Playlist » only kept 8 episodes of a large podcast

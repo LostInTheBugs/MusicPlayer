@@ -16,7 +16,7 @@
 #include "client_core.h"
 #include "svc.h"
 /* playlist locale du client (cache de /api/plist) */
-#define PLAYLIST_MAX 512
+#define PLAYLIST_MAX 4096
 extern wchar_t* g_plist[PLAYLIST_MAX];
 extern wchar_t* g_plist_title[PLAYLIST_MAX];   /* titres d'épisodes */
 extern int g_plist_n;
