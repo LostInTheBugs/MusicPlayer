@@ -2,6 +2,15 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.100-c1] — 2026-08-09 — hotfix (episode list truncated)
+
+### Fixed — podcast episode list truncated
+- The `/podcasts/episodes` endpoint built its JSON into a fixed 16 KB
+  buffer: feeds with many episodes (e.g. Podcast Science, 562 items)
+  were cut off (~78 episodes shown) and the buffer could overflow. The
+  response is now built in a dynamic buffer sized from the episode
+  count — the full list is returned.
+
 ## [2026.08.100] — 2026-08-08 — first stable release
 
 ### Versioning convention (new)

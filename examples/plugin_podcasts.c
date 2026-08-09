@@ -67,7 +67,7 @@ static int g_ep_n = 0;
 
 static void store_dir(wchar_t* out, int cap);
 static void strip_pipe(char* s);
-static void log_line(const char* msg);
+static void log_line(const char* fmt, ...);
 
 /* --- sources de podcasts (flux directs + annuaires de recherche) --- */
 #define MAX_SRC 16
@@ -295,6 +295,7 @@ static int fetch_url(const char* url, char** out, int* out_len)
             memcpy(body + len, buf, got);
             len += (int)got;
         }
+        log_line("Podcasts: fetched %d bytes", len);
         InternetCloseHandle(uh);
         InternetCloseHandle(inet);
         if (ok && len > 0) {
@@ -714,9 +715,14 @@ static int download_episode_to(const char* url, const char* dest)
 /* ------------------------------------------------------------------ */
 /* JSON helpers                                                        */
 /* ------------------------------------------------------------------ */
-static void log_line(const char* msg)
+static void log_line(const char* fmt, ...)
 {
-    if (g_h && g_h->log) g_h->log(msg);
+    char buf[1024];
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf(buf, sizeof(buf), fmt, ap);
+    va_end(ap);
+    if (g_h && g_h->log) g_h->log(buf);
 }
 
 static void json_escape_a(const char* in, char* out, int max)
@@ -1003,22 +1009,26 @@ static void handle_get(SOCKET c, const char* path, const char* query)
             dec[d] = 0;
             strncpy(feed, dec, sizeof(feed) - 1);
         }
-        char body[16384];
-        int n = snprintf(body, sizeof(body), "{\"episodes\":[");
+        /* le JSON des épisodes peut être volumineux (500+ épisodes) :
+         * buffer dynamique, pas de troncature */
+        size_t bcap = (size_t)g_ep_n * 512 + 4096;
+        char* body = (char*)malloc(bcap);
+        if (!body) { send_json(c, 500, "{\"error\":\"oom\"}"); return; }
+        int n = snprintf(body, bcap, "{\"episodes\":[");
         for (int i = 0; i < g_ep_n; i++) {
             if (strcmp(g_eps[i].feed, feed)) continue;
             char eurl[2048], etitle[512];
             json_escape_a(g_eps[i].url, eurl, sizeof(eurl));
             json_escape_a(g_eps[i].title, etitle, sizeof(etitle));
-            n += snprintf(body + n, sizeof(body) - n,
+            n += snprintf(body + n, bcap - n,
                           "%s{\"url\":\"%s\",\"title\":\"%s\",\"date\":\"%s\","
                           "\"dur\":%d,\"played\":%d,\"pos\":%.1f}",
                           n > 14 ? "," : "", eurl, etitle, g_eps[i].date,
                           g_eps[i].dur, g_eps[i].played, g_eps[i].pos);
-            if (n > (int)sizeof(body) - 256) break;
         }
-        snprintf(body + n, sizeof(body) - n, "]}" );
+        snprintf(body + n, bcap - n, "]}");
         send_json(c, 200, body);
+        free(body);
     } else if (!strcmp(path, "/podcasts/episode")) {
         /* infos d'un épisode (titre + description) par URL audio —
          * utilisé par le panneau « Now playing » du client */
