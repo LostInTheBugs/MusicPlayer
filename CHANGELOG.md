@@ -2,6 +2,13 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.100-c8] — 2026-08-09 — diagnostic (playlist sync trace)
+
+### Diagnostics
+- The client now logs the number of playlist items after each
+  refresh (`PLIST: N items` in musicplayer.log) and the HTTP code on
+  failure — to pinpoint why the playlist window may show stale data.
+
 ## [2026.08.100-c7] — 2026-08-09 — hotfix (playlist sync removed)
 
 ### Fixed — playlist window never synced (8 episodes shown)

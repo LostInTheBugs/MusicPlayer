@@ -332,7 +332,11 @@ const cc_state_t* cc_state(void) { return &g_cc; }
 void cc_plist_refresh(void)
 {
     http_resp r = cc_http2("GET", "/api/plist", NULL);
-    if (!r.body || r.code != 200) { free(r.body); return; }
+    if (!r.body || r.code != 200) {
+        { FILE* lf = _wfopen(L"logs\\musicplayer.log", L"a");
+          if (lf) { fprintf(lf, "PLIST: http %d\n", r.code); fclose(lf); } }
+        free(r.body); return;
+    }
     /* {"items":["path1","path2",...],"titles":["t1",...]} — remplit le
      * cache local. Accès mono-thread (thread UI) : pas de verrou. */
     for (int i = 0; i < g_plist_n; i++) {
@@ -361,6 +365,9 @@ void cc_plist_refresh(void)
                 if (*p == '"') p++;
             } else p++;
         }
+        /* diagnostic : nombre d'items après refresh */
+        { FILE* lf = _wfopen(L"logs\\musicplayer.log", L"a");
+          if (lf) { fprintf(lf, "PLIST: %d items\n", g_plist_n); fclose(lf); } }
     }
     /* titres d'épisodes : le tableau "titles" suit le même ordre */
     p = strstr(r.body, "\"titles\":[");
