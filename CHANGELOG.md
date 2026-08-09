@@ -2,6 +2,13 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.100-c4] — 2026-08-09 — hotfix (CDATA stripped client-side too)
+
+### Fixed — episode titles still showing raw CDATA
+- The client now strips `<![CDATA[…]]>` from episode titles itself:
+  even if the engine still runs an old podcasts plugin (service keeps
+  the DLL in memory), the episode list no longer shows raw CDATA.
+
 ## [2026.08.100-c3] — 2026-08-09 — hotfix (CDATA in episode titles)
 
 ### Fixed — episode titles showing raw CDATA

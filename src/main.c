@@ -3795,6 +3795,14 @@ static void pod_fill_eps(HWND h)
         char url[512], title[512], date[64], dur[16], played[8], pos[16];
         pod_json_str(tmp, "url", url, sizeof(url));
         pod_json_str(tmp, "title", title, sizeof(title));
+        /* certains flux (ou un vieux plugin encore en mémoire) envoient
+         * le titre brut <![CDATA[…]]> : on nettoie côté client aussi */
+        if (strncmp(title, "<![CDATA[", 9) == 0) {
+            char* inner = title + 9;
+            char* cend = strstr(inner, "]]>");
+            if (cend) *cend = 0;
+            memmove(title, inner, strlen(inner) + 1);
+        }
         pod_json_str(tmp, "date", date, sizeof(date));
         pod_json_num(tmp, "dur", dur, sizeof(dur));
         pod_json_str(tmp, "played", played, sizeof(played));
@@ -4073,6 +4081,14 @@ static INT_PTR CALLBACK podcast_add_proc(HWND h, UINT m, WPARAM w, LPARAM l)
                 if (resp) {
                     char title[512];
                     pod_json_str(resp, "title", title, sizeof(title));
+                    /* certains flux (ou un vieux plugin encore en mémoire) envoient
+                     * le titre brut <![CDATA[…]]> : on nettoie côté client aussi */
+                    if (strncmp(title, "<![CDATA[", 9) == 0) {
+                        char* inner = title + 9;
+                        char* cend = strstr(inner, "]]>");
+                        if (cend) *cend = 0;
+                        memmove(title, inner, strlen(inner) + 1);
+                    }
                     pod_json_unescape(title);
                     if (!title[0]) {
                         char err[32];
