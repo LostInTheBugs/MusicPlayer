@@ -2,6 +2,15 @@
 
 All notable changes to MusicPlayer are documented in this file.
 
+## [2026.08.100-c7] — 2026-08-09 — hotfix (playlist sync removed)
+
+### Fixed — playlist window never synced (8 episodes shown)
+- The playlist sync block in the client poll (`count != n →
+  refresh + rebuild`) had been removed from the codebase: the client
+  saw the engine's count but never pulled the playlist, so the window
+  kept only stale entries (the previous 8). The sync block is restored
+  and `playlist_win_rebuild` is exported again for the client core.
+
 ## [2026.08.100-c6] — 2026-08-09 — hotfix (client playlist cap 512)
 
 ### Fixed — playlist window still showed 512 episodes
